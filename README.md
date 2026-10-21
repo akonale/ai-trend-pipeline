@@ -56,3 +56,10 @@ pick a chartable topic from HN stories. It needs `ANTHROPIC_API_KEY` in the envi
 `ai_trend_pipeline.owid` provides the `OwidActivities.fetch_owid_dataset` activity, which maps a
 topic to an OWID grapher chart and returns its CSV as a typed table. It only covers the topics in
 `CATALOG`; any other topic fails with a non-retryable `NoMatchingDataset` error.
+
+## Charts
+
+`ai_trend_pipeline.chart_spec` provides `ChartSpecActivities.write_chart_spec`, which asks Claude to
+pick entities and write a Vega-Lite spec and caption, then fills in the data from the OWID table.
+`ai_trend_pipeline.render` provides the `render_chart_png` activity, which renders a spec to a PNG
+file with `vl-convert-python` (no browser or Node needed).

@@ -1,6 +1,6 @@
 # 008: Activity: LLM writes a Vega-Lite spec + caption; render to PNG
 
-Status: approved
+Status: built
 
 ## Goal
 
@@ -80,3 +80,6 @@ LLM tests reuse the `_client(...)` mock-transport pattern from `tests/test_topic
 **planner**: Wrote the 008 spec and set Status to `planned`. It is two activities in one PR (2 small modules, 2 test files, 2 JSON fixtures, 1 dependency). If the builder finds it too large, split it into 008a (render plus the `vl-convert-python` dependency) and 008b (LLM spec writer plus the end-to-end test). Next: the orchestrator sets `approved` and the builder works on branch `task/008-vega-spec-render`.
 **planner**: Design: the LLM never sends data back. It picks entities and writes encoding only, and the activity adds `data.values`. This saves tokens, stops made-up numbers and keeps payloads small. Rendering uses `vl-convert-python` (no browser or Node), and the PNG path is named by the spec's hash, which makes it idempotent.
 **planner**: Things to check while building: the exception type `vl_convert` raises on a bad spec, and whether it ships type stubs (if not, add `typings/vl_convert.pyi`). Running render on a separate machine from the next step assumes a shared filesystem, which is fine for the single-worker MVP and is task 010's concern.
+**builder**: Built the whole task (no split needed): chart_spec.py, render.py, 2 test files, 2 fixtures, README, `vl-convert-python` 1.9.0.post1. `just lint` and `just test` pass (56 tests). Open questions: vl_convert raises `ValueError` on a bad spec; it ships its own stubs and `py.typed`, so no `typings/vl_convert.pyi`.
+**builder**: Clean-venv check: `uv sync --locked` into a fresh venv, then `uv run --locked pytest tests/test_render.py` gave 5 passed. Render passes `json.dumps(spec)` (a str) to `vegalite_to_png`, which avoids dict invariance issues with `JsonValue`. Test helpers `make_client` and `make_table` in test_chart_spec.py are imported by test_render.py.
+**builder**: Git had no user identity configured, so I committed with GIT_AUTHOR/COMMITTER env vars set to the identity of earlier commits (akonale, noreply address); no git config changed. Next: verifier.

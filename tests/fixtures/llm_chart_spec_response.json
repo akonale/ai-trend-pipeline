@@ -1,0 +1,34 @@
+{
+  "id": "msg_01FixtureExample0003",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-5-5",
+  "content": [
+    {"type": "text", "text": "I'll compare three entities with a line chart."},
+    {
+      "type": "tool_use",
+      "id": "toolu_01FixtureExample0003",
+      "name": "write_chart",
+      "input": {
+        "entities": ["France", "Japan", "Africa"],
+        "caption": "Life expectancy at birth rose in France, Japan and Africa since 2000, with Africa gaining the most.",
+        "vega_lite_spec": {
+          "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+          "title": "Life expectancy at birth",
+          "width": 480,
+          "height": 300,
+          "data": {"url": "https://example.com/x.csv"},
+          "mark": "line",
+          "encoding": {
+            "x": {"field": "year", "type": "quantitative", "axis": {"format": "d"}},
+            "y": {"field": "value", "type": "quantitative"},
+            "color": {"field": "entity", "type": "nominal"}
+          }
+        }
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {"input_tokens": 700, "output_tokens": 220}
+}

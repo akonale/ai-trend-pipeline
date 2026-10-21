@@ -17,7 +17,14 @@ from ai_trend_pipeline.critique import (
     CritiqueChartInput,
 )
 from ai_trend_pipeline.topic import DEFAULT_MODEL
-from tests.test_chart_spec import TOPIC, _fixture, make_client, make_table  # pyright: ignore[reportPrivateUsage]
+
+# Private test helper shared across test modules; move to tests/helpers.py later.
+from tests.test_chart_spec import (
+    TOPIC,
+    _fixture,  # pyright: ignore[reportPrivateUsage]
+    make_client,
+    make_table,
+)
 
 PASS = "llm_critique_pass.json"
 FAIL = "llm_critique_fail.json"

@@ -23,7 +23,14 @@ from ai_trend_pipeline.chart_spec import (
     WriteChartSpecInput,
 )
 from ai_trend_pipeline.critique import ChartCritique, CritiqueActivities, CritiqueChartInput
-from tests.test_chart_spec import TOPIC, _fixture, make_client, make_table  # pyright: ignore[reportPrivateUsage]
+
+# Private test helper shared across test modules; move to tests/helpers.py later.
+from tests.test_chart_spec import (
+    TOPIC,
+    _fixture,  # pyright: ignore[reportPrivateUsage]
+    make_client,
+    make_table,
+)
 
 PASS = ChartCritique(passed=True, reasons=[])
 FAIL = ChartCritique(passed=False, reasons=["caption contradicts data"])

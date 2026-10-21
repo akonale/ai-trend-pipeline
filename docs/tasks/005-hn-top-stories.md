@@ -1,6 +1,6 @@
 # 005: Activity: fetch Hacker News top stories
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -69,3 +69,4 @@ All tests use a `httpx.AsyncClient(transport=httpx.MockTransport(handler), base_
 **builder**: Note: the mock serves `null` items via `content=json.dumps(...)` since httpx `json=None` sends an empty body. Fixture also has a `deleted` item (1007).
 **verifier**: Ran `just lint` (ruff check, ruff format, pyright: all clean) and `just test` (19 passed, including 8 in tests/test_hn.py). All checks pass.
 **reviewer**: Approved. All acceptance criteria and all 8 listed tests are present, and changes stay within "Files to touch". Notes: (1) `_RawItem` defaults missing `score`/`by`/`time` to 0/""/epoch, which is lenient but fine for now. (2) `make_hn_client` creates an unclosed client, so task 010 should close it on worker shutdown.
+**scribe**: Opened PR https://github.com/akonale/ai-trend-pipeline/pull/10 (005: Activity: fetch Hacker News top stories). Ticked all acceptance boxes after re-running lint and test. Next: poll the `check` CI job, then the human merges.

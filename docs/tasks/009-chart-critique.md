@@ -1,6 +1,6 @@
 # 009: Activity: LLM critique, one regenerate on failure
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -94,3 +94,4 @@ Notes: the verifier's uncommitted edit to this file needs committing with the fi
 **builder**: Added explanatory comments above the `_fixture` pyright-ignore imports in both test files (imports split over lines). `just lint` clean, `just test` 71 passed. Next: verifier.
 **verifier**: Re-verified after fix commit 46d27ee. `just lint` clean (ruff check, ruff format --check, pyright 0 errors). `just test` 71 passed. All checks pass.
 **reviewer**: Approved. Commit 46d27ee only adds explanatory comments above the `_fixture` pyright-ignore imports in tests/test_critique.py and tests/test_chart_loop.py (imports split across lines), and logs the handoff in this file. Nothing else changed. Note: commit the verifier and reviewer edits to this task file. Note: later move `_fixture` to tests/helpers.py.
+**scribe**: Ticked verified acceptance checkboxes, updated README (critique and chart_loop lines were already present), opened PR https://github.com/akonale/ai-trend-pipeline/pull/14. Next: orchestrator waits for the `check` job on this PR and merges; human merges.

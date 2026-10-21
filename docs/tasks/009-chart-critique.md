@@ -1,6 +1,6 @@
 # 009: Activity: LLM critique, one regenerate on failure
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -17,12 +17,12 @@ Add a `critique_chart` activity in which Claude, through a forced tool call, che
 
 ## Acceptance criteria
 
-- [ ] **`src/ai_trend_pipeline/chart_spec.py`** (edit, minimal): `WriteChartSpecInput` gains `feedback: list[str] = Field(default_factory=list)`. When it is non-empty, the user message ends with `"\nA previous draft was rejected for these reasons:\n"` followed by one `- <reason>` line per item. When it is empty, the request is byte-for-byte what it is today (all existing task 008 tests pass unchanged). Nothing else in the file changes.
-- [ ] **`src/ai_trend_pipeline/critique.py`** (new) defines:
+- [x] **`src/ai_trend_pipeline/chart_spec.py`** (edit, minimal): `WriteChartSpecInput` gains `feedback: list[str] = Field(default_factory=list)`. When it is non-empty, the user message ends with `"\nA previous draft was rejected for these reasons:\n"` followed by one `- <reason>` line per item. When it is empty, the request is byte-for-byte what it is today (all existing task 008 tests pass unchanged). Nothing else in the file changes.
+- [x] **`src/ai_trend_pipeline/critique.py`** (new) defines:
   - Constants: `MAX_TOKENS = 1024`, `TOOL_NAME = "critique_chart"`, `INVALID_CRITIQUE_ERROR_TYPE = "InvalidChartCritique"`, `MAX_REASONS = 5`, and a short `SYSTEM_PROMPT`. The prompt tells the model to check that the caption is factually supported by the summary, that the encoding (entity nominal colour, year x, value y) and the title fit the topic, and that the chart is not misleading. It fails the chart only for concrete problems, giving one short reason per problem.
   - Models: `CritiqueChartInput(topic: str = Field(min_length=1), table: OwidTable, chart: ChartSpec)` and `ChartCritique(passed: bool, reasons: list[str] = Field(default_factory=list, max_length=MAX_REASONS))`, with a `model_validator(mode="after")` that rejects `passed=False` with empty `reasons`. `ChartCritique.model_json_schema()` is the tool input schema.
   - `class CritiqueActivities: __init__(self, client: anthropic.AsyncAnthropic, model: str = DEFAULT_MODEL)` (reusing `DEFAULT_MODEL` from `topic.py`), with `@activity.defn async def critique_chart(self, data: CritiqueChartInput) -> ChartCritique`. It makes exactly one `messages.create` call with `tools=[tool]` and `tool_choice={"type": "tool", "name": TOOL_NAME}`. The user message contains: the topic, `table.title`, `table.value_column`, `chart.caption`, `chart.entities`, the spec as JSON with top-level `data`/`datasets` removed, and the per-entity summary lines described above. These lines are built only from `table.rows` whose entity is in `chart.entities`, in `chart.entities` order. The activity finds the `ToolUseBlock` named `TOOL_NAME`; if there is none it raises a non-retryable `ApplicationError`. A `ValidationError` becomes `ApplicationError(..., type=INVALID_CRITIQUE_ERROR_TYPE, non_retryable=True)`.
-- [ ] **`src/ai_trend_pipeline/chart_loop.py`** (new). Its imports of `chart_spec`, `critique` and pydantic go inside `workflow.unsafe.imports_passed_through()`, as in `hello.py`. It defines:
+- [x] **`src/ai_trend_pipeline/chart_loop.py`** (new). Its imports of `chart_spec`, `critique` and pydantic go inside `workflow.unsafe.imports_passed_through()`, as in `hello.py`. It defines:
   - `LLM_ACTIVITY_TIMEOUT = timedelta(seconds=120)`, `LLM_RETRY_POLICY = RetryPolicy(maximum_attempts=3)`, `MAX_DRAFTS = 2`.
   - Model `CritiquedChart(chart: ChartSpec, critique: ChartCritique, attempts: int = Field(ge=1, le=MAX_DRAFTS))`.
   - `async def draft_chart_with_critique(data: WriteChartSpecInput) -> CritiquedChart`. Only workflow code calls it. It calls `ChartSpecActivities.write_chart_spec` and `CritiqueActivities.critique_chart` through `workflow.execute_activity_method` (activity names `write_chart_spec` and `critique_chart`), with the timeout and retry policy above. The flow:
@@ -31,9 +31,9 @@ Add a `critique_chart` activity in which Claude, through a forced tool call, che
     3. Otherwise it regenerates once with `feedback=critique.reasons`, critiques draft 2, and returns that draft and critique with `attempts=2`, whether or not draft 2 passed.
     The regenerate input is `data.model_copy(update={"feedback": ...})`.
   - `@workflow.defn class DraftChartWorkflow` with `@workflow.run async def run(self, data: WriteChartSpecInput) -> CritiquedChart`, which only returns `await draft_chart_with_critique(data)`.
-- [ ] **Done-when check.** In the time-skipping environment, a test runs `DraftChartWorkflow` with the **real** `ChartSpecActivities` and `CritiqueActivities`, each backed by an `httpx2.MockTransport`. The critique transport serves `llm_critique_fail.json` first and `llm_critique_pass.json` second. The run makes exactly 2 chart requests and 2 critique requests, the second chart request's user message contains the fail fixture's reason text, and the result has `attempts == 2` and `critique.passed is True`.
-- [ ] `just lint` and `just test` pass. No live LLM or HTTP calls. Every mock handler fails the test on any request other than `POST /v1/messages`. Workflow tests use `WorkflowEnvironment.start_time_skipping(data_converter=pydantic_data_converter)` as in `tests/test_hello.py`.
-- [ ] `README.md` gets two or three lines on the `critique_chart` activity (`ai_trend_pipeline.critique`) and the one-regenerate helper and workflow (`ai_trend_pipeline.chart_loop`).
+- [x] **Done-when check.** In the time-skipping environment, a test runs `DraftChartWorkflow` with the **real** `ChartSpecActivities` and `CritiqueActivities`, each backed by an `httpx2.MockTransport`. The critique transport serves `llm_critique_fail.json` first and `llm_critique_pass.json` second. The run makes exactly 2 chart requests and 2 critique requests, the second chart request's user message contains the fail fixture's reason text, and the result has `attempts == 2` and `critique.passed is True`.
+- [x] `just lint` and `just test` pass. No live LLM or HTTP calls. Every mock handler fails the test on any request other than `POST /v1/messages`. Workflow tests use `WorkflowEnvironment.start_time_skipping(data_converter=pydantic_data_converter)` as in `tests/test_hello.py`.
+- [x] `README.md` gets two or three lines on the `critique_chart` activity (`ai_trend_pipeline.critique`) and the one-regenerate helper and workflow (`ai_trend_pipeline.chart_loop`).
 
 ## Files to touch
 
@@ -92,3 +92,5 @@ Add a `critique_chart` activity in which Claude, through a forced tool call, che
 1. `tests/test_critique.py:20` and `tests/test_chart_loop.py:26`: `# pyright: ignore[reportPrivateUsage]` on the `_fixture` import has no explanation, and CLAUDE.md allows suppressions only with a comment that explains them (checklist item 7). The spec puts moving the helpers out of scope, so do not move them. Add a one-line comment above each import saying why (for example "private test helper shared across test modules; move to tests/helpers.py later"). Split the import over lines if needed to satisfy the line-length limit. Re-run `just lint`.
 Notes: the verifier's uncommitted edit to this file needs committing with the fix.
 **builder**: Added explanatory comments above the `_fixture` pyright-ignore imports in both test files (imports split over lines). `just lint` clean, `just test` 71 passed. Next: verifier.
+**verifier**: Re-verified after fix commit 46d27ee. `just lint` clean (ruff check, ruff format --check, pyright 0 errors). `just test` 71 passed. All checks pass.
+**reviewer**: Approved. Commit 46d27ee only adds explanatory comments above the `_fixture` pyright-ignore imports in tests/test_critique.py and tests/test_chart_loop.py (imports split across lines), and logs the handoff in this file. Nothing else changed. Note: commit the verifier and reviewer edits to this task file. Note: later move `_fixture` to tests/helpers.py.

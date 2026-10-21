@@ -1,6 +1,6 @@
 # 008: Activity: LLM writes a Vega-Lite spec + caption; render to PNG
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -8,8 +8,8 @@ Add two Temporal activities. `write_chart_spec` asks Claude, through a forced to
 
 ## Acceptance criteria
 
-- [ ] **Dependency.** Add `vl-convert-python` with `uv add vl-convert-python`, which updates `pyproject.toml` and `uv.lock`. No other new dependencies. Why this package: it is a self-contained Rust and V8 wheel (manylinux x86_64 and aarch64, abi3, so it works on Python 3.12). It needs no browser, Node, Cairo or system packages, so it works unchanged on a headless server and on `ubuntu-latest` in CI with `uv sync --locked`. Altair is not needed. Other options were rejected: Node `vl2png` needs Node plus native canvas libraries, and Selenium or headless Chrome is heavy and flaky. If `vl_convert` has no type stubs and Pyright strict complains, add a minimal `typings/vl_convert.pyi` (Pyright's default `stubPath`) that declares only `vegalite_to_png`. Do not use `# type: ignore`.
-- [ ] **`src/ai_trend_pipeline/chart_spec.py`** (new) defines:
+- [x] **Dependency.** Add `vl-convert-python` with `uv add vl-convert-python`, which updates `pyproject.toml` and `uv.lock`. No other new dependencies. Why this package: it is a self-contained Rust and V8 wheel (manylinux x86_64 and aarch64, abi3, so it works on Python 3.12). It needs no browser, Node, Cairo or system packages, so it works unchanged on a headless server and on `ubuntu-latest` in CI with `uv sync --locked`. Altair is not needed. Other options were rejected: Node `vl2png` needs Node plus native canvas libraries, and Selenium or headless Chrome is heavy and flaky. If `vl_convert` has no type stubs and Pyright strict complains, add a minimal `typings/vl_convert.pyi` (Pyright's default `stubPath`) that declares only `vegalite_to_png`. Do not use `# type: ignore`.
+- [x] **`src/ai_trend_pipeline/chart_spec.py`** (new) defines:
   - Constants: `MAX_TOKENS = 4096`, `TOOL_NAME = "write_chart"`, `INVALID_DRAFT_ERROR_TYPE = "InvalidChartDraft"`, `SAMPLE_ROWS = 20`, `MAX_ENTITIES = 8`, `MAX_CAPTION_CHARS = 280`, and a short `SYSTEM_PROMPT`. The prompt tells the model to pick 1 to 8 entities and to write a Vega-Lite v5 spec that uses only the fields `entity` (nominal), `year` and `value`. The spec must have no `data` (the activity adds it). The model also writes a factual caption of at most 280 characters.
   - The Pydantic models are `WriteChartSpecInput(topic: str = Field(min_length=1), table: OwidTable)` and `ChartDraft(entities: list[str] = Field(min_length=1, max_length=MAX_ENTITIES), vega_lite_spec: dict[str, JsonValue], caption: str = Field(min_length=1, max_length=MAX_CAPTION_CHARS))`. `ChartDraft` is the tool input schema, built with `ChartDraft.model_json_schema()`. The output model is `ChartSpec(vega_lite_spec: dict[str, JsonValue], caption: str, entities: list[str])`. `JsonValue` is `pydantic.JsonValue`, so no `Any` is needed.
   - `class ChartSpecActivities: __init__(self, client: anthropic.AsyncAnthropic, model: str = DEFAULT_MODEL)`. It reuses `DEFAULT_MODEL` from `topic.py` by importing it, with no edit to `topic.py`. The class has `@activity.defn async def write_chart_spec(self, data: WriteChartSpecInput) -> ChartSpec`, which works like this:
@@ -17,7 +17,7 @@ Add two Temporal activities. `write_chart_spec` asks Claude, through a forced to
     2. It makes exactly one `messages.create` call with `tools=[tool]` and `tool_choice={"type": "tool", "name": TOOL_NAME}`. The single user message contains: the topic, `table.title`, `table.value_column`, the distinct entities in first-seen order, the min and max year, the row count, and the first `SAMPLE_ROWS` rows as `entity | year | value` lines. It does not send the full table.
     3. It finds the `ToolUseBlock` named `TOOL_NAME`. If there is none, it raises a non-retryable `ApplicationError`. It validates the block input with `ChartDraft.model_validate`. A `ValidationError`, or any entity that is not in the table, becomes `ApplicationError(..., type=INVALID_DRAFT_ERROR_TYPE, non_retryable=True)`. Task 009 owns regenerating.
     4. It builds the final spec. It copies the draft spec, removes any top-level `data` and `datasets` keys, and sets `"data": {"values": [{"entity": r.entity, "year": r.year, "value": r.value}, ...]}` using only rows whose entity is in `draft.entities`, in table order. It returns `ChartSpec(vega_lite_spec=..., caption=draft.caption, entities=draft.entities)`.
-- [ ] **`src/ai_trend_pipeline/render.py`** (new) defines:
+- [x] **`src/ai_trend_pipeline/render.py`** (new) defines:
   - Constants: `PNG_SCALE = 2.0` and `INVALID_SPEC_ERROR_TYPE = "InvalidVegaLiteSpec"`.
   - Models: `RenderChartInput(vega_lite_spec: dict[str, JsonValue], output_dir: str = Field(min_length=1))` and `RenderChartOutput(path: str, spec_sha256: str, size_bytes: int)`.
   - `spec_sha256(spec) -> str` is the sha256 hex of `json.dumps(spec, sort_keys=True, separators=(",", ":"))`.
@@ -27,9 +27,9 @@ Add two Temporal activities. `write_chart_spec` asks Claude, through a forced to
     3. Any exception that `vl_convert` raises for a bad spec (check which type it is, most likely `ValueError`) becomes `ApplicationError(..., type=INVALID_SPEC_ERROR_TYPE, non_retryable=True)`.
     4. It writes the PNG to `<output_dir>/chart-<sha256[:16]>.png` atomically: first a temp file in the same directory, then `os.replace`. It returns the absolute path, the hash and the byte count.
   - The same spec always gives the same path and overwrites the same file, so the activity is idempotent. The spec has inline data only, so rendering makes no network calls.
-- [ ] **Done-when check.** A test runs `write_chart_spec` on the recorded LLM fixture, passes the result to `render_chart_png`, and gets a real PNG file under `tmp_path`.
+- [x] **Done-when check.** A test runs `write_chart_spec` on the recorded LLM fixture, passes the result to `render_chart_png`, and gets a real PNG file under `tmp_path`.
 - [ ] `just lint` and `just test` pass locally and in CI. No test makes a live LLM or HTTP call. The Anthropic client uses `httpx2.MockTransport` exactly as in `tests/test_topic.py`, and the handler fails the test on any path other than `POST /v1/messages`. PNG checks are deterministic. They test structure, not pixels.
-- [ ] `README.md` gets two or three lines about the two activities (modules `ai_trend_pipeline.chart_spec` and `ai_trend_pipeline.render`) and the `vl-convert-python` dependency.
+- [x] `README.md` gets two or three lines about the two activities (modules `ai_trend_pipeline.chart_spec` and `ai_trend_pipeline.render`) and the `vl-convert-python` dependency.
 
 ## Files to touch
 
@@ -83,3 +83,6 @@ LLM tests reuse the `_client(...)` mock-transport pattern from `tests/test_topic
 **builder**: Built the whole task (no split needed): chart_spec.py, render.py, 2 test files, 2 fixtures, README, `vl-convert-python` 1.9.0.post1. `just lint` and `just test` pass (56 tests). Open questions: vl_convert raises `ValueError` on a bad spec; it ships its own stubs and `py.typed`, so no `typings/vl_convert.pyi`.
 **builder**: Clean-venv check: `uv sync --locked` into a fresh venv, then `uv run --locked pytest tests/test_render.py` gave 5 passed. Render passes `json.dumps(spec)` (a str) to `vegalite_to_png`, which avoids dict invariance issues with `JsonValue`. Test helpers `make_client` and `make_table` in test_chart_spec.py are imported by test_render.py.
 **builder**: Git had no user identity configured, so I committed with GIT_AUTHOR/COMMITTER env vars set to the identity of earlier commits (akonale, noreply address); no git config changed. Next: verifier.
+**verifier**: Ran `just lint` (ruff check, ruff format, pyright: all pass) and `just test` (56 passed). All checks pass.
+**reviewer**: Approved. All criteria and listed tests are present; scope is clean; `vl-convert-python` is a direct dependency in pyproject.toml and uv.lock (wheels for manylinux x86_64/aarch64); no secrets, mock transport rejects any path other than POST /v1/messages.
+**reviewer**: Notes: (1) `tests/test_render.py` imports `make_client`/`make_table` from `tests.test_chart_spec`; it works because `tests/__init__.py` exists, but moving them to a `tests/helpers.py` or conftest fixture would be less fragile. (2) `render_chart_png` writes the temp file synchronously on the event loop; fine for PNG sizes, could go in `to_thread` later. (3) Task 010 must register both activities and fix the shared output dir.

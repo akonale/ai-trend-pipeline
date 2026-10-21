@@ -40,3 +40,8 @@ the UI port first: `ssh -L 8233:localhost:8233 <host>`.
 
 Every pull request and every push to `main` runs `just lint` and `just test` through
 `.github/workflows/ci.yml`. A PR is ready to merge only when the `check` job is green.
+
+## Hacker News
+
+`ai_trend_pipeline.hn` provides the `HNActivities.fetch_hn_top_stories` activity, which fetches
+current HN top stories as typed models. It is not registered in the worker yet.

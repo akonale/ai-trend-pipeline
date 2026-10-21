@@ -1,0 +1,22 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "title": "Test chart",
+  "width": 300,
+  "height": 200,
+  "data": {
+    "values": [
+      {"entity": "A", "year": 2000, "value": 1.0},
+      {"entity": "A", "year": 2001, "value": 2.0},
+      {"entity": "A", "year": 2002, "value": 3.5},
+      {"entity": "B", "year": 2000, "value": 2.0},
+      {"entity": "B", "year": 2001, "value": 2.5},
+      {"entity": "B", "year": 2002, "value": 1.5}
+    ]
+  },
+  "mark": "line",
+  "encoding": {
+    "x": {"field": "year", "type": "quantitative", "axis": {"format": "d"}},
+    "y": {"field": "value", "type": "quantitative"},
+    "color": {"field": "entity", "type": "nominal"}
+  }
+}

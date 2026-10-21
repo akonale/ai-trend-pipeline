@@ -8,6 +8,7 @@ dependencies = [
     "httpx>=0.28.1",
     "pydantic>=2",
     "temporalio",
+    "vl-convert-python>=1.9.0.post1",
 ]
 
 [dependency-groups]

@@ -1,6 +1,6 @@
 # 007: Activity: fetch a matching Our World in Data dataset
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -77,3 +77,4 @@ Activity tests use `httpx.AsyncClient(transport=httpx.MockTransport(handler), ba
 **verifier**: Ran `just lint` (ruff, format, pyright: 0 errors) and `just test` (42 passed). All checks pass.
 **reviewer**: Approved. All criteria and listed tests present; no live HTTP (MockTransport, handler asserts path); redirects followed via `follow_redirects=True` in `make_owid_client`; 404 and bad header non-retryable, 5xx via `raise_for_status`; `since_year` filter applied. Case-insensitive header deviation is justified and tested.
 Notes: (1) `int()`/`float()` on a malformed row raises a retryable `ValueError`; consider non-retryable later. (2) `response.text.splitlines()` would split quoted newlines; harmless for OWID data. (3) Tests don't exercise redirect following (MockTransport), only the client flag.
+**closer**: Opened PR https://github.com/akonale/ai-trend-pipeline/pull/12. Activity checkbox left unticked for the case-insensitive header deviation (explained in PR). Next: orchestrator reviews and merges; CI `check` job result is logged below.

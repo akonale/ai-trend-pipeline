@@ -22,3 +22,16 @@ just test     # pytest
 If `just` is not installed, run the same commands with `uv run`, for example `uv run pytest`.
 
 All tool config lives in `pyproject.toml`.
+
+## Local stack
+
+Needs Docker. Postgres and a Temporal dev server run through `infra/compose.dev.yaml`.
+
+```sh
+just dev     # terminal 1: start the stack, then run the worker
+just hello   # terminal 2: run HelloWorkflow
+just down    # stop the stack
+```
+
+Open http://localhost:8233 to see `hello-workflow` as Completed. On a remote dev server, tunnel
+the UI port first: `ssh -L 8233:localhost:8233 <host>`.

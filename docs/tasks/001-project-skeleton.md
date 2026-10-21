@@ -1,6 +1,6 @@
 # 001: Project skeleton
 
-Status: built
+Status: pr-open
 
 ## Goal
 
@@ -8,12 +8,12 @@ Set up an empty, installable Python 3.12 project managed by uv. It should have P
 
 ## Acceptance criteria
 
-- [ ] `uv sync` on a fresh clone creates `.venv` with Python 3.12 and installs runtime deps (`pydantic>=2`, `temporalio`) and dev deps (`ruff`, `pyright`, `pytest`) from a committed `uv.lock`.
-- [ ] Package `ai_trend_pipeline` lives under `src/` (src layout), includes a `py.typed` marker, and can be imported as `import ai_trend_pipeline`.
-- [ ] `just lint` runs `ruff check .`, `ruff format --check .` and `pyright`, and exits 0. Pyright runs in `strict` mode over `src` and `tests`.
-- [ ] `just test` runs `pytest` and exits 0, with at least one test collected (pytest exits 5 when it collects no tests, which would fail).
+- [x] `uv sync` on a fresh clone creates `.venv` with Python 3.12 and installs runtime deps (`pydantic>=2`, `temporalio`) and dev deps (`ruff`, `pyright`, `pytest`) from a committed `uv.lock`.
+- [x] Package `ai_trend_pipeline` lives under `src/` (src layout), includes a `py.typed` marker, and can be imported as `import ai_trend_pipeline`.
+- [x] `just lint` runs `ruff check .`, `ruff format --check .` and `pyright`, and exits 0. Pyright runs in `strict` mode over `src` and `tests`.
+- [x] `just test` runs `pytest` and exits 0, with at least one test collected (pytest exits 5 when it collects no tests, which would fail).
 - [ ] `just fmt` runs `ruff format .` and `ruff check --fix .`. Running `just` with no arguments lists the recipes.
-- [ ] All tool config (ruff, pyright, pytest) is in `pyproject.toml`. There are no separate `ruff.toml`, `pyrightconfig.json` or `pytest.ini` files.
+- [x] All tool config (ruff, pyright, pytest) is in `pyproject.toml`. There are no separate `ruff.toml`, `pyrightconfig.json` or `pytest.ini` files.
 
 ## Files to touch
 
@@ -47,3 +47,7 @@ Set up an empty, installable Python 3.12 project managed by uv. It should have P
 **planner**: pytest exits with code 5 when it collects no tests, so the smoke test is required for `just test` to pass. `pyproject.toml` must also tell Pyright to use the `.venv` so it can resolve `temporalio` and `pydantic`.
 **builder**: Added pyproject.toml (hatchling, src layout, ruff/pyright strict/pytest config), .python-version, uv.lock, justfile, package with py.typed, and tests/test_smoke.py. Ran the equivalent `uv run ruff check`, `ruff format --check`, `pyright`, `pytest`: all pass (2 tests). Next: verifier.
 **builder**: `just` is not installed on this machine, so I could not run the recipes themselves, only the commands they wrap. The verifier needs `just` installed.
+**verifier**: All checks pass. `just` is not installed, so I ran the justfile commands via `uv run`: ruff check, ruff format --check, pyright (0 errors), pytest (2 passed). All exit 0.
+**reviewer**: Approved. Diff matches spec scope: config only in pyproject.toml, src layout with py.typed, both listed tests present, no secrets, no Temporal workflow code yet.
+Notes: (1) Recipes were never run via `just` itself (not installed); the justfile is trivial, but confirm once `just` is available. (2) `default` uses `just --list`, which is correct. (3) Acceptance checkboxes remain unticked; scribe may tick them.
+**scribe**: Fresh clone of task/001 branch: `uv sync` OK (Python 3.12.15, pydantic 2.14.1). Ticked criteria 1-4 and 6 based on uv run equivalents. Criterion 5 (`just fmt`, `just` listing) left unticked because `just` is not installed. Added README.md with setup and commands. Next: human reviews and merges.

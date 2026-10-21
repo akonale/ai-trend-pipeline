@@ -40,6 +40,7 @@ packages:
   - ca-certificates
   - fail2ban
   - unattended-upgrades
+  - just                                       # task runner for the project's justfile
 
 # --- Tools that need their own apt repos or user-level installs -------------
 runcmd:
@@ -65,9 +66,10 @@ runcmd:
   - DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin gh
   - usermod -aG docker dev                     # CHANGE ME if you renamed the user
 
-  # User-level tools: uv and Temporal CLI          (CHANGE ME: "dev" below if renamed)
+  # User-level tools: uv, Temporal CLI, Claude Code   (CHANGE ME: "dev" below if renamed)
   - su - dev -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
   - su - dev -c 'curl -sSf https://temporal.download/cli.sh | sh'
   - su - dev -c 'echo "export PATH=\"\$HOME/.temporalio/bin:\$PATH\"" >> ~/.bashrc'
+  - su - dev -c 'curl -fsSL https://claude.ai/install.sh | bash'   # log in on first run: `claude`
 
 final_message: "Bootstrap finished after $UPTIME seconds. Reboot once if a kernel update was installed."

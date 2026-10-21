@@ -13,7 +13,7 @@ echo "==> Base packages"
 sudo apt-get update
 sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-  git tmux curl wget ca-certificates fail2ban unattended-upgrades
+  git tmux curl wget ca-certificates fail2ban unattended-upgrades just
 sudo systemctl enable --now fail2ban
 
 echo "==> Apt repos for Docker and GitHub CLI"
@@ -44,11 +44,15 @@ echo "==> Temporal CLI"
 [ -x "$HOME/.temporalio/bin/temporal" ] || curl -sSf https://temporal.download/cli.sh | sh
 grep -q '.temporalio/bin' "$HOME/.bashrc" || echo 'export PATH="$HOME/.temporalio/bin:$PATH"' >> "$HOME/.bashrc"
 
+echo "==> Claude Code"
+command -v claude > /dev/null || [ -x "$HOME/.local/bin/claude" ] || curl -fsSL https://claude.ai/install.sh | bash
+
 cat <<'EOF'
 
 ==> Done. Next:
   1. Log out and back in (for the docker group and PATH).
-  2. Check:  docker run --rm hello-world && docker compose version && uv --version && temporal --version && gh --version
+  2. Check:  docker run --rm hello-world && docker compose version && uv --version && temporal --version && gh --version && just --version && claude --version
   3. Log in: gh auth login && gh auth setup-git
   4. Set:    git config --global user.name "Your Name"; git config --global user.email "you@example.com"
+  5. Run:    claude   (log in once; open the link it shows on your Mac)
 EOF

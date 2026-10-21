@@ -1,0 +1,73 @@
+#cloud-config
+# Dev/prod server bootstrap for Hetzner Cloud (Ubuntu 24.04).
+# Paste into "Cloud config" when creating a server.
+#
+# BEFORE USING: replace the two values marked CHANGE ME.
+# Bootstrap progress: `cloud-init status --wait` and /var/log/cloud-init-output.log
+
+# --- Users -------------------------------------------------------------------
+users:
+  - name: dev                                  # CHANGE ME: your username
+    shell: /bin/bash
+    groups: [sudo]
+    sudo: "ALL=(ALL) NOPASSWD:ALL"             # no password exists, so sudo must not ask for one
+    lock_passwd: true                          # no password login, ever
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAA... you@mac            # CHANGE ME: contents of ~/.ssh/id_ed25519.pub
+
+# --- SSH hardening -----------------------------------------------------------
+disable_root: true
+ssh_pwauth: false
+
+write_files:
+  # 00- prefix so it wins over Ubuntu's 50-cloud-init.conf (sshd uses the first value it reads)
+  - path: /etc/ssh/sshd_config.d/00-hardening.conf
+    permissions: "0644"
+    content: |
+      PermitRootLogin no
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PubkeyAuthentication yes
+
+# --- Base packages -----------------------------------------------------------
+package_update: true
+package_upgrade: true
+packages:
+  - git
+  - tmux
+  - curl
+  - wget
+  - ca-certificates
+  - fail2ban
+  - unattended-upgrades
+
+# --- Tools that need their own apt repos or user-level installs -------------
+runcmd:
+  # Apply SSH hardening
+  - sshd -t && systemctl restart ssh
+
+  # fail2ban (protects SSH with sensible defaults)
+  - systemctl enable --now fail2ban
+
+  # Docker + Compose plugin (official repo)
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  - chmod a+r /etc/apt/keyrings/docker.asc
+  - echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list
+
+  # GitHub CLI (official repo)
+  - wget -nv -O /etc/apt/keyrings/githubcli-archive-keyring.gpg https://cli.github.com/packages/githubcli-archive-keyring.gpg
+  - chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+  - echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list
+
+  # Install from the new repos
+  - apt-get update
+  - DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin gh
+  - usermod -aG docker dev                     # CHANGE ME if you renamed the user
+
+  # User-level tools: uv and Temporal CLI          (CHANGE ME: "dev" below if renamed)
+  - su - dev -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
+  - su - dev -c 'curl -sSf https://temporal.download/cli.sh | sh'
+  - su - dev -c 'echo "export PATH=\"\$HOME/.temporalio/bin:\$PATH\"" >> ~/.bashrc'
+
+final_message: "Bootstrap finished after $UPTIME seconds. Reboot once if a kernel update was installed."

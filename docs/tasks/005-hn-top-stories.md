@@ -1,6 +1,6 @@
 # 005: Activity: fetch Hacker News top stories
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -8,26 +8,26 @@ Add a Temporal activity that fetches the current Hacker News top stories from th
 
 ## Acceptance criteria
 
-- [ ] `httpx` is added as a runtime dependency with `uv add httpx`, so both `pyproject.toml` and `uv.lock` change. No other dependencies are added. `httpx.MockTransport` ships with httpx, so tests need no extra mock library.
-- [ ] `src/ai_trend_pipeline/hn.py` defines these Pydantic models:
+- [x] `httpx` is added as a runtime dependency with `uv add httpx`, so both `pyproject.toml` and `uv.lock` change. No other dependencies are added. `httpx.MockTransport` ships with httpx, so tests need no extra mock library.
+- [x] `src/ai_trend_pipeline/hn.py` defines these Pydantic models:
   - `HNTopStoriesInput(limit: int = 30)`, with `limit` constrained to 1..100 using `Field(ge=1, le=100)`.
   - `HNStory`, with fields `id: int`, `title: str`, `url: str | None` (Ask HN posts have no url), `score: int`, `by: str`, `time: datetime` (timezone-aware UTC, parsed from the unix seconds in the API) and `comments: int` (taken from the API's `descendants` field, default 0).
   - `HNTopStoriesOutput(stories: list[HNStory])`.
   - Raw API JSON is validated through Pydantic (`TypeAdapter(list[int])` and a private raw-item model), so no `Any` leaks and Pyright strict passes with no `# type: ignore`.
-- [ ] The activity is a method on a class, so the HTTP client can be injected. It looks like this: `class HNActivities: def __init__(self, client: httpx.AsyncClient)` and `@activity.defn async def fetch_hn_top_stories(self, data: HNTopStoriesInput) -> HNTopStoriesOutput`. The method does the following:
+- [x] The activity is a method on a class, so the HTTP client can be injected. It looks like this: `class HNActivities: def __init__(self, client: httpx.AsyncClient)` and `@activity.defn async def fetch_hn_top_stories(self, data: HNTopStoriesInput) -> HNTopStoriesOutput`. The method does the following:
   1. GETs `topstories.json` and takes the first `limit` ids.
   2. GETs `item/{id}.json` for those ids only, concurrently (`asyncio.gather`).
   3. Keeps the items in topstories order.
   4. Drops any item that is `null`, is not `type == "story"`, is `dead` or `deleted`, or has no `title`.
-- [ ] Any non-2xx response raises an error (`response.raise_for_status()`), so Temporal's retry policy handles it. The activity is read-only, so it is idempotent. The base URL is a module constant. `hn.py` also provides a small factory, `make_hn_client() -> httpx.AsyncClient`, that uses that base URL and a 10s timeout. Nothing in `src/` reads env vars or secrets for this task.
-- [ ] The fixture `tests/fixtures/hn_top_stories.json` has the shape `{"topstories": [ids...], "items": {"<id>": item-or-null}}`. It holds at least 6 ids and covers each of these cases at least once:
+- [x] Any non-2xx response raises an error (`response.raise_for_status()`), so Temporal's retry policy handles it. The activity is read-only, so it is idempotent. The base URL is a module constant. `hn.py` also provides a small factory, `make_hn_client() -> httpx.AsyncClient`, that uses that base URL and a 10s timeout. Nothing in `src/` reads env vars or secrets for this task.
+- [x] The fixture `tests/fixtures/hn_top_stories.json` has the shape `{"topstories": [ids...], "items": {"<id>": item-or-null}}`. It holds at least 6 ids and covers each of these cases at least once:
   - a normal story with a url
   - an Ask HN story with no url and no `descendants`
   - a `job` item
   - a `null` item
   - a `dead` story
   - The real API shape is used, trimmed by hand. No recording script.
-- [ ] `just lint` and `just test` pass, and no test makes a network call. The mock transport handler fails the test on any unexpected URL. `README.md` gets one or two lines noting that the HN fetch activity exists (module `ai_trend_pipeline.hn`).
+- [x] `just lint` and `just test` pass, and no test makes a network call. The mock transport handler fails the test on any unexpected URL. `README.md` gets one or two lines noting that the HN fetch activity exists (module `ai_trend_pipeline.hn`).
 
 ## Files to touch
 
@@ -67,3 +67,5 @@ All tests use a `httpx.AsyncClient(transport=httpx.MockTransport(handler), base_
 **planner**: `httpx` is not in `uv.lock` yet, so it must be added with `uv add httpx`, not pip. API JSON must go through Pydantic validation to satisfy Pyright strict with no `Any`.
 **builder**: Added hn.py, tests/test_hn.py, fixture (7 ids), httpx dep, README note. `just lint` and `just test` pass. Next: verifier.
 **builder**: Note: the mock serves `null` items via `content=json.dumps(...)` since httpx `json=None` sends an empty body. Fixture also has a `deleted` item (1007).
+**verifier**: Ran `just lint` (ruff check, ruff format, pyright: all clean) and `just test` (19 passed, including 8 in tests/test_hn.py). All checks pass.
+**reviewer**: Approved. All acceptance criteria and all 8 listed tests are present, and changes stay within "Files to touch". Notes: (1) `_RawItem` defaults missing `score`/`by`/`time` to 0/""/epoch, which is lenient but fine for now. (2) `make_hn_client` creates an unclosed client, so task 010 should close it on worker shutdown.

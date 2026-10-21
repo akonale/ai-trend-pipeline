@@ -31,7 +31,7 @@ Project rules for every agent (planner, builder, verifier, reviewer, scribe). Ke
 - Every activity and workflow input and output is a Pydantic model.
 - No secrets or real account details in the repo. Read them from environment variables.
 - Keep changes small and in scope. No speculative code for things that don't exist yet
-  (CI, deploy, Bluesky specifics).
+  (deploy, Bluesky specifics).
 
 ## Temporal rules
 
@@ -68,6 +68,7 @@ Rules:
 - Handoff notes are at most 5 lines each, appended to the task's handoff log.
 - At most 2 fix loops per task, then stop and ask the human.
 - Only the human approves specs and merges PRs. Agents never merge.
+- A PR is ready to merge only when the CI check is green.
 
 ## Review checklist
 

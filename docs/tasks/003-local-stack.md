@@ -1,6 +1,6 @@
 # 003: Local stack: docker-compose Postgres, Temporal dev server, `just dev`, hello workflow + test
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -52,3 +52,6 @@ Run Postgres and a Temporal dev server locally with Docker Compose. Add a hello 
 **builder**: Implemented all files on task/003-local-stack, tests first; added pytest-asyncio (dev). `just lint` and `just test` pass (8 tests, no stack needed).
 **builder**: Manual check done: `just dev` + `just hello` printed "Hello, World!", and `temporal workflow describe -w hello-workflow` showed COMPLETED. Stack then torn down with `just down`.
 **builder**: Pinned images postgres:16.4 and temporalio/temporal:1.5.1 (pulled OK). Worker retry catches RuntimeError from Client.connect. Next: verifier.
+**verifier**: All checks pass.
+**reviewer**: Approved. All criteria and 3 listed tests present; scope matches "Files to touch". Workflow code is deterministic (only execute_activity), models are Pydantic, images pinned (postgres:16.4, temporalio/temporal:1.5.1), ports bound to 127.0.0.1, no secrets.
+**reviewer**: Note: worker retry only catches RuntimeError from Client.connect, which is fine today but worth revisiting if the SDK changes the exception type. Note: CLAUDE.md table column alignment is uneven (cosmetic).

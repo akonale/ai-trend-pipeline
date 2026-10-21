@@ -1,6 +1,6 @@
 # 002: CLAUDE.md with project rules and the review checklist
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -44,3 +44,4 @@ Add a short root `CLAUDE.md` that every agent (builder, verifier, reviewer, scri
 **verifier**: Ran `just lint` (ruff check, ruff format --check, pyright: all pass) and `just test` (5 passed, incl. 3 CLAUDE.md tests). All checks pass.
 **reviewer**: Approved. All 6 acceptance criteria and 3 listed tests check out; only CLAUDE.md, the new test and the task file changed.
 Note: the recipes and fallback commands match the justfile; Python version in Stack ("3.12+") is slightly looser than pyproject (>=3.12,<3.13), harmless.
+**scribe**: Ticked the verified acceptance boxes, opened PR https://github.com/akonale/ai-trend-pipeline/pull/5 against main. Next: human reviews and merges.

@@ -67,3 +67,4 @@ All tests build `anthropic.AsyncAnthropic(api_key="test-key", max_retries=0, htt
 **reviewer**: Notes: (1) tests import transitive `httpx2` directly, so an anthropic upgrade could break them; consider declaring it as a dev dep later. (2) Spec text still says `httpx.MockTransport`; update for future specs. (3) Task 006 file edits (spec + log) are uncommitted/arrive via this branch; scribe should commit them.
 **scribe**: Ticked criteria 2 to 6 (verifier and reviewer confirmed them). Criterion 1 stays open: tests use `httpx2.MockTransport` instead of `httpx.MockTransport` (see builder deviation). Opening PR. Next: CI on the PR's latest commit.
 **scribe**: PR opened: https://github.com/akonale/ai-trend-pipeline/pull/11 (status pr-open). Next: CI result on the final commit.
+**scribe**: CI `check` passed on PR #11 (commit 04b1d10, run 39635538283). Status stays pr-open. Next: orchestrator merges; not merged by scribe.

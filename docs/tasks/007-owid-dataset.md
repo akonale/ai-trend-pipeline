@@ -1,6 +1,6 @@
 # 007: Activity: fetch a matching Our World in Data dataset
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -8,7 +8,7 @@ Add a Temporal activity that takes the topic string from task 006 and maps it to
 
 ## Acceptance criteria
 
-- [ ] `src/ai_trend_pipeline/owid.py` defines these Pydantic models:
+- [x] `src/ai_trend_pipeline/owid.py` defines these Pydantic models:
   - `OwidDataset(slug: str, title: str, keywords: tuple[str, ...])` is one catalog entry.
   - `FetchOwidInput(topic: str, since_year: int = 2000)`. `topic` uses `Field(min_length=1)` and `since_year` uses `Field(ge=1800, le=2100)`.
   - `OwidRow(entity: str, code: str | None, year: int, value: float)`.
@@ -20,7 +20,7 @@ Add a Temporal activity that takes the topic string from task 006 and maps it to
     4. `electric-car-sales-share`, "Share of new cars sold that are electric", keywords `electric car`, `electric vehicle`, `ev`, `evs`, `tesla`
     5. `life-expectancy`, "Life expectancy", keywords `life expectancy`, `health`, `longevity`
     6. `gdp-per-capita-worldbank`, "GDP per capita", keywords `gdp`, `economy`, `economic`, `income`
-- [ ] `match_dataset(topic: str) -> OwidDataset | None` is a pure function. It lowercases the topic and returns the first `CATALOG` entry, in catalog order, where any keyword appears as a whole word or phrase. It uses a regex with `\b` on both sides and `re.escape(keyword)`, so `ev` matches "EV sales" but not "every" or "developer". If nothing matches, it returns `None`.
+- [x] `match_dataset(topic: str) -> OwidDataset | None` is a pure function. It lowercases the topic and returns the first `CATALOG` entry, in catalog order, where any keyword appears as a whole word or phrase. It uses a regex with `\b` on both sides and `re.escape(keyword)`, so `ev` matches "EV sales" but not "every" or "developer". If nothing matches, it returns `None`.
 - [ ] The activity is a method on a class, so the client can be injected, the same way as in `hn.py`: `class OwidActivities: def __init__(self, client: httpx.AsyncClient)` with `@activity.defn async def fetch_owid_dataset(self, data: FetchOwidInput) -> OwidTable`. The method does the following:
   1. Calls `match_dataset(data.topic)`. If the result is `None`, it raises `ApplicationError(f"No OWID dataset matches topic {data.topic!r}", type=NO_MATCH_ERROR_TYPE, non_retryable=True)` and sends no request. (Task 010 decides what the workflow does on this error. This task only raises it.)
   2. Makes exactly one `GET {slug}.csv` with params `csvType=full` and `useColumnShortNames=true`.
@@ -29,9 +29,9 @@ Add a Temporal activity that takes the topic string from task 006 and maps it to
   5. Builds one `OwidRow` per data row. An empty `Code` becomes `None`. Rows with an empty value, or with `year < data.since_year`, are skipped. The year filter keeps the output well under Temporal's 2 MB payload limit. Rows stay in file order.
   6. Returns `OwidTable(slug=..., title=<catalog title>, value_column=..., rows=...)`.
   It uses no `Any` and no `# type: ignore`, and Pyright strict passes.
-- [ ] `make_owid_client() -> httpx.AsyncClient` returns a client with `base_url=OWID_BASE_URL`, `timeout=30.0` and `follow_redirects=True`. The activity only sends GET requests and has no side effects, so it is idempotent.
-- [ ] No new dependencies, so `pyproject.toml` and `uv.lock` stay unchanged. Tests use plain `httpx.MockTransport`, like `tests/test_hn.py`. `httpx2` is not used here. The fixture `tests/fixtures/owid_life_expectancy.csv` is written by hand in the real OWID grapher CSV shape. Header: `Entity,Code,Year,life_expectancy_0`. It has about 12 rows that cover: a country with a code, a region with an empty `Code` (for example `Africa`), a row with an empty value, and years both before and after 2000.
-- [ ] `just lint` and `just test` pass, and no test makes a network call. The mock handler fails the test on any path other than `/grapher/life-expectancy.csv`. `README.md` gets one or two lines noting the OWID activity (module `ai_trend_pipeline.owid`) and that it only covers the topics in `CATALOG`.
+- [x] `make_owid_client() -> httpx.AsyncClient` returns a client with `base_url=OWID_BASE_URL`, `timeout=30.0` and `follow_redirects=True`. The activity only sends GET requests and has no side effects, so it is idempotent.
+- [x] No new dependencies, so `pyproject.toml` and `uv.lock` stay unchanged. Tests use plain `httpx.MockTransport`, like `tests/test_hn.py`. `httpx2` is not used here. The fixture `tests/fixtures/owid_life_expectancy.csv` is written by hand in the real OWID grapher CSV shape. Header: `Entity,Code,Year,life_expectancy_0`. It has about 12 rows that cover: a country with a code, a region with an empty `Code` (for example `Africa`), a row with an empty value, and years both before and after 2000.
+- [x] `just lint` and `just test` pass, and no test makes a network call. The mock handler fails the test on any path other than `/grapher/life-expectancy.csv`. `README.md` gets one or two lines noting the OWID activity (module `ai_trend_pipeline.owid`) and that it only covers the topics in `CATALOG`.
 
 ## Files to touch
 
@@ -74,3 +74,6 @@ Activity tests use `httpx.AsyncClient(transport=httpx.MockTransport(handler), ba
 **planner**: Uses plain `httpx` like `hn.py` (not `httpx2`). The `since_year` filter (default 2000) keeps the output under Temporal's payload limit. The 6 slugs come from memory, not a live check. If one is wrong, the 404 fails non-retryably and fixing it is a one-line edit later.
 **builder**: Built owid.py, tests, fixture, README; `just lint` and `just test` pass (42 tests). Slug check (HEAD, 2026-10-21): all 6 return 200 except `solar-energy-consumption`, which is a 301 to `/grapher/electricity-mix.csv?...source=solar`; with httpx `follow_redirects` and our params it returns 200 (header `entity,code,year,solar_generation__twh`), so no slug changed.
 **builder**: Spec deviation: live OWID headers are lowercase (`entity,code,year,...`), so the header check is case-insensitive (spec said `Entity,Code,Year`); added `test_lowercase_real_header_is_accepted`. Unsure: gdp CSV has an extra `owid_region` column (ignored, fine).
+**verifier**: Ran `just lint` (ruff, format, pyright: 0 errors) and `just test` (42 passed). All checks pass.
+**reviewer**: Approved. All criteria and listed tests present; no live HTTP (MockTransport, handler asserts path); redirects followed via `follow_redirects=True` in `make_owid_client`; 404 and bad header non-retryable, 5xx via `raise_for_status`; `since_year` filter applied. Case-insensitive header deviation is justified and tested.
+Notes: (1) `int()`/`float()` on a malformed row raises a retryable `ValueError`; consider non-retryable later. (2) `response.text.splitlines()` would split quoted newlines; harmless for OWID data. (3) Tests don't exercise redirect following (MockTransport), only the client flag.

@@ -50,3 +50,9 @@ current HN top stories as typed models. It is not registered in the worker yet.
 
 `ai_trend_pipeline.topic` provides the `TopicActivities.pick_topic` activity, which asks Claude to
 pick a chartable topic from HN stories. It needs `ANTHROPIC_API_KEY` in the environment.
+
+## Our World in Data
+
+`ai_trend_pipeline.owid` provides the `OwidActivities.fetch_owid_dataset` activity, which maps a
+topic to an OWID grapher chart and returns its CSV as a typed table. It only covers the topics in
+`CATALOG`; any other topic fails with a non-retryable `NoMatchingDataset` error.

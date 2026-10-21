@@ -1,6 +1,6 @@
 # 003: Local stack: docker-compose Postgres, Temporal dev server, `just dev`, hello workflow + test
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -56,3 +56,4 @@ Run Postgres and a Temporal dev server locally with Docker Compose. Add a hello 
 **reviewer**: Approved. All criteria and 3 listed tests present; scope matches "Files to touch". Workflow code is deterministic (only execute_activity), models are Pydantic, images pinned (postgres:16.4, temporalio/temporal:1.5.1), ports bound to 127.0.0.1, no secrets.
 **reviewer**: Note: worker retry only catches RuntimeError from Client.connect, which is fine today but worth revisiting if the SDK changes the exception type. Note: CLAUDE.md table column alignment is uneven (cosmetic).
 **scribe**: Ticked all 5 criteria: builder/verifier/reviewer records back them. The Temporal UI was not opened; the COMPLETED status was confirmed via `temporal workflow describe` (CLI only). README already has the Local stack section, so no doc edits were needed. Next: push and open PR.
+**scribe**: PR opened: https://github.com/akonale/ai-trend-pipeline/pull/6 (Temporal UI not opened; COMPLETED confirmed via CLI). Next: human merges.

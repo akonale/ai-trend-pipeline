@@ -51,3 +51,4 @@ Set up an empty, installable Python 3.12 project managed by uv. It should have P
 **reviewer**: Approved. Diff matches spec scope: config only in pyproject.toml, src layout with py.typed, both listed tests present, no secrets, no Temporal workflow code yet.
 Notes: (1) Recipes were never run via `just` itself (not installed); the justfile is trivial, but confirm once `just` is available. (2) `default` uses `just --list`, which is correct. (3) Acceptance checkboxes remain unticked; scribe may tick them.
 **scribe**: Fresh clone of task/001 branch: `uv sync` OK (Python 3.12.15, pydantic 2.14.1). Ticked criteria 1-4 and 6 based on uv run equivalents. Criterion 5 (`just fmt`, `just` listing) left unticked because `just` is not installed. Added README.md with setup and commands. Next: human reviews and merges.
+**scribe**: PR opened: https://github.com/akonale/ai-trend-pipeline/pull/3 (not merged; human merges).

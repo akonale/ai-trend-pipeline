@@ -1,6 +1,6 @@
 # 008: Activity: LLM writes a Vega-Lite spec + caption; render to PNG
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -86,3 +86,4 @@ LLM tests reuse the `_client(...)` mock-transport pattern from `tests/test_topic
 **verifier**: Ran `just lint` (ruff check, ruff format, pyright: all pass) and `just test` (56 passed). All checks pass.
 **reviewer**: Approved. All criteria and listed tests are present; scope is clean; `vl-convert-python` is a direct dependency in pyproject.toml and uv.lock (wheels for manylinux x86_64/aarch64); no secrets, mock transport rejects any path other than POST /v1/messages.
 **reviewer**: Notes: (1) `tests/test_render.py` imports `make_client`/`make_table` from `tests.test_chart_spec`; it works because `tests/__init__.py` exists, but moving them to a `tests/helpers.py` or conftest fixture would be less fragile. (2) `render_chart_png` writes the temp file synchronously on the event loop; fine for PNG sizes, could go in `to_thread` later. (3) Task 010 must register both activities and fix the shared output dir.
+**orchestrator-finish**: Opened PR https://github.com/akonale/ai-trend-pipeline/pull/13, Status pr-open. Next: watch the `check` job on the PR head (first run with vl-convert-python on ubuntu-latest) and log the result.

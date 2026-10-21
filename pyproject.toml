@@ -12,6 +12,7 @@ dependencies = [
 dev = [
     "pyright",
     "pytest",
+    "pytest-asyncio>=1.4.0",
     "ruff",
 ]
 

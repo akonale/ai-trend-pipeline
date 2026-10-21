@@ -16,6 +16,9 @@ Project rules for every agent (planner, builder, verifier, reviewer, scribe). Ke
 | `just lint` | `uv run ruff check .`, `uv run ruff format --check .`, `uv run pyright`     |
 | `just fmt`  | `uv run ruff format .`, `uv run ruff check --fix .`                         |
 | `just test` | `uv run pytest`                                                             |
+| `just dev`  | `docker compose -f infra/compose.dev.yaml up -d --wait`, then `uv run python -m ai_trend_pipeline.worker` |
+| `just hello`| `uv run python -m ai_trend_pipeline.start_hello`                            |
+| `just down` | `docker compose -f infra/compose.dev.yaml down`                             |
 
 - Add dependencies with `uv add <pkg>` or `uv add --dev <pkg>`. Never use `pip`.
 - Single test file: `uv run pytest tests/test_x.py`.
@@ -28,7 +31,7 @@ Project rules for every agent (planner, builder, verifier, reviewer, scribe). Ke
 - Every activity and workflow input and output is a Pydantic model.
 - No secrets or real account details in the repo. Read them from environment variables.
 - Keep changes small and in scope. No speculative code for things that don't exist yet
-  (docker-compose, CI, deploy, Bluesky specifics).
+  (CI, deploy, Bluesky specifics).
 
 ## Temporal rules
 

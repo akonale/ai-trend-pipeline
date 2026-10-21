@@ -1,0 +1,40 @@
+[project]
+name = "ai-trend-pipeline"
+version = "0.1.0"
+description = "AI trend pipeline"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "pydantic>=2",
+    "temporalio",
+]
+
+[dependency-groups]
+dev = [
+    "pyright",
+    "pytest",
+    "ruff",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ai_trend_pipeline"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pyright]
+typeCheckingMode = "strict"
+pythonVersion = "3.12"
+include = ["src", "tests"]
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

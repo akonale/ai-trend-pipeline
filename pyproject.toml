@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "AI trend pipeline"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "httpx>=0.28.1",
     "pydantic>=2",
     "temporalio",
 ]

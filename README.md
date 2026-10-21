@@ -63,3 +63,7 @@ topic to an OWID grapher chart and returns its CSV as a typed table. It only cov
 pick entities and write a Vega-Lite spec and caption, then fills in the data from the OWID table.
 `ai_trend_pipeline.render` provides the `render_chart_png` activity, which renders a spec to a PNG
 file with `vl-convert-python` (no browser or Node needed).
+`ai_trend_pipeline.critique` provides `CritiqueActivities.critique_chart`, where Claude checks a
+chart spec against a compact summary of its data and returns pass or fail with reasons.
+`ai_trend_pipeline.chart_loop` provides `draft_chart_with_critique` (workflow code) and
+`DraftChartWorkflow`: they draft, critique, and regenerate once with the reasons as feedback.

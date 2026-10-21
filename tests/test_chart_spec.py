@@ -184,3 +184,16 @@ async def test_empty_table_is_non_retryable_without_request() -> None:
 async def test_api_error_propagates() -> None:
     with pytest.raises(anthropic.APIStatusError):
         await _run(make_client(status=500))
+
+
+@pytest.mark.asyncio
+async def test_feedback_is_appended_to_request() -> None:
+    requests: list[dict[str, object]] = []
+    activities = ChartSpecActivities(make_client(requests=requests))
+    await ActivityEnvironment().run(
+        activities.write_chart_spec,
+        WriteChartSpecInput(topic=TOPIC, table=make_table(), feedback=["too many lines"]),
+    )
+    messages = cast(list[dict[str, object]], requests[0]["messages"])
+    content = cast(str, messages[0]["content"])
+    assert content.endswith("\nA previous draft was rejected for these reasons:\n- too many lines")

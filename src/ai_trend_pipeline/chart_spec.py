@@ -26,6 +26,7 @@ SYSTEM_PROMPT = (
 class WriteChartSpecInput(BaseModel):
     topic: str = Field(min_length=1)
     table: OwidTable
+    feedback: list[str] = Field(default_factory=list)
 
 
 class ChartDraft(BaseModel):
@@ -40,11 +41,11 @@ class ChartSpec(BaseModel):
     entities: list[str]
 
 
-def _format_request(topic: str, table: OwidTable) -> str:
+def _format_request(topic: str, table: OwidTable, feedback: list[str]) -> str:
     entities = list(dict.fromkeys(r.entity for r in table.rows))
     years = [r.year for r in table.rows]
     sample = "\n".join(f"{r.entity} | {r.year} | {r.value}" for r in table.rows[:SAMPLE_ROWS])
-    return (
+    text = (
         f"Topic: {topic}\n"
         f"Table title: {table.title}\n"
         f"Value column: {table.value_column}\n"
@@ -53,6 +54,10 @@ def _format_request(topic: str, table: OwidTable) -> str:
         f"Row count: {len(table.rows)}\n"
         f"First {min(SAMPLE_ROWS, len(table.rows))} rows (entity | year | value):\n{sample}"
     )
+    if feedback:
+        text += "\nA previous draft was rejected for these reasons:\n"
+        text += "\n".join(f"- {reason}" for reason in feedback)
+    return text
 
 
 def _invalid(message: str) -> ApplicationError:
@@ -84,7 +89,9 @@ class ChartSpecActivities:
             system=SYSTEM_PROMPT,
             tools=[tool],
             tool_choice={"type": "tool", "name": TOOL_NAME},
-            messages=[{"role": "user", "content": _format_request(data.topic, table)}],
+            messages=[
+                {"role": "user", "content": _format_request(data.topic, table, data.feedback)}
+            ],
         )
         block = next(
             (b for b in response.content if isinstance(b, ToolUseBlock) and b.name == TOOL_NAME),

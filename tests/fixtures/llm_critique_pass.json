@@ -1,0 +1,27 @@
+{
+  "id": "msg_01FixtureExample0004",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-5-5",
+  "content": [
+    {
+      "type": "text",
+      "text": "Checking the chart against the summary."
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_01FixtureExample0004",
+      "name": "critique_chart",
+      "input": {
+        "passed": true,
+        "reasons": []
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {
+    "input_tokens": 500,
+    "output_tokens": 60
+  }
+}

@@ -28,7 +28,7 @@ Add two Temporal activities. `write_chart_spec` asks Claude, through a forced to
     4. It writes the PNG to `<output_dir>/chart-<sha256[:16]>.png` atomically: first a temp file in the same directory, then `os.replace`. It returns the absolute path, the hash and the byte count.
   - The same spec always gives the same path and overwrites the same file, so the activity is idempotent. The spec has inline data only, so rendering makes no network calls.
 - [x] **Done-when check.** A test runs `write_chart_spec` on the recorded LLM fixture, passes the result to `render_chart_png`, and gets a real PNG file under `tmp_path`.
-- [ ] `just lint` and `just test` pass locally and in CI. No test makes a live LLM or HTTP call. The Anthropic client uses `httpx2.MockTransport` exactly as in `tests/test_topic.py`, and the handler fails the test on any path other than `POST /v1/messages`. PNG checks are deterministic. They test structure, not pixels.
+- [x] `just lint` and `just test` pass locally and in CI. No test makes a live LLM or HTTP call. The Anthropic client uses `httpx2.MockTransport` exactly as in `tests/test_topic.py`, and the handler fails the test on any path other than `POST /v1/messages`. PNG checks are deterministic. They test structure, not pixels.
 - [x] `README.md` gets two or three lines about the two activities (modules `ai_trend_pipeline.chart_spec` and `ai_trend_pipeline.render`) and the `vl-convert-python` dependency.
 
 ## Files to touch
@@ -87,3 +87,4 @@ LLM tests reuse the `_client(...)` mock-transport pattern from `tests/test_topic
 **reviewer**: Approved. All criteria and listed tests are present; scope is clean; `vl-convert-python` is a direct dependency in pyproject.toml and uv.lock (wheels for manylinux x86_64/aarch64); no secrets, mock transport rejects any path other than POST /v1/messages.
 **reviewer**: Notes: (1) `tests/test_render.py` imports `make_client`/`make_table` from `tests.test_chart_spec`; it works because `tests/__init__.py` exists, but moving them to a `tests/helpers.py` or conftest fixture would be less fragile. (2) `render_chart_png` writes the temp file synchronously on the event loop; fine for PNG sizes, could go in `to_thread` later. (3) Task 010 must register both activities and fix the shared output dir.
 **orchestrator-finish**: Opened PR https://github.com/akonale/ai-trend-pipeline/pull/13, Status pr-open. Next: watch the `check` job on the PR head (first run with vl-convert-python on ubuntu-latest) and log the result.
+**orchestrator-finish**: CI `check` passed on 1f46eaa (run 39638030944, first run with vl-convert-python on ubuntu-latest, 20s). Status stays pr-open. Next: orchestrator reviews and merges PR 13; no merge done here.

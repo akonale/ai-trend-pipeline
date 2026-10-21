@@ -35,3 +35,8 @@ just down    # stop the stack
 
 Open http://localhost:8233 to see `hello-workflow` as Completed. On a remote dev server, tunnel
 the UI port first: `ssh -L 8233:localhost:8233 <host>`.
+
+## CI
+
+Every pull request and every push to `main` runs `just lint` and `just test` through
+`.github/workflows/ci.yml`. A PR is ready to merge only when the `check` job is green.

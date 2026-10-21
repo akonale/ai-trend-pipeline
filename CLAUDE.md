@@ -67,7 +67,9 @@ Rules:
 - Branch format: `task/NNN-short-name`, created from `main`.
 - Handoff notes are at most 5 lines each, appended to the task's handoff log.
 - At most 2 fix loops per task, then stop and ask the human.
-- Only the human approves specs and merges PRs. Agents never merge.
+- Approval follows the "Your approval?" column in `docs/mvp-plan.md`. For `yes` tasks only the human
+  approves specs and merges PRs. For `no` tasks the orchestrator does both (CI green first); agents
+  never merge.
 - A PR is ready to merge only when the CI check is green.
 
 ## Review checklist

@@ -45,3 +45,8 @@ Every pull request and every push to `main` runs `just lint` and `just test` thr
 
 `ai_trend_pipeline.hn` provides the `HNActivities.fetch_hn_top_stories` activity, which fetches
 current HN top stories as typed models. It is not registered in the worker yet.
+
+## Topic picking
+
+`ai_trend_pipeline.topic` provides the `TopicActivities.pick_topic` activity, which asks Claude to
+pick a chartable topic from HN stories. It needs `ANTHROPIC_API_KEY` in the environment.

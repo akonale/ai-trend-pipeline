@@ -48,37 +48,42 @@ Each task has one file: `docs/tasks/NNN-short-name.md`. It is the only shared me
 
 One task at a time, in order. Each one ends in a merged PR.
 
+**Your approval?** column: `yes` means the orchestrator stops for you to approve the spec and to merge
+the PR. `no` means it skips both checkpoints: it sets `Status: approved` itself, and once the scribe
+reports the PR with a green CI check it merges the PR (`gh pr merge`) and moves on. The 2-fix-loop
+limit and "spec is wrong or unclear" still stop and ask you in every case.
+
 ### Phase 0: Foundation
-| # | Task | Done when |
-| --- | --- | --- |
-| 001 | Project skeleton: uv, Python 3.12, Pydantic, Temporal SDK, Ruff, Pyright strict, pytest, justfile | `just lint` and `just test` pass on an empty project |
-| 002 | CLAUDE.md with project rules and the review checklist | Agents can follow it without asking |
-| 003 | Local stack: docker-compose Postgres, Temporal dev server, `just dev`, hello workflow + test | Hello workflow visible in the Temporal UI |
-| 004 | CI: GitHub Actions runs lint, types, tests on every PR | A PR shows green checks |
+| # | Task | Done when | Your approval? |
+| --- | --- | --- | --- |
+| 001 | Project skeleton: uv, Python 3.12, Pydantic, Temporal SDK, Ruff, Pyright strict, pytest, justfile | `just lint` and `just test` pass on an empty project | yes |
+| 002 | CLAUDE.md with project rules and the review checklist | Agents can follow it without asking | yes |
+| 003 | Local stack: docker-compose Postgres, Temporal dev server, `just dev`, hello workflow + test | Hello workflow visible in the Temporal UI | yes |
+| 004 | CI: GitHub Actions runs lint, types, tests on every PR | A PR shows green checks | yes |
 
 ### Phase 1: Daily Viz
-| # | Task | Done when |
-| --- | --- | --- |
-| 005 | Activity: fetch Hacker News top stories | Returns typed stories; tested with a fixture |
-| 006 | Activity: LLM picks a chartable topic | Returns topic + reason; tested with a recorded response |
-| 007 | Activity: fetch a matching Our World in Data dataset | Returns a typed table for a known topic |
-| 008 | Activity: LLM writes a Vega-Lite spec + caption; render to PNG | A PNG file is produced from a fixture |
-| 009 | Activity: LLM critique, one regenerate on failure | Bad fixture triggers one retry |
-| 010 | Workflow: wire 005–009 together + approval signal + CLI to approve/reject | Workflow pauses, CLI approves, workflow continues |
-| 011 | Activity: post to Bluesky (test account), idempotent | Approved chart appears on the test account once |
-| 012 | Daily Temporal Schedule | Runs on its own at the set time |
+| # | Task | Done when | Your approval? |
+| --- | --- | --- | --- |
+| 005 | Activity: fetch Hacker News top stories | Returns typed stories; tested with a fixture | no |
+| 006 | Activity: LLM picks a chartable topic | Returns topic + reason; tested with a recorded response | no |
+| 007 | Activity: fetch a matching Our World in Data dataset | Returns a typed table for a known topic | no |
+| 008 | Activity: LLM writes a Vega-Lite spec + caption; render to PNG | A PNG file is produced from a fixture | no |
+| 009 | Activity: LLM critique, one regenerate on failure | Bad fixture triggers one retry | no |
+| 010 | Workflow: wire 005–009 together + approval signal + CLI to approve/reject | Workflow pauses, CLI approves, workflow continues | yes |
+| 011 | Activity: post to Bluesky (test account), idempotent | Approved chart appears on the test account once | yes |
+| 012 | Daily Temporal Schedule | Runs on its own at the set time | yes |
 
 ### Phase 2: Measure
-| # | Task | Done when |
-| --- | --- | --- |
-| 013 | Feedback workflow: wait 24h, save likes/reposts/replies + prompt version to Postgres | Time-skipping test passes; real post gets its numbers |
+| # | Task | Done when | Your approval? |
+| --- | --- | --- | --- |
+| 013 | Feedback workflow: wait 24h, save likes/reposts/replies + prompt version to Postgres | Time-skipping test passes; real post gets its numbers | yes |
 
 ### Phase 3: Deploy and go live
-| # | Task | Done when |
-| --- | --- | --- |
-| 014 | Production compose file + prod server from `infra/cloud-init.yaml` | Stack runs on the prod server |
-| 015 | Deploy on merge to main + nightly Postgres backup | Merging a PR updates prod |
-| 016 | Switch to the real Bluesky account, run 7 days | 7 charts posted with metrics |
+| # | Task | Done when | Your approval? |
+| --- | --- | --- | --- |
+| 014 | Production compose file + prod server from `infra/cloud-init.yaml` | Stack runs on the prod server | yes |
+| 015 | Deploy on merge to main + nightly Postgres backup | Merging a PR updates prod | yes |
+| 016 | Switch to the real Bluesky account, run 7 days | 7 charts posted with metrics | yes |
 
 ## Running a task
 
@@ -89,5 +94,6 @@ In Claude Code on the dev server, inside the repo:
 ```
 
 The main session only orchestrates: it calls each agent in turn, reads the status line, and stops at
-the two human checkpoints (approve the spec, merge the PR). Run the main session on `sonnet`
+the two human checkpoints (approve the spec, merge the PR) for tasks marked `yes` in the
+**Your approval?** column. Run the main session on `sonnet`
 (`/model sonnet`); it routes work, it doesn't do it.

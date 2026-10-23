@@ -10,6 +10,7 @@ from ai_trend_pipeline.daily_chart import DailyChartResult, DailyChartWorkflow
 from tests.test_daily_chart import (
     FAIL,
     PNG_PATH,
+    POST_URI,
     FakeDailyActivities,
     make_worker,
     start_env,
@@ -106,3 +107,13 @@ async def test_cli_unknown_id_returns_1(capsys: pytest.CaptureFixture[str]) -> N
         assert await run_cli(["show", "missing"], env.client) == 1
         assert await run_cli(["approve", "missing"], env.client) == 1
     assert capsys.readouterr().out.lower().count("not found") >= 2
+
+
+@pytest.mark.asyncio
+async def test_cli_approve_prints_post_uri(capsys: pytest.CaptureFixture[str]) -> None:
+    fakes = FakeDailyActivities()
+    async with await start_env() as env, make_worker(env, fakes):
+        handle = await start_workflow(env)
+        await wait_for_state(handle, "awaiting_decision")
+        assert await run_cli(["approve", handle.id], env.client) == 0
+    assert f"posted: {POST_URI}" in capsys.readouterr().out

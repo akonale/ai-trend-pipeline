@@ -71,15 +71,25 @@ chart spec against a compact summary of its data and returns pass or fail with r
 ## Daily chart
 
 `ai_trend_pipeline.daily_chart` provides `DailyChartWorkflow`, which chains the activities above
-(HN stories, topic, OWID data, draft and critique, PNG) and then waits for a human decision. The
-worker now needs `ANTHROPIC_API_KEY`, even for `just hello`.
+(HN stories, topic, OWID data, draft and critique, PNG), waits for a human decision, and on
+approval posts the chart to Bluesky. The worker needs `ANTHROPIC_API_KEY` (even for `just hello`),
+`BLUESKY_HANDLE` and `BLUESKY_APP_PASSWORD` (use an app password from the **test** account), and
+optionally `BLUESKY_SERVICE` (default `https://bsky.social`).
 
-```sh
-just chart            # start a run, prints the workflow id (daily-chart-YYYY-MM-DD)
-just show <id>        # show the pending chart, caption, PNG path and critique
-just approve <id>     # approve it
-just reject <id>      # reject it
-```
+Step-by-step run guide:
 
-PNGs go to `charts/` unless `CHART_OUTPUT_DIR` is set. If nobody decides within 20 hours the run
-ends as `expired`.
+1. Put the variables above in `.env` (never commit it). The `justfile` has `dotenv-load`, so every
+   `just` recipe reads `.env` automatically.
+2. `just dev` starts Temporal and the worker. Leave it running.
+3. In another terminal, `just chart` starts a run and prints the workflow id
+   (`daily-chart-YYYY-MM-DD`).
+4. Watch the run in the Temporal UI at http://localhost:8233.
+5. When the run waits for a decision, the PNG is under `charts/` (or `CHART_OUTPUT_DIR`). Open it.
+6. `just show <id>` prints the caption, PNG path and critique result.
+7. Decide with the CLI (the Temporal UI has no approve button):
+   `just approve <id>` or `just reject <id>`.
+8. Approving posts the chart and caption to Bluesky once. The CLI prints `posted: <uri>`. Running
+   `approve` again returns 1 because the run is no longer awaiting a decision, and a retried
+   post is detected and not duplicated. Rejecting posts nothing.
+
+If nobody decides within 20 hours the run ends as `expired` and nothing is posted.

@@ -82,6 +82,9 @@ async def _decide(handle: Handle, approved: bool, note: str) -> int:
     await handle.signal(DailyChartWorkflow.decide, ApprovalDecision(approved=approved, note=note))
     result = await handle.result()
     print(f"status: {result.status}")
+    if result.post is not None:
+        label = "already posted" if result.post.already_posted else "posted"
+        print(f"{label}: {result.post.uri}")
     return 0
 
 

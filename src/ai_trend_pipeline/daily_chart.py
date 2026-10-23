@@ -9,6 +9,7 @@ from temporalio.common import RetryPolicy
 with workflow.unsafe.imports_passed_through():
     from pydantic import BaseModel, Field
 
+    from ai_trend_pipeline.bluesky import BlueskyActivities, PostChartInput, PostChartOutput
     from ai_trend_pipeline.chart_loop import (
         LLM_ACTIVITY_TIMEOUT,
         LLM_RETRY_POLICY,
@@ -58,6 +59,7 @@ class DailyChartResult(BaseModel):
     status: Literal["approved", "rejected", "expired"]
     review: ReviewRequest
     note: str = ""
+    post: PostChartOutput | None = None
 
 
 @workflow.defn
@@ -115,8 +117,22 @@ class DailyChartWorkflow:
         decision = self._decision
         assert decision is not None
         status: Literal["approved", "rejected"] = "approved" if decision.approved else "rejected"
+        post: PostChartOutput | None = None
+        if decision.approved:
+            post = await workflow.execute_activity_method(
+                BlueskyActivities.post_chart_to_bluesky,
+                PostChartInput(
+                    png_path=review.png_path,
+                    text=review.caption,
+                    alt_text=f"Chart: {review.topic}. {review.caption}"[:1000],
+                    idempotency_key=workflow.info().workflow_id,
+                    created_at=workflow.now(),
+                ),
+                start_to_close_timeout=IO_ACTIVITY_TIMEOUT,
+                retry_policy=IO_RETRY_POLICY,
+            )
         self._state = ReviewState(status=status, review=review, note=decision.note)
-        return DailyChartResult(status=status, review=review, note=decision.note)
+        return DailyChartResult(status=status, review=review, note=decision.note, post=post)
 
     @workflow.signal
     def decide(self, decision: ApprovalDecision) -> None:

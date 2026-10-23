@@ -88,3 +88,4 @@ All checks pass.
 Notes: done-when box left unticked for the human manual check. Watch the hand-built TID acceptance by the PDS and PNG size vs 1 MB during that check.
 **scribe**: README already has the Bluesky env vars and approve-posts note, so no doc edits were needed. Pushed `task/011-bluesky-post` and opened the PR against `main`.
 Next: the human runs the manual done-when check against the test account, then merges the PR.
+**scribe**: PR: https://github.com/akonale/ai-trend-pipeline/pull/17

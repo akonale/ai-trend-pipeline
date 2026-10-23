@@ -117,3 +117,18 @@ async def test_cli_approve_prints_post_uri(capsys: pytest.CaptureFixture[str]) -
         await wait_for_state(handle, "awaiting_decision")
         assert await run_cli(["approve", handle.id], env.client) == 0
     assert f"posted: {POST_URI}" in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
+async def test_cli_start_with_topic() -> None:
+    wf_id = f"cli-{uuid.uuid4()}"
+    fakes = FakeDailyActivities()
+    async with await start_env() as env, make_worker(env, fakes):
+        assert (
+            await run_cli(["start", "--id", wf_id, "--topic", "Life expectancy"], env.client) == 0
+        )
+        handle = env.client.get_workflow_handle_for(DailyChartWorkflow.run, wf_id)
+        state = await wait_for_state(handle, "awaiting_decision")
+    assert state.review is not None
+    assert state.review.topic == "Life expectancy"
+    assert "pick_topic" not in fakes.calls

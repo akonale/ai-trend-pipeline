@@ -1,6 +1,6 @@
 # 019: Optional manual topic override for the daily chart
 
-Status: approved
+Status: built
 
 Depends on: 018 (merged first, so that catalog titles always match in `match_dataset`).
 
@@ -25,7 +25,7 @@ Let a human start a daily chart run with a chosen topic: `just chart --topic "Li
 - `tests/test_daily_chart.py`, `tests/test_cli.py` (edit; extend the existing fakes and helpers as needed)
 - `README.md` (Daily chart section)
 
-`CLAUDE.md` is not touched: its Commands table has no `just chart` row.
+`CLAUDE.md` (`just chart` row only; human-approved addition).
 
 ## Tests to write
 
@@ -48,3 +48,5 @@ Let a human start a daily chart run with a chosen topic: `just chart --topic "Li
 **planner**: Wrote the spec and set it to `planned`. Approval is `no`, and the Fixes row is added. Branch: `task/019-manual-topic`, created from `main` only after 018 is merged.
 **planner**: Gotcha: `{{args}}` in just re-splits "Life expectancy", so use `[positional-arguments]` with `"$@"`. That needs just 1.29 or later, so the builder should check `just --version`. The CLI test covers argparse whatever the just version.
 **planner**: CLAUDE.md has no `just chart` row, so it is left out. Next: orchestrator approves, then the builder.
+**builder**: Implemented manual topic (workflow, CLI `--topic`, `chart *args` with positional-arguments, README). Tests added first.
+**builder**: Touched CLAUDE.md `just chart` row (human-approved) and the spec's Files list. Next: verifier.

@@ -18,7 +18,7 @@ Project rules for every agent (planner, builder, verifier, reviewer, scribe). Ke
 | `just test` | `uv run pytest`                                                             |
 | `just dev`  | `docker compose -f infra/compose.dev.yaml up -d --wait`, then `uv run python -m ai_trend_pipeline.worker` |
 | `just hello`| `uv run python -m ai_trend_pipeline.start_hello`                            |
-| `just chart`| `uv run python -m ai_trend_pipeline.cli start` (also `just show/approve/reject <id>`) |
+| `just chart`| `uv run python -m ai_trend_pipeline.cli start` (accepts `--topic`, `--id`; also `just show/approve/reject <id>`) |
 | `just down` | `docker compose -f infra/compose.dev.yaml down`                             |
 
 - Add dependencies with `uv add <pkg>` or `uv add --dev <pkg>`. Never use `pip`.

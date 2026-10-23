@@ -1,6 +1,6 @@
 # 018: Fix: topic picker chooses from the OWID catalog
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -48,3 +48,4 @@ Status: reviewed
 **builder**: Implemented per spec: catalog-based prompt, enum in tool schema, TopicNotInCatalog retryable check with canonical title, title-first match_dataset, tests/fixtures/README updated. `just lint` and `just test` pass (113). Next: verifier.
 **verifier**: `just lint` (ruff, format, pyright 0 errors) and `just test` (113 passed) pass. Spec tests and symbols confirmed present. Set verified. Next: reviewer.
 **reviewer**: Approved. All criteria and listed tests present; retryable TopicNotInCatalog, enum schema, and title-first match_dataset match spec. No scope creep, no secrets, no live calls. Next: scribe.
+**scribe**: Docs already current (README Topic picking updated in 018). Pushed branch and opened PR https://github.com/akonale/ai-trend-pipeline/pull/19 against main. Set Status: pr-open. Next: human merges (approval no, orchestrator merges once CI is green).

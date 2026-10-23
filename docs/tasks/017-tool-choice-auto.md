@@ -1,6 +1,6 @@
 # 017: Fix: use tool_choice auto for the LLM activities
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -49,3 +49,6 @@ Make these changes first (tests go first) in each of the three test files:
 **verifier**: Grep confirms no `"type": "tool"` or `"type": "any"` in src/; all three modules use `tool_choice={"type": "auto"}` and end SYSTEM_PROMPT with "Respond only by calling the {TOOL_NAME} tool."
 **verifier**: The no-tool `ApplicationError` (non_retryable=True) message is unchanged in all three modules. All checklist items verified. All checks pass. Next: reviewer.
 **reviewer**: Approved. Diff matches spec: tool_choice auto and the TOOL_NAME prompt sentence in all three modules, no-tool error unchanged, tests edited/added as listed, no scope creep or secrets. Next: scribe.
+**scribe**: No README change needed, since the spec puts README out of scope and the run/config steps are unchanged. Pushed branch task/017-tool-choice-auto.
+**scribe**: Opened PR #18 against main: https://github.com/akonale/ai-trend-pipeline/pull/18
+Next: human reviews and merges PR #18 (CI must be green).

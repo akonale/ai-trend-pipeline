@@ -1,6 +1,6 @@
 # 019: Optional manual topic override for the daily chart
 
-Status: built
+Status: reviewed
 
 Depends on: 018 (merged first, so that catalog titles always match in `match_dataset`).
 
@@ -10,12 +10,12 @@ Let a human start a daily chart run with a chosen topic: `just chart --topic "Li
 
 ## Acceptance criteria
 
-- [ ] `DailyChartInput` gets `topic: str | None = Field(default=None, min_length=1)`. The default `DailyChartInput()` is unchanged in behaviour.
-- [ ] When `data.topic` is set, `DailyChartWorkflow.run` calls neither `fetch_hn_top_stories` nor `pick_topic`. It calls `fetch_owid_dataset` with `FetchOwidInput(topic=data.topic, since_year=data.since_year)`, and the rest of the flow (draft, critique, render, approval, post) is unchanged. `ReviewRequest.topic` is the given topic, and `topic_reason` is the module constant `MANUAL_TOPIC_REASON = "Manually chosen"`. The branch depends only on the input, so it stays deterministic.
-- [ ] A manual topic that matches no dataset fails the workflow with the existing non-retryable `NoMatchingDataset` error from `fetch_owid_dataset`. There is no new error path and no pre-check in the CLI.
-- [ ] `cli start` accepts `--topic TEXT` (default none) and passes it into `DailyChartInput`, together with the existing `CHART_OUTPUT_DIR` handling and `--id`.
-- [ ] The `justfile` recipe becomes `chart *args` and passes the args through to `cli start` with their quoting intact, so `just chart --topic "Life expectancy" --id x` works. Use the recipe attribute `[positional-arguments]` with `"$@"`, not `{{args}}`, because `{{args}}` splits a multi-word topic.
-- [ ] The README "Daily chart" section documents `just chart --topic "<catalog title>"` and `--id`, and says the topic should be one of the `CATALOG` titles. `just lint` and `just test` pass with no live calls.
+- [x] `DailyChartInput` gets `topic: str | None = Field(default=None, min_length=1)`. The default `DailyChartInput()` is unchanged in behaviour.
+- [x] When `data.topic` is set, `DailyChartWorkflow.run` calls neither `fetch_hn_top_stories` nor `pick_topic`. It calls `fetch_owid_dataset` with `FetchOwidInput(topic=data.topic, since_year=data.since_year)`, and the rest of the flow (draft, critique, render, approval, post) is unchanged. `ReviewRequest.topic` is the given topic, and `topic_reason` is the module constant `MANUAL_TOPIC_REASON = "Manually chosen"`. The branch depends only on the input, so it stays deterministic.
+- [x] A manual topic that matches no dataset fails the workflow with the existing non-retryable `NoMatchingDataset` error from `fetch_owid_dataset`. There is no new error path and no pre-check in the CLI.
+- [x] `cli start` accepts `--topic TEXT` (default none) and passes it into `DailyChartInput`, together with the existing `CHART_OUTPUT_DIR` handling and `--id`.
+- [x] The `justfile` recipe becomes `chart *args` and passes the args through to `cli start` with their quoting intact, so `just chart --topic "Life expectancy" --id x` works. Use the recipe attribute `[positional-arguments]` with `"$@"`, not `{{args}}`, because `{{args}}` splits a multi-word topic.
+- [x] The README "Daily chart" section documents `just chart --topic "<catalog title>"` and `--id`, and says the topic should be one of the `CATALOG` titles. `just lint` and `just test` pass with no live calls.
 
 ## Files to touch
 
@@ -50,3 +50,7 @@ Let a human start a daily chart run with a chosen topic: `just chart --topic "Li
 **planner**: CLAUDE.md has no `just chart` row, so it is left out. Next: orchestrator approves, then the builder.
 **builder**: Implemented manual topic (workflow, CLI `--topic`, `chart *args` with positional-arguments, README). Tests added first.
 **builder**: Touched CLAUDE.md `just chart` row (human-approved) and the spec's Files list. Next: verifier.
+**verifier**: `just lint` passed (ruff check, ruff format --check, pyright 0 errors). `just test` passed (117 passed, no live calls).
+**verifier**: Acceptance checkboxes left unticked; verifier scope is status and log only. Reviewer should tick them against the diff.
+**verifier**: All checks pass.
+**reviewer**: Checked diff against spec and checklist; all acceptance items and listed tests present, scope matches Files list (CLAUDE.md row was human-approved). Workflow branch is input-only, deterministic. Approved.

@@ -21,6 +21,7 @@ SYSTEM_PROMPT = (
     "is factually supported by the data summary, that the encoding (entity as nominal colour, "
     "year on x, value on y) and the title fit the topic, and that the chart is not misleading. "
     "Fail the chart only for concrete problems, and give one short reason per problem."
+    f" Respond only by calling the {TOOL_NAME} tool."
 )
 
 
@@ -87,7 +88,7 @@ class CritiqueActivities:
             max_tokens=MAX_TOKENS,
             system=SYSTEM_PROMPT,
             tools=[tool],
-            tool_choice={"type": "tool", "name": TOOL_NAME},
+            tool_choice={"type": "auto"},
             messages=[{"role": "user", "content": _format_request(data)}],
         )
         block = next(

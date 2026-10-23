@@ -17,6 +17,7 @@ SYSTEM_PROMPT = (
     "You are given current Hacker News stories. Pick one topic from them that could be "
     "charted with public country or time-series data (for example from Our World in Data). "
     "Explain why in one or two sentences."
+    f" Respond only by calling the {TOOL_NAME} tool."
 )
 
 
@@ -61,7 +62,7 @@ class TopicActivities:
             max_tokens=MAX_TOKENS,
             system=SYSTEM_PROMPT,
             tools=[tool],
-            tool_choice={"type": "tool", "name": TOOL_NAME},
+            tool_choice={"type": "auto"},
             messages=[{"role": "user", "content": _format_stories(data.stories)}],
         )
         for block in response.content:

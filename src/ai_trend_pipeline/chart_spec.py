@@ -20,6 +20,7 @@ SYSTEM_PROMPT = (
     "from it and write a Vega-Lite v5 spec that uses only the fields entity (nominal), year "
     "and value. Do not include data in the spec; it is added for you. Also write a factual "
     f"caption of at most {MAX_CAPTION_CHARS} characters."
+    f" Respond only by calling the {TOOL_NAME} tool."
 )
 
 
@@ -88,7 +89,7 @@ class ChartSpecActivities:
             max_tokens=MAX_TOKENS,
             system=SYSTEM_PROMPT,
             tools=[tool],
-            tool_choice={"type": "tool", "name": TOOL_NAME},
+            tool_choice={"type": "auto"},
             messages=[
                 {"role": "user", "content": _format_request(data.topic, table, data.feedback)}
             ],

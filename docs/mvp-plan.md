@@ -85,6 +85,11 @@ limit and "spec is wrong or unclear" still stop and ask you in every case.
 | 015 | Deploy on merge to main + nightly Postgres backup | Merging a PR updates prod | yes |
 | 016 | Switch to the real Bluesky account, run 7 days | 7 charts posted with metrics | yes |
 
+### Fixes
+| # | Task | Done when | Your approval? |
+| --- | --- | --- | --- |
+| 017 | Fix: LLM activities use `tool_choice` auto (forced tool rejected by the model) | Tests assert `tool_choice` auto and that the prompts name the tool | no |
+
 ## Running a task
 
 In Claude Code on the dev server, inside the repo:

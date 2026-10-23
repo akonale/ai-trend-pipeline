@@ -1,6 +1,6 @@
 # 018: Fix: topic picker chooses from the OWID catalog
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -8,11 +8,11 @@ Status: built
 
 ## Acceptance criteria
 
-- [ ] `topic.py` builds `SYSTEM_PROMPT` from `owid.CATALOG`. The prompt lists every catalog `title` and tells the model to choose exactly one that best fits the stories, to copy it verbatim into `topic`, and to say in `reason` how it links to the news. The prompt still ends with the 017 sentence `f"Respond only by calling the {TOOL_NAME} tool."`, because `tool_choice` stays `{"type": "auto"}`.
-- [ ] The tool `input_schema` sent to the API restricts `topic` to the catalog titles (`"enum": [titles in CATALOG order]`). The `PickTopicOutput` model itself stays `topic: str`, `reason: str`.
-- [ ] After the tool call is parsed, `pick_topic` accepts the topic only if it equals a catalog title after `strip()` and case-folding. It then returns the canonical catalog title. Any other topic raises `ApplicationError` with `type="TopicNotInCatalog"` and `non_retryable=False`, so `LLM_RETRY_POLICY` (3 attempts) gives the model another try. The error message includes the rejected topic. Define the type as a constant `NOT_IN_CATALOG_ERROR_TYPE` in `topic.py`.
-- [ ] `owid.match_dataset` first checks for an exact case-insensitive title match, then falls back to the existing keyword match. This is needed because "Share of new cars sold that are electric" matches none of its own keywords today. `match_dataset(d.title)` returns `d` for every dataset in `CATALOG`. The catalog entries themselves (slugs, titles, keywords) do not change.
-- [ ] The existing no-tool path is unchanged: it raises the non-retryable `Model response contained no pick_topic tool call`. `just lint` and `just test` pass with no live calls.
+- [x] `topic.py` builds `SYSTEM_PROMPT` from `owid.CATALOG`. The prompt lists every catalog `title` and tells the model to choose exactly one that best fits the stories, to copy it verbatim into `topic`, and to say in `reason` how it links to the news. The prompt still ends with the 017 sentence `f"Respond only by calling the {TOOL_NAME} tool."`, because `tool_choice` stays `{"type": "auto"}`.
+- [x] The tool `input_schema` sent to the API restricts `topic` to the catalog titles (`"enum": [titles in CATALOG order]`). The `PickTopicOutput` model itself stays `topic: str`, `reason: str`.
+- [x] After the tool call is parsed, `pick_topic` accepts the topic only if it equals a catalog title after `strip()` and case-folding. It then returns the canonical catalog title. Any other topic raises `ApplicationError` with `type="TopicNotInCatalog"` and `non_retryable=False`, so `LLM_RETRY_POLICY` (3 attempts) gives the model another try. The error message includes the rejected topic. Define the type as a constant `NOT_IN_CATALOG_ERROR_TYPE` in `topic.py`.
+- [x] `owid.match_dataset` first checks for an exact case-insensitive title match, then falls back to the existing keyword match. This is needed because "Share of new cars sold that are electric" matches none of its own keywords today. `match_dataset(d.title)` returns `d` for every dataset in `CATALOG`. The catalog entries themselves (slugs, titles, keywords) do not change.
+- [x] The existing no-tool path is unchanged: it raises the non-retryable `Model response contained no pick_topic tool call`. `just lint` and `just test` pass with no live calls.
 
 ## Files to touch
 
@@ -46,3 +46,5 @@ Status: built
 **planner**: Gotcha: the title "Share of new cars sold that are electric" matches none of its keywords, so `match_dataset` gets an exact-title check first. Without it the fix would still fail for that dataset.
 **planner**: An off-catalog pick is retryable (`TopicNotInCatalog`) so the model gets another try under `LLM_RETRY_POLICY`. The current main fixture's topic is off-catalog, so it must be edited. Next: orchestrator approves, then the builder.
 **builder**: Implemented per spec: catalog-based prompt, enum in tool schema, TopicNotInCatalog retryable check with canonical title, title-first match_dataset, tests/fixtures/README updated. `just lint` and `just test` pass (113). Next: verifier.
+**verifier**: `just lint` (ruff, format, pyright 0 errors) and `just test` (113 passed) pass. Spec tests and symbols confirmed present. Set verified. Next: reviewer.
+**reviewer**: Approved. All criteria and listed tests present; retryable TopicNotInCatalog, enum schema, and title-first match_dataset match spec. No scope creep, no secrets, no live calls. Next: scribe.

@@ -47,6 +47,7 @@ Add `DailyChartWorkflow`. It runs the task 005–009 activities in order (HN sto
 - `justfile`
 - `.gitignore`
 - `README.md`
+- `CLAUDE.md` (human-approved in fix loop 1: add the `just chart` row to the commands table)
 
 ## Tests to write
 
@@ -78,7 +79,7 @@ Fake activities live on a small stateful class with `@activity.defn(name=...)` m
 
 - Posting to Bluesky or any posting idempotency (011), Temporal Schedules or cron (012), and feedback, metrics, Postgres writes or prompt versioning (013).
 - Fallback topics when OWID has no match, re-picking a topic, or passing the OWID catalog to the topic picker.
-- Changes to `hn.py`, `topic.py`, `owid.py`, `chart_spec.py`, `critique.py`, `chart_loop.py`, `render.py`, `hello.py`, `start_hello.py`, `temporal_client.py`, `CLAUDE.md`, `docs/mvp-plan.md`, `infra/` or CI. No new dependencies (argparse is stdlib).
+- Changes to `hn.py`, `topic.py`, `owid.py`, `chart_spec.py`, `critique.py`, `chart_loop.py`, `render.py`, `hello.py`, `start_hello.py`, `temporal_client.py`, `docs/mvp-plan.md`, `infra/` or CI. No new dependencies (argparse is stdlib).
 - Showing or opening the PNG image in the CLI, a web UI, or editing the caption during approval.
 - An end-to-end test with the real activity classes and mock transports (the 009 test covers the draft loop). Moving `_fixture` to `tests/helpers.py`.
 
@@ -90,3 +91,4 @@ Fake activities live on a small stateful class with `@activity.defn(name=...)` m
 **planner**: If this is too big, split it into 010a (`daily_chart.py` + worker + `test_daily_chart.py` + `test_worker.py`) and 010b (`cli.py` + justfile + README + `test_cli.py`). This is a `yes` task, so the human approves the spec. Next: the builder uses branch `task/010-wiring`.
 **builder**: Built on `task/010-wiring`; new tests pass and ruff and pyright are clean. Next: verifier.
 **builder**: SPEC CONFLICT: the new `chart` recipe makes `tests/test_claude_md.py::test_claude_md_commands_match_justfile` fail, because it needs `just chart` in CLAUDE.md, which the spec puts out of scope. I did not edit CLAUDE.md. Human decision needed (add the row, or rename the recipe).
+**builder**: Fix loop 1: added the `just chart` row to the CLAUDE.md commands table (human-approved scope change; CLAUDE.md added to "Files to touch" and removed from the out-of-scope list). Next: verifier.

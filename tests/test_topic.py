@@ -13,9 +13,11 @@ from temporalio.exceptions import ApplicationError
 from temporalio.testing import ActivityEnvironment
 
 from ai_trend_pipeline.hn import HNStory
+from ai_trend_pipeline.owid import CATALOG
 from ai_trend_pipeline.topic import (
     DEFAULT_MODEL,
     MAX_TOKENS,
+    NOT_IN_CATALOG_ERROR_TYPE,
     SYSTEM_PROMPT,
     TOOL_NAME,
     PickTopicInput,
@@ -154,3 +156,51 @@ async def test_system_prompt_mentions_tool() -> None:
     for text in (system, SYSTEM_PROMPT):
         assert TOOL_NAME in text
         assert "calling" in text
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_lists_catalog() -> None:
+    requests: list[dict[str, object]] = []
+    await _run(_client(requests=requests))
+    system = str(requests[0]["system"])
+    for dataset in CATALOG:
+        assert dataset.title in SYSTEM_PROMPT
+        assert dataset.title in system
+    assert SYSTEM_PROMPT.endswith(f"Respond only by calling the {TOOL_NAME} tool.")
+
+
+@pytest.mark.asyncio
+async def test_tool_schema_enum_is_catalog() -> None:
+    requests: list[dict[str, object]] = []
+    await _run(_client(requests=requests))
+    tools = cast(list[dict[str, object]], requests[0]["tools"])
+    schema = cast(dict[str, object], tools[0]["input_schema"])
+    props = cast(dict[str, dict[str, object]], schema["properties"])
+    assert props["topic"]["enum"] == [d.title for d in CATALOG]
+
+
+@pytest.mark.asyncio
+async def test_pick_outside_catalog_raises_retryable() -> None:
+    with pytest.raises(ApplicationError) as exc:
+        await _run(_client("llm_pick_topic_off_catalog.json"))
+    assert exc.value.type == NOT_IN_CATALOG_ERROR_TYPE == "TopicNotInCatalog"
+    assert exc.value.non_retryable is False
+    assert "Rail travel / passenger rail usage by country" in str(exc.value)
+
+
+@pytest.mark.asyncio
+async def test_pick_topic_canonicalises_title() -> None:
+    body = _fixture("llm_pick_topic_response.json")
+    content = cast(list[dict[str, object]], body["content"])
+    cast(dict[str, str], content[1]["input"])["topic"] = "  SOLAR energy CONSUMPTION "
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(200, json=body)
+
+    client = anthropic.AsyncAnthropic(
+        api_key="test-key",
+        max_retries=0,
+        http_client=httpx2.AsyncClient(transport=httpx2.MockTransport(handler)),
+    )
+    result = await _run(client)
+    assert result.topic == "Solar energy consumption"

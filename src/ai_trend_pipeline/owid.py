@@ -74,6 +74,9 @@ CATALOG: tuple[OwidDataset, ...] = (
 def match_dataset(topic: str) -> OwidDataset | None:
     lowered = topic.lower()
     for dataset in CATALOG:
+        if dataset.title.lower() == lowered:
+            return dataset
+    for dataset in CATALOG:
         for keyword in dataset.keywords:
             if re.search(rf"\b{re.escape(keyword)}\b", lowered):
                 return dataset

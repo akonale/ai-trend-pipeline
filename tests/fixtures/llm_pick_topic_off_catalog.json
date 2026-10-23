@@ -1,0 +1,21 @@
+{
+  "id": "msg_01FixtureOffCatalog01",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-5-5",
+  "content": [
+    {"type": "text", "text": "I'll pick the most chartable topic."},
+    {
+      "type": "tool_use",
+      "id": "toolu_01FixtureOffCatalog01",
+      "name": "pick_topic",
+      "input": {
+        "topic": "Rail travel / passenger rail usage by country",
+        "reason": "Several stories discuss AI energy use, and public time-series data on electricity consumption by country exists."
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {"input_tokens": 412, "output_tokens": 86}
+}

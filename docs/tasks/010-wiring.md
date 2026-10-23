@@ -1,6 +1,6 @@
 # 010: Workflow: wire 005–009 together + approval signal + CLI to approve/reject
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -18,23 +18,23 @@ Add `DailyChartWorkflow`. It runs the task 005–009 activities in order (HN sto
 
 ## Acceptance criteria
 
-- [ ] **`src/ai_trend_pipeline/daily_chart.py`** (new). Imports of pydantic and the activity modules go inside `workflow.unsafe.imports_passed_through()`, as in `chart_loop.py`. It defines:
+- [x] **`src/ai_trend_pipeline/daily_chart.py`** (new). Imports of pydantic and the activity modules go inside `workflow.unsafe.imports_passed_through()`, as in `chart_loop.py`. It defines:
   - Constants: `DAILY_CHART_TASK_QUEUE = "daily-chart-task-queue"`, `APPROVAL_TIMEOUT = timedelta(hours=20)`, `IO_ACTIVITY_TIMEOUT = timedelta(seconds=60)`, `IO_RETRY_POLICY = RetryPolicy(maximum_attempts=3)`. HN, OWID and render use the IO pair. `pick_topic` uses `LLM_ACTIVITY_TIMEOUT` / `LLM_RETRY_POLICY` from `chart_loop.py`.
   - Models: `DailyChartInput(story_limit: int = Field(default=30, ge=1, le=100), since_year: int = Field(default=2000, ge=1800, le=2100), output_dir: str = Field(default="charts", min_length=1))`. `ReviewRequest(topic: str, topic_reason: str, caption: str, png_path: str, spec_sha256: str, critique: ChartCritique, attempts: int)`. `ApprovalDecision(approved: bool, note: str = Field(default="", max_length=500))`. `ReviewState(status: Literal["drafting", "awaiting_decision", "approved", "rejected", "expired"], review: ReviewRequest | None = None, note: str = "")`. `DailyChartResult(status: Literal["approved", "rejected", "expired"], review: ReviewRequest, note: str = "")`.
   - `@workflow.defn class DailyChartWorkflow` with:
     - `@workflow.run async def run(self, data: DailyChartInput) -> DailyChartResult`, in this order: `HNActivities.fetch_hn_top_stories(HNTopStoriesInput(limit=story_limit))`, then `TopicActivities.pick_topic(PickTopicInput(stories=...))`, then `OwidActivities.fetch_owid_dataset(FetchOwidInput(topic=..., since_year=...))`, then `draft_chart_with_critique(WriteChartSpecInput(topic=..., table=...))`, then `render_chart_png(RenderChartInput(vega_lite_spec=chart.vega_lite_spec, output_dir=data.output_dir))`. It then sets the state to `awaiting_decision` with the `ReviewRequest` and waits. On a decision it returns `approved` or `rejected` with the note. On `asyncio.TimeoutError` from `wait_condition` it returns `expired`.
     - `@workflow.signal def decide(self, decision: ApprovalDecision) -> None`, following the signal rules above.
     - `@workflow.query def review_state(self) -> ReviewState`.
-- [ ] **`src/ai_trend_pipeline/worker.py`** (edit). It adds `def daily_chart_activities(anthropic_client, hn_client, owid_client) -> list[Callable[..., Any]]`, with a comment explaining that `Any` matches Temporal's `Worker(activities=...)` type. The function returns the six bound methods/functions `fetch_hn_top_stories`, `pick_topic`, `fetch_owid_dataset`, `write_chart_spec`, `critique_chart` and `render_chart_png`, built from `HNActivities`, `TopicActivities`, `OwidActivities`, `ChartSpecActivities`, `CritiqueActivities` and `render_chart_png`. `main()` builds the clients with `make_anthropic_client()`, `make_hn_client()` and `make_owid_client()`, closing the httpx clients on exit with `async with`. It then runs the existing hello `Worker` and a second `Worker` on `DAILY_CHART_TASK_QUEUE` (with `workflows=[DailyChartWorkflow]`) concurrently with `asyncio.gather`. `connect_with_retry` is unchanged.
-- [ ] **`src/ai_trend_pipeline/cli.py`** (new), run as `python -m ai_trend_pipeline.cli`. It uses argparse subcommands, and every command returns an exit code:
+- [x] **`src/ai_trend_pipeline/worker.py`** (edit). It adds `def daily_chart_activities(anthropic_client, hn_client, owid_client) -> list[Callable[..., Any]]`, with a comment explaining that `Any` matches Temporal's `Worker(activities=...)` type. The function returns the six bound methods/functions `fetch_hn_top_stories`, `pick_topic`, `fetch_owid_dataset`, `write_chart_spec`, `critique_chart` and `render_chart_png`, built from `HNActivities`, `TopicActivities`, `OwidActivities`, `ChartSpecActivities`, `CritiqueActivities` and `render_chart_png`. `main()` builds the clients with `make_anthropic_client()`, `make_hn_client()` and `make_owid_client()`, closing the httpx clients on exit with `async with`. It then runs the existing hello `Worker` and a second `Worker` on `DAILY_CHART_TASK_QUEUE` (with `workflows=[DailyChartWorkflow]`) concurrently with `asyncio.gather`. `connect_with_retry` is unchanged.
+- [x] **`src/ai_trend_pipeline/cli.py`** (new), run as `python -m ai_trend_pipeline.cli`. It uses argparse subcommands, and every command returns an exit code:
   - `start [--id ID]` starts `DailyChartWorkflow` on `DAILY_CHART_TASK_QUEUE` without waiting, and prints the workflow id. The default id is `daily-chart-YYYY-MM-DD` (UTC date; the CLI is not workflow code, so it may read the clock). `output_dir` comes from `CHART_OUTPUT_DIR` if that is set. If a run with that id already exists (`WorkflowAlreadyStartedError`), it prints a message and returns 1.
   - `show ID` queries `review_state` and prints the status. If a review exists, it also prints the topic, topic reason, caption, PNG path, `attempts` and `critique.passed`. When the critique failed, it prints each critique reason on its own line. Returns 0.
   - `approve ID [--note TEXT]` / `reject ID [--note TEXT]`: if the state is not `awaiting_decision`, it prints the current status and returns 1. Otherwise it sends `decide`, awaits the workflow result, prints the final status, and returns 0.
   - If the workflow id is unknown (`RPCError` with status `NOT_FOUND`), every command prints an error and returns 1.
   - `main()` runs `sys.exit(asyncio.run(...))` using `connect()`.
-- [ ] **Done-when check.** In the time-skipping env with fake activities, a test starts the workflow, polls `review_state` until it is `awaiting_decision`, and asserts `handle.describe()` reports `RUNNING`. It then calls `run_cli(["approve", wf_id], env.client)`, which returns 0, and the workflow result is `status == "approved"`.
-- [ ] `justfile` gets the recipes `chart` (runs `cli start`), `show id`, `approve id` and `reject id`, all of which run `uv run python -m ai_trend_pipeline.cli ...`. `.gitignore` gets `charts/`. `README.md` gets a short "Daily chart" section: the worker now needs `ANTHROPIC_API_KEY`, then `just chart`, `just show <id>` and `just approve <id>` / `just reject <id>`, plus `CHART_OUTPUT_DIR` and the 20h expiry. The "not registered in the worker yet" line under Hacker News is removed.
-- [ ] `just lint` and `just test` pass. No live LLM or HTTP calls. Workflow tests use `WorkflowEnvironment.start_time_skipping(data_converter=pydantic_data_converter)`.
+- [x] **Done-when check.** In the time-skipping env with fake activities, a test starts the workflow, polls `review_state` until it is `awaiting_decision`, and asserts `handle.describe()` reports `RUNNING`. It then calls `run_cli(["approve", wf_id], env.client)`, which returns 0, and the workflow result is `status == "approved"`.
+- [x] `justfile` gets the recipes `chart` (runs `cli start`), `show id`, `approve id` and `reject id`, all of which run `uv run python -m ai_trend_pipeline.cli ...`. `.gitignore` gets `charts/`. `README.md` gets a short "Daily chart" section: the worker now needs `ANTHROPIC_API_KEY`, then `just chart`, `just show <id>` and `just approve <id>` / `just reject <id>`, plus `CHART_OUTPUT_DIR` and the 20h expiry. The "not registered in the worker yet" line under Hacker News is removed.
+- [x] `just lint` and `just test` pass. No live LLM or HTTP calls. Workflow tests use `WorkflowEnvironment.start_time_skipping(data_converter=pydantic_data_converter)`.
 
 ## Files to touch
 
@@ -92,3 +92,7 @@ Fake activities live on a small stateful class with `@activity.defn(name=...)` m
 **builder**: Built on `task/010-wiring`; new tests pass and ruff and pyright are clean. Next: verifier.
 **builder**: SPEC CONFLICT: the new `chart` recipe makes `tests/test_claude_md.py::test_claude_md_commands_match_justfile` fail, because it needs `just chart` in CLAUDE.md, which the spec puts out of scope. I did not edit CLAUDE.md. Human decision needed (add the row, or rename the recipe).
 **builder**: Fix loop 1: added the `just chart` row to the CLAUDE.md commands table (human-approved scope change; CLAUDE.md added to "Files to touch" and removed from the out-of-scope list). Next: verifier.
+**verifier**: `just lint` passed (ruff check, ruff format --check, pyright 0 errors). `just test` passed (87 tests, 0 failures).
+**verifier**: Confirmed all named tests, the chart/show/approve/reject recipes, the `charts/` gitignore entry and the README Daily chart section exist. Ticked the done-when and lint/test boxes only; code-review boxes left for the reviewer.
+**reviewer**: Approved. All acceptance boxes hold; diff is in scope (CLAUDE.md row approved in fix loop 1), workflow code is deterministic, models are Pydantic.
+Note: no `ANTHROPIC_API_KEY` is checked until worker start; accepted per spec. Next: scribe.

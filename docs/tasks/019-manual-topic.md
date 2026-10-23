@@ -1,6 +1,6 @@
 # 019: Optional manual topic override for the daily chart
 
-Status: reviewed
+Status: pr-open
 
 Depends on: 018 (merged first, so that catalog titles always match in `match_dataset`).
 
@@ -54,3 +54,5 @@ Let a human start a daily chart run with a chosen topic: `just chart --topic "Li
 **verifier**: Acceptance checkboxes left unticked; verifier scope is status and log only. Reviewer should tick them against the diff.
 **verifier**: All checks pass.
 **reviewer**: Checked diff against spec and checklist; all acceptance items and listed tests present, scope matches Files list (CLAUDE.md row was human-approved). Workflow branch is input-only, deterministic. Approved.
+**scribe**: README and CLAUDE.md already current, no doc changes needed. PR opened: https://github.com/akonale/ai-trend-pipeline/pull/20
+**scribe**: Status set to pr-open. Next: human reviews and merges PR #20.

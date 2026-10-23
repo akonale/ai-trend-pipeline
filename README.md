@@ -44,7 +44,7 @@ Every pull request and every push to `main` runs `just lint` and `just test` thr
 ## Hacker News
 
 `ai_trend_pipeline.hn` provides the `HNActivities.fetch_hn_top_stories` activity, which fetches
-current HN top stories as typed models. It is not registered in the worker yet.
+current HN top stories as typed models.
 
 ## Topic picking
 
@@ -67,3 +67,19 @@ file with `vl-convert-python` (no browser or Node needed).
 chart spec against a compact summary of its data and returns pass or fail with reasons.
 `ai_trend_pipeline.chart_loop` provides `draft_chart_with_critique` (workflow code) and
 `DraftChartWorkflow`: they draft, critique, and regenerate once with the reasons as feedback.
+
+## Daily chart
+
+`ai_trend_pipeline.daily_chart` provides `DailyChartWorkflow`, which chains the activities above
+(HN stories, topic, OWID data, draft and critique, PNG) and then waits for a human decision. The
+worker now needs `ANTHROPIC_API_KEY`, even for `just hello`.
+
+```sh
+just chart            # start a run, prints the workflow id (daily-chart-YYYY-MM-DD)
+just show <id>        # show the pending chart, caption, PNG path and critique
+just approve <id>     # approve it
+just reject <id>      # reject it
+```
+
+PNGs go to `charts/` unless `CHART_OUTPUT_DIR` is set. If nobody decides within 20 hours the run
+ends as `expired`.

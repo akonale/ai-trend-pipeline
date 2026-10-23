@@ -89,6 +89,8 @@ limit and "spec is wrong or unclear" still stop and ask you in every case.
 | # | Task | Done when | Your approval? |
 | --- | --- | --- | --- |
 | 017 | Fix: LLM activities use `tool_choice` auto (forced tool rejected by the model) | Tests assert `tool_choice` auto and that the prompts name the tool | no |
+| 018 | Fix: topic picker chooses from the OWID catalog titles | Off-catalog pick raises a retryable error; every catalog title matches `match_dataset`; fixture tests pass | no |
+| 019 | Optional manual topic override (`just chart --topic "..."`), depends on 018 | With a topic the workflow skips HN + `pick_topic`; CLI and time-skipping tests pass | no |
 
 ## Running a task
 

@@ -9,14 +9,19 @@ from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 from ai_trend_pipeline.hn import HNStory
+from ai_trend_pipeline.owid import CATALOG
 
 DEFAULT_MODEL = "claude-sonnet-5-5"
 MAX_TOKENS = 1024
 TOOL_NAME = "pick_topic"
+NOT_IN_CATALOG_ERROR_TYPE = "TopicNotInCatalog"
+CATALOG_TITLES = [d.title for d in CATALOG]
 SYSTEM_PROMPT = (
-    "You are given current Hacker News stories. Pick one topic from them that could be "
-    "charted with public country or time-series data (for example from Our World in Data). "
-    "Explain why in one or two sentences."
+    "You are given current Hacker News stories. Choose exactly one of the following chartable "
+    "topics, the one that best fits the stories:\n"
+    + "\n".join(f"- {title}" for title in CATALOG_TITLES)
+    + "\nCopy the chosen title verbatim into `topic`. In `reason`, say in one or two sentences "
+    "how it links to the news."
     f" Respond only by calling the {TOOL_NAME} tool."
 )
 
@@ -52,10 +57,12 @@ class TopicActivities:
 
     @activity.defn
     async def pick_topic(self, data: PickTopicInput) -> PickTopicOutput:
+        schema = PickTopicOutput.model_json_schema()
+        schema["properties"]["topic"]["enum"] = list(CATALOG_TITLES)
         tool: ToolParam = {
             "name": TOOL_NAME,
             "description": "Report the chosen topic and why it can be charted.",
-            "input_schema": PickTopicOutput.model_json_schema(),
+            "input_schema": schema,
         }
         response = await self._client.messages.create(
             model=self._model,
@@ -67,7 +74,16 @@ class TopicActivities:
         )
         for block in response.content:
             if isinstance(block, ToolUseBlock) and block.name == TOOL_NAME:
-                return PickTopicOutput.model_validate(block.input)
+                picked = PickTopicOutput.model_validate(block.input)
+                wanted = picked.topic.strip().casefold()
+                for dataset in CATALOG:
+                    if dataset.title.casefold() == wanted:
+                        return PickTopicOutput(topic=dataset.title, reason=picked.reason)
+                raise ApplicationError(
+                    f"Topic {picked.topic!r} is not in the OWID catalog",
+                    type=NOT_IN_CATALOG_ERROR_TYPE,
+                    non_retryable=False,
+                )
         raise ApplicationError(
             f"Model response contained no {TOOL_NAME} tool call", non_retryable=True
         )

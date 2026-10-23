@@ -49,7 +49,8 @@ current HN top stories as typed models.
 ## Topic picking
 
 `ai_trend_pipeline.topic` provides the `TopicActivities.pick_topic` activity, which asks Claude to
-pick a chartable topic from HN stories. It needs `ANTHROPIC_API_KEY` in the environment.
+pick a chartable topic from HN stories. It chooses one of the titles in `owid.CATALOG`, and an
+off-catalog pick is retried. It needs `ANTHROPIC_API_KEY` in the environment.
 
 ## Our World in Data
 

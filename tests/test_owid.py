@@ -9,10 +9,12 @@ from temporalio.exceptions import ApplicationError
 from temporalio.testing import ActivityEnvironment
 
 from ai_trend_pipeline.owid import (
+    CATALOG,
     NO_MATCH_ERROR_TYPE,
     OWID_BASE_URL,
     FetchOwidInput,
     OwidActivities,
+    OwidDataset,
     OwidRow,
     OwidTable,
     make_owid_client,
@@ -141,6 +143,11 @@ async def test_lowercase_real_header_is_accepted() -> None:
 def test_match_dataset(topic: str, slug: str | None) -> None:
     match = match_dataset(topic)
     assert (match.slug if match else None) == slug
+
+
+@pytest.mark.parametrize("dataset", CATALOG, ids=lambda d: d.slug)
+def test_match_dataset_every_title(dataset: OwidDataset) -> None:
+    assert match_dataset(dataset.title) == dataset
 
 
 def test_input_validation() -> None:

@@ -10,7 +10,7 @@
       "id": "toolu_01FixtureExample0001",
       "name": "pick_topic",
       "input": {
-        "topic": "Global electricity demand from data centers",
+        "topic": "Solar energy consumption",
         "reason": "Several stories discuss AI energy use, and public time-series data on electricity consumption by country exists."
       }
     }

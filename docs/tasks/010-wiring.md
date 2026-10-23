@@ -1,6 +1,6 @@
 # 010: Workflow: wire 005–009 together + approval signal + CLI to approve/reject
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -96,3 +96,5 @@ Fake activities live on a small stateful class with `@activity.defn(name=...)` m
 **verifier**: Confirmed all named tests, the chart/show/approve/reject recipes, the `charts/` gitignore entry and the README Daily chart section exist. Ticked the done-when and lint/test boxes only; code-review boxes left for the reviewer.
 **reviewer**: Approved. All acceptance boxes hold; diff is in scope (CLAUDE.md row approved in fix loop 1), workflow code is deterministic, models are Pydantic.
 Note: no `ANTHROPIC_API_KEY` is checked until worker start; accepted per spec. Next: scribe.
+**scribe**: Docs were already current (README Daily chart section, CLAUDE.md `just chart` row). Pushed branch and opened PR https://github.com/akonale/ai-trend-pipeline/pull/15.
+Next: human reviews and merges PR 15 (`yes` task).

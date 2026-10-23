@@ -1,6 +1,6 @@
 # 011: Activity: post to Bluesky (test account), idempotent
 
-Status: built
+Status: pr-open
 
 ## Goal
 
@@ -20,16 +20,16 @@ Add a `post_chart_to_bluesky` activity that posts the approved PNG and its capti
 
 ## Acceptance criteria
 
-- [ ] **`src/ai_trend_pipeline/bluesky.py`** (new) defines:
+- [x] **`src/ai_trend_pipeline/bluesky.py`** (new) defines:
   - `PostChartInput(png_path: str = Field(min_length=1), text: str = Field(min_length=1, max_length=300), alt_text: str = Field(default="", max_length=1000), idempotency_key: str = Field(min_length=1), created_at: datetime)`. The `created_at` field must be timezone-aware. Add a validator that rejects naive datetimes.
   - `PostChartOutput(uri: str, cid: str, rkey: str, already_posted: bool)`.
   - `BlueskyCredentials(handle: str, app_password: str, service: str)` as a Pydantic model with `app_password` typed as `SecretStr`, so it never appears in reprs. Also `load_bluesky_credentials() -> BlueskyCredentials`, `make_bluesky_client(service: str) -> httpx.AsyncClient` (`base_url=f"{service}/xrpc/"`, timeout 30 s) and `make_tid(created_at, idempotency_key) -> str`.
   - `class BlueskyActivities.__init__(self, client: httpx.AsyncClient, credentials: BlueskyCredentials)` with `@activity.defn async def post_chart_to_bluesky(self, data: PostChartInput) -> PostChartOutput`. It implements the four-call flow and the error rules above, and reads the PNG with `asyncio.to_thread`. `createdAt` is sent as UTC ISO-8601 with a `Z` suffix and millisecond precision.
-- [ ] **`src/ai_trend_pipeline/daily_chart.py`** (edit). `DailyChartResult` gains `post: PostChartOutput | None = None`. The approved branch calls the activity as described above. The query state is set to `approved` only after the post succeeds. The rejected, expired and signal logic is unchanged.
-- [ ] **`src/ai_trend_pipeline/worker.py`** (edit). `daily_chart_activities(...)` gains a `bluesky_client: httpx.AsyncClient, bluesky_credentials: BlueskyCredentials` parameter pair and also returns `post_chart_to_bluesky` (7 names). `main()` loads the credentials and opens `make_bluesky_client(...)` in the same `async with`.
-- [ ] **`src/ai_trend_pipeline/cli.py`** (edit). After an approval, when `result.post` is set, `approve` prints `posted: <uri>`, or `already posted: <uri>` if `already_posted` was true.
+- [x] **`src/ai_trend_pipeline/daily_chart.py`** (edit). `DailyChartResult` gains `post: PostChartOutput | None = None`. The approved branch calls the activity as described above. The query state is set to `approved` only after the post succeeds. The rejected, expired and signal logic is unchanged.
+- [x] **`src/ai_trend_pipeline/worker.py`** (edit). `daily_chart_activities(...)` gains a `bluesky_client: httpx.AsyncClient, bluesky_credentials: BlueskyCredentials` parameter pair and also returns `post_chart_to_bluesky` (7 names). `main()` loads the credentials and opens `make_bluesky_client(...)` in the same `async with`.
+- [x] **`src/ai_trend_pipeline/cli.py`** (edit). After an approval, when `result.post` is set, `approve` prints `posted: <uri>`, or `already posted: <uri>` if `already_posted` was true.
 - [ ] **Done-when (automated part).** Calling the activity twice with the same input against a stateful mock transport makes exactly one `uploadBlob` call and one `createRecord` call. The second call returns `already_posted=True` with the same `uri` and `rkey`. **Done-when (manual part, human):** with `.env` holding the test account, run `just dev`, then `just chart` and `just approve <id>`. The chart appears once on the test account, and running `just approve <id>` again does not post again (it returns 1 because the run is no longer awaiting a decision).
-- [ ] `README.md`: the "Daily chart" section says the worker now also needs `BLUESKY_HANDLE`, `BLUESKY_APP_PASSWORD` (use an app password from the **test** account) and optionally `BLUESKY_SERVICE`, and that approving posts the chart. `just lint` and `just test` pass with no live HTTP calls.
+- [x] `README.md`: the "Daily chart" section says the worker now also needs `BLUESKY_HANDLE`, `BLUESKY_APP_PASSWORD` (use an app password from the **test** account) and optionally `BLUESKY_SERVICE`, and that approving posts the chart. `just lint` and `just test` pass with no live HTTP calls.
 
 ## Files to touch
 
@@ -82,3 +82,9 @@ Add a `post_chart_to_bluesky` activity that posts the approved PNG and its capti
 **planner**: If this is too big, split it into 011a (`bluesky.py` + `test_bluesky.py` + fixtures) and 011b (workflow/worker/CLI wiring + README). This is a `yes` task, so the human approves the spec and does the manual done-when check. Next: the builder uses branch `task/011-bluesky-post`.
 **builder**: Built bluesky.py (httpx XRPC, TID rkey, getRecord check), wired workflow approved branch, worker, CLI, README run guide (human-approved addition), tests and fixtures. Targeted tests, ruff and pyright pass.
 **builder**: Unsure: PDS acceptance of the hand-built TID and PNG size vs 1 MB are only checked in the manual done-when. Next: verifier.
+**verifier**: `just lint` passed (ruff check, ruff format --check, pyright 0 errors). `just test` passed (100 passed, incl. tests/test_bluesky.py). No live HTTP calls were made. Acceptance boxes left unticked: I ran only the automated checks, and the manual done-when still needs the human.
+All checks pass.
+**reviewer**: Approved. Diff matches spec; all listed tests exist; workflow code is deterministic (workflow.now/workflow_id); secrets stay in activity constructor; fixtures are fake.
+Notes: done-when box left unticked for the human manual check. Watch the hand-built TID acceptance by the PDS and PNG size vs 1 MB during that check.
+**scribe**: README already has the Bluesky env vars and approve-posts note, so no doc edits were needed. Pushed `task/011-bluesky-post` and opened the PR against `main`.
+Next: the human runs the manual done-when check against the test account, then merges the PR.

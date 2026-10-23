@@ -94,3 +94,7 @@ Step-by-step run guide:
    post is detected and not duplicated. Rejecting posts nothing.
 
 If nobody decides within 20 hours the run ends as `expired` and nothing is posted.
+
+## Idea board
+1. Price radar as a plugin ( compare supermarket prices )
+2. Event finder plugin

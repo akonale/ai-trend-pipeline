@@ -11,6 +11,7 @@ from ai_trend_pipeline.chart_spec import ChartSpec, ChartSpecActivities, WriteCh
 from ai_trend_pipeline.critique import (
     INVALID_CRITIQUE_ERROR_TYPE,
     MAX_TOKENS,
+    SYSTEM_PROMPT,
     TOOL_NAME,
     ChartCritique,
     CritiqueActivities,
@@ -80,7 +81,7 @@ async def test_request_shape() -> None:
     assert body["max_tokens"] == MAX_TOKENS
     tools = cast(list[dict[str, object]], body["tools"])
     assert [t["name"] for t in tools] == [TOOL_NAME] == ["critique_chart"]
-    assert body["tool_choice"] == {"type": "tool", "name": TOOL_NAME}
+    assert body["tool_choice"] == {"type": "auto"}
     text = _user_text(body)
     chart = await make_chart()
     for needle in (TOPIC, chart.caption, "life_expectancy_0", *chart.entities):
@@ -128,3 +129,13 @@ async def test_no_tool_use_raises_non_retryable() -> None:
 async def test_api_error_propagates() -> None:
     with pytest.raises(anthropic.APIStatusError):
         await _run(make_client(status=500))
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_mentions_tool() -> None:
+    requests: list[dict[str, object]] = []
+    await _run(make_client(PASS, requests=requests))
+    system = str(requests[0]["system"])
+    for text in (system, SYSTEM_PROMPT):
+        assert TOOL_NAME in text
+        assert "calling" in text

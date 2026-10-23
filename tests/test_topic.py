@@ -16,6 +16,7 @@ from ai_trend_pipeline.hn import HNStory
 from ai_trend_pipeline.topic import (
     DEFAULT_MODEL,
     MAX_TOKENS,
+    SYSTEM_PROMPT,
     TOOL_NAME,
     PickTopicInput,
     PickTopicOutput,
@@ -104,7 +105,7 @@ async def test_request_shape() -> None:
     assert body["max_tokens"] == MAX_TOKENS
     tools = cast(list[dict[str, object]], body["tools"])
     assert [t["name"] for t in tools] == [TOOL_NAME] == ["pick_topic"]
-    assert body["tool_choice"] == {"type": "tool", "name": TOOL_NAME}
+    assert body["tool_choice"] == {"type": "auto"}
     messages = cast(list[dict[str, object]], body["messages"])
     assert len(messages) == 1
     text = json.dumps(messages[0]["content"])
@@ -143,3 +144,13 @@ def test_make_anthropic_client_reads_env(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.delenv("ANTHROPIC_API_KEY")
     with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
         make_anthropic_client()
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_mentions_tool() -> None:
+    requests: list[dict[str, object]] = []
+    await _run(_client(requests=requests))
+    system = str(requests[0]["system"])
+    for text in (system, SYSTEM_PROMPT):
+        assert TOOL_NAME in text
+        assert "calling" in text

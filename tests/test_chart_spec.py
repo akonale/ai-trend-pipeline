@@ -13,6 +13,7 @@ from temporalio.testing import ActivityEnvironment
 from ai_trend_pipeline.chart_spec import (
     INVALID_DRAFT_ERROR_TYPE,
     MAX_TOKENS,
+    SYSTEM_PROMPT,
     TOOL_NAME,
     ChartSpec,
     ChartSpecActivities,
@@ -133,7 +134,7 @@ async def test_request_shape() -> None:
     assert body["max_tokens"] == MAX_TOKENS
     tools = cast(list[dict[str, object]], body["tools"])
     assert [t["name"] for t in tools] == [TOOL_NAME] == ["write_chart"]
-    assert body["tool_choice"] == {"type": "tool", "name": TOOL_NAME}
+    assert body["tool_choice"] == {"type": "auto"}
     messages = cast(list[dict[str, object]], body["messages"])
     assert len(messages) == 1
     text = json.dumps(messages[0]["content"])
@@ -197,3 +198,13 @@ async def test_feedback_is_appended_to_request() -> None:
     messages = cast(list[dict[str, object]], requests[0]["messages"])
     content = cast(str, messages[0]["content"])
     assert content.endswith("\nA previous draft was rejected for these reasons:\n- too many lines")
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_mentions_tool() -> None:
+    requests: list[dict[str, object]] = []
+    await _run(make_client(requests=requests))
+    system = str(requests[0]["system"])
+    for text in (system, SYSTEM_PROMPT):
+        assert TOOL_NAME in text
+        assert "calling" in text

@@ -1,6 +1,6 @@
 # 017: Fix: use tool_choice auto for the LLM activities
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -8,11 +8,11 @@ A live run failed with Anthropic 400 `tool_choice: type "tool" and "any" are not
 
 ## Acceptance criteria
 
-- [ ] `src/ai_trend_pipeline/topic.py`, `chart_spec.py` and `critique.py` each send `tool_choice={"type": "auto"}` to `messages.create`. No `"type": "tool"` or `"type": "any"` remains in `src/`.
-- [ ] Each module's `SYSTEM_PROMPT` ends with a sentence that tells the model to respond only by calling the `<TOOL_NAME>` tool. Build it from the module's `TOOL_NAME` constant (for example `f"Respond only by calling the {TOOL_NAME} tool."`) so the name cannot drift. `TOOL_NAME` must be defined before `SYSTEM_PROMPT`, which is already the case.
-- [ ] When the response has no matching `ToolUseBlock`, each activity still raises `ApplicationError(..., non_retryable=True)` with the message `Model response contained no <TOOL_NAME> tool call`. This behaviour is unchanged.
-- [ ] Nothing else changes: tool names, schemas, models, max_tokens, output parsing and validation errors (`InvalidChartDraft`, `InvalidChartCritique`).
-- [ ] `just lint` and `just test` pass with no live API calls.
+- [x] `src/ai_trend_pipeline/topic.py`, `chart_spec.py` and `critique.py` each send `tool_choice={"type": "auto"}` to `messages.create`. No `"type": "tool"` or `"type": "any"` remains in `src/`.
+- [x] Each module's `SYSTEM_PROMPT` ends with a sentence that tells the model to respond only by calling the `<TOOL_NAME>` tool. Build it from the module's `TOOL_NAME` constant (for example `f"Respond only by calling the {TOOL_NAME} tool."`) so the name cannot drift. `TOOL_NAME` must be defined before `SYSTEM_PROMPT`, which is already the case.
+- [x] When the response has no matching `ToolUseBlock`, each activity still raises `ApplicationError(..., non_retryable=True)` with the message `Model response contained no <TOOL_NAME> tool call`. This behaviour is unchanged.
+- [x] Nothing else changes: tool names, schemas, models, max_tokens, output parsing and validation errors (`InvalidChartDraft`, `InvalidChartCritique`).
+- [x] `just lint` and `just test` pass with no live API calls.
 
 ## Files to touch
 
@@ -45,3 +45,7 @@ Make these changes first (tests go first) in each of the three test files:
 **planner**: Wrote the 017 bug-fix spec and set it to `planned`. The fix: send `tool_choice` auto in topic/chart_spec/critique, add a "Respond only by calling the {TOOL_NAME} tool." sentence to each system prompt, and keep the non-retryable no-tool error.
 **planner**: I numbered it 017 because 012–016 are already reserved in the plan, and added a "Fixes" row (approval `no`) to `docs/mvp-plan.md`. Existing fixtures should be enough. Risk: with auto, the model may still answer in text, and that now surfaces as the non-retryable error, which is the intended behaviour. Next: the orchestrator approves, then the builder works on branch `task/017-tool-choice-auto`.
 **builder**: Switched topic/chart_spec/critique to tool_choice auto and appended the "Respond only by calling the {TOOL_NAME} tool." sentence to each SYSTEM_PROMPT. Edited test_request_shape and added test_system_prompt_mentions_tool in the three test files. just lint and just test pass (103). Next: verifier.
+**verifier**: `just lint` passed (ruff check, ruff format --check, pyright 0 errors) and `just test` passed (103 tests, no live calls).
+**verifier**: Grep confirms no `"type": "tool"` or `"type": "any"` in src/; all three modules use `tool_choice={"type": "auto"}` and end SYSTEM_PROMPT with "Respond only by calling the {TOOL_NAME} tool."
+**verifier**: The no-tool `ApplicationError` (non_retryable=True) message is unchanged in all three modules. All checklist items verified. All checks pass. Next: reviewer.
+**reviewer**: Approved. Diff matches spec: tool_choice auto and the TOOL_NAME prompt sentence in all three modules, no-tool error unchanged, tests edited/added as listed, no scope creep or secrets. Next: scribe.

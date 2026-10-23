@@ -18,6 +18,7 @@ from ai_trend_pipeline.chart_spec import ChartSpec, WriteChartSpecInput
 from ai_trend_pipeline.critique import ChartCritique, CritiqueChartInput
 from ai_trend_pipeline.daily_chart import (
     DAILY_CHART_TASK_QUEUE,
+    MANUAL_TOPIC_REASON,
     ApprovalDecision,
     DailyChartInput,
     DailyChartResult,
@@ -334,3 +335,40 @@ async def test_post_failure_fails_workflow() -> None:
         await handle.signal(DailyChartWorkflow.decide, ApprovalDecision(approved=True))
         with pytest.raises(WorkflowFailureError):
             await handle.result()
+
+
+MANUAL_TOPIC = "Life expectancy"
+
+
+@pytest.mark.asyncio
+async def test_manual_topic_skips_hn_and_pick() -> None:
+    fakes = FakeDailyActivities()
+    async with await start_env() as env, make_worker(env, fakes):
+        handle = await start_workflow(env, DailyChartInput(topic=MANUAL_TOPIC, since_year=1990))
+        await wait_for_state(handle, "awaiting_decision")
+    assert "fetch_hn_top_stories" not in fakes.calls
+    assert "pick_topic" not in fakes.calls
+    assert fakes.owid_inputs[0] == FetchOwidInput(topic=MANUAL_TOPIC, since_year=1990)
+    assert fakes.write_inputs[0].topic == MANUAL_TOPIC
+
+
+@pytest.mark.asyncio
+async def test_manual_topic_review_reason() -> None:
+    fakes = FakeDailyActivities()
+    async with await start_env() as env, make_worker(env, fakes):
+        handle = await start_workflow(env, DailyChartInput(topic=MANUAL_TOPIC))
+        state = await wait_for_state(handle, "awaiting_decision")
+    assert state.review is not None
+    assert state.review.topic == MANUAL_TOPIC
+    assert state.review.topic_reason == MANUAL_TOPIC_REASON
+
+
+@pytest.mark.asyncio
+async def test_manual_topic_no_match_fails() -> None:
+    fakes = FakeDailyActivities(owid_fails=True)
+    async with await start_env() as env, make_worker(env, fakes):
+        handle = await start_workflow(env, DailyChartInput(topic=MANUAL_TOPIC))
+        with pytest.raises(WorkflowFailureError):
+            await handle.result()
+    assert fakes.topic_inputs == []
+    assert fakes.render_inputs == []

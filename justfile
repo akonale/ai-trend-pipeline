@@ -25,8 +25,9 @@ hello:
 down:
     docker compose -f infra/compose.dev.yaml down
 
-chart:
-    uv run python -m ai_trend_pipeline.cli start
+[positional-arguments]
+chart *args:
+    uv run python -m ai_trend_pipeline.cli start "$@"
 
 show id:
     uv run python -m ai_trend_pipeline.cli show {{id}}

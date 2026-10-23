@@ -83,7 +83,10 @@ Step-by-step run guide:
    `just` recipe reads `.env` automatically.
 2. `just dev` starts Temporal and the worker. Leave it running.
 3. In another terminal, `just chart` starts a run and prints the workflow id
-   (`daily-chart-YYYY-MM-DD`).
+   (`daily-chart-YYYY-MM-DD`). To choose the topic yourself, run
+   `just chart --topic "<catalog title>"` (the topic should be one of the `CATALOG` titles in
+   `owid.CATALOG`); this skips HN and the topic picker. `--id <id>` sets the workflow id. A topic
+   that matches no dataset fails the run.
 4. Watch the run in the Temporal UI at http://localhost:8233.
 5. When the run waits for a decision, the PNG is under `charts/` (or `CHART_OUTPUT_DIR`). Open it.
 6. `just show <id>` prints the caption, PNG path and critique result.

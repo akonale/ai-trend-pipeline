@@ -29,6 +29,7 @@ def _parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     start = sub.add_parser("start", help="start a daily chart run")
     start.add_argument("--id", dest="wf_id", default=None)
+    start.add_argument("--topic", default=None)
     sub.add_parser("show", help="show the pending review").add_argument("wf_id", metavar="ID")
     for name in ("approve", "reject"):
         cmd = sub.add_parser(name, help=f"{name} the pending chart")
@@ -53,12 +54,13 @@ def _print_state(state: ReviewState) -> None:
             print(f"critique reason: {reason}")
 
 
-async def _start(client: Client, wf_id: str | None) -> int:
+async def _start(client: Client, wf_id: str | None, topic: str | None) -> int:
     wf_id = wf_id or f"daily-chart-{datetime.now(UTC).date().isoformat()}"
-    data = DailyChartInput()
     output_dir = os.environ.get("CHART_OUTPUT_DIR")
     if output_dir:
-        data = DailyChartInput(output_dir=output_dir)
+        data = DailyChartInput(output_dir=output_dir, topic=topic)
+    else:
+        data = DailyChartInput(topic=topic)
     try:
         await client.start_workflow(
             DailyChartWorkflow.run,
@@ -91,7 +93,7 @@ async def _decide(handle: Handle, approved: bool, note: str) -> int:
 async def run_cli(argv: list[str], client: Client) -> int:
     args = _parser().parse_args(argv)
     if args.command == "start":
-        return await _start(client, args.wf_id)
+        return await _start(client, args.wf_id, args.topic)
     handle: Handle = client.get_workflow_handle_for(DailyChartWorkflow.run, args.wf_id)
     try:
         if args.command == "show":

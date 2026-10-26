@@ -71,19 +71,6 @@ limit and "spec is wrong or unclear" still stop and ask you in every case.
 | 009 | Activity: LLM critique, one regenerate on failure | Bad fixture triggers one retry | no |
 | 010 | Workflow: wire 005–009 together + approval signal + CLI to approve/reject | Workflow pauses, CLI approves, workflow continues | yes |
 | 011 | Activity: post to Bluesky (test account), idempotent | Approved chart appears on the test account once | yes |
-| 012 | Daily Temporal Schedule | Runs on its own at the set time | yes |
-
-### Phase 2: Measure
-| # | Task | Done when | Your approval? |
-| --- | --- | --- | --- |
-| 013 | Feedback workflow: wait 24h, save likes/reposts/replies + prompt version to Postgres | Time-skipping test passes; real post gets its numbers | yes |
-
-### Phase 3: Deploy and go live
-| # | Task | Done when | Your approval? |
-| --- | --- | --- | --- |
-| 014 | Production compose file + prod server from `infra/cloud-init.yaml` | Stack runs on the prod server | yes |
-| 015 | Deploy on merge to main + nightly Postgres backup | Merging a PR updates prod | yes |
-| 016 | Switch to the real Bluesky account, run 7 days | 7 charts posted with metrics | yes |
 
 ### Fixes
 | # | Task | Done when | Your approval? |
@@ -92,15 +79,15 @@ limit and "spec is wrong or unclear" still stop and ask you in every case.
 | 018 | Fix: topic picker chooses from the OWID catalog titles | Off-catalog pick raises a retryable error; every catalog title matches `match_dataset`; fixture tests pass | no |
 | 019 | Optional manual topic override (`just chart --topic "..."`), depends on 018 | With a topic the workflow skips HN + `pick_topic`; CLI and time-skipping tests pass | no |
 
-## Next: Topic Studio (runs before 012–016)
+## Next: Topic Studio
 
 **Goal:** you and a friend open a web page, type any topic, click Generate, review the chart, and
 approve it, from any browser, behind a login that needs no auth code in the app.
 **Order:** clean foundations, then user experience, then Cloudflare for sharing, then your style,
-then refining. 012–016 (schedule, feedback, deploy) resume after phase 8.
+then refining.
 
 **Where it runs for now:** the dev server, with `just dev` and `just web` each in their own tmux
-window. Production deploy (014) can host it later without changes.
+window. A production server can host it later without changes.
 
 ### Web architecture (rules for every Topic Studio task)
 
@@ -127,20 +114,20 @@ The web app is a thin layer over a service layer that the CLI also uses. Depende
   something.
 - No JavaScript build step: htmx and a small CSS file, served from `web/static/`.
 
-### Phase 4: Foundations
+### Phase 2: Foundations
 | # | Task | Done when | Your approval? |
 | --- | --- | --- | --- |
 | 020 | Service layer + settings: move start/show/decide out of `cli.py` into `services/charts.py`, add `config.py` and move every existing env var read into it (`cli.py`, `topic.py`, `temporal_client.py`, `bluesky.py`); the CLI becomes a thin wrapper. No behaviour change | Existing CLI tests pass unchanged; new service tests use a fake Temporal handle | yes |
 | 021 | Web app skeleton: FastAPI + Jinja + htmx per the architecture above, `create_app`, `just web` on `127.0.0.1:8000`, one health page | Page loads through the SSH tunnel; route test uses the FastAPI test client | yes |
 
-### Phase 5: Web UI (local, through your SSH tunnel)
+### Phase 3: Web UI (local, through your SSH tunnel)
 | # | Task | Done when | Your approval? |
 | --- | --- | --- | --- |
 | 022 | Home page: topic box + Generate button starts a chart run via the service, then opens its run page | Clicking Generate starts a run visible in the Temporal UI | yes |
 | 023 | Run page: live status (htmx polling), PNG preview, caption, critique, Approve / Reject buttons, and a "View in Temporal" link (`TEMPORAL_UI_URL` setting + workflow id) | A chart goes from Generate to posted without the CLI; the link opens that run in the Temporal UI | yes |
 | 024 | Runs list on the home page: recent runs with topic, status, and link (service wraps the Temporal list API) | Both pending and finished runs show up | no |
 
-### Phase 6: Share with a friend (Cloudflare)
+### Phase 4: Share with a friend (Cloudflare)
 | # | Task | Done when | Your approval? |
 | --- | --- | --- | --- |
 | 025 | Cloudflare Tunnel: `cloudflared` service in compose, two hostnames (web app, Temporal UI), runbook `docs/runbooks/cloudflare.md`; both reachable only through the tunnel | Web app opens for both of you after the email login; Temporal UI opens for you only; nothing listens publicly on the server | yes |
@@ -156,13 +143,13 @@ The web app is a thin layer over a service layer that the CLI also uses. Depende
    - `temporal.yourdomain.com`: allow **only your email**. The Temporal UI has no permissions of its
      own, so anyone let in can cancel or reset workflows.
 
-### Phase 7: Your style
+### Phase 5: Your style
 | # | Task | Done when | Your approval? |
 | --- | --- | --- | --- |
 | 028 | Style profiles: per-person defaults (palette, font, caption tone, hashtags, signature), stored in Postgres, editable on a settings page, applied to the chart-spec and caption prompts | Two people get visibly different charts for the same topic | yes |
 | 029 | Per-post options on the home page: chart type, time range, countries, caption tone, free-text instructions | Options visibly change the chart; blank options fall back to the style profile | yes |
 
-### Phase 8: Refine before posting
+### Phase 6: Refine before posting
 | # | Task | Done when | Your approval? |
 | --- | --- | --- | --- |
 | 030 | Refine loop: a `refine` signal with an instruction ("make it a bar chart") regenerates spec and caption, re-runs critique, and waits for review again (max 5 rounds); `just refine ID "..."` | Time-skipping test covers refine → refine → approve | yes |

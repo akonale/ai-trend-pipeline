@@ -8,7 +8,6 @@ from temporalio.testing import ActivityEnvironment, WorkflowEnvironment
 from temporalio.worker import Worker
 
 from ai_trend_pipeline.hello import HelloInput, HelloOutput, HelloWorkflow, say_hello
-from ai_trend_pipeline.temporal_client import temporal_address
 
 
 @pytest.mark.asyncio
@@ -37,10 +36,3 @@ async def test_hello_workflow_returns_greeting() -> None:
             )
     assert isinstance(result, HelloOutput)
     assert result.greeting == "Hello, World!"
-
-
-def test_temporal_address_default_and_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("TEMPORAL_ADDRESS", raising=False)
-    assert temporal_address() == "localhost:7233"
-    monkeypatch.setenv("TEMPORAL_ADDRESS", "example:1234")
-    assert temporal_address() == "example:1234"

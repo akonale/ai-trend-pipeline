@@ -7,7 +7,7 @@ from typing import Any
 
 import httpx
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 from temporalio.exceptions import ApplicationError
 
 from ai_trend_pipeline.bluesky import (
@@ -18,6 +18,7 @@ from ai_trend_pipeline.bluesky import (
     load_bluesky_credentials,
     make_tid,
 )
+from ai_trend_pipeline.config import Settings
 
 FIXTURES = Path(__file__).parent / "fixtures"
 CREATED = datetime(2026, 5, 1, 12, 0, 0, 123000, tzinfo=UTC)
@@ -188,14 +189,12 @@ async def test_missing_png_is_non_retryable(tmp_path: Path) -> None:
     assert exc.value.non_retryable
 
 
-def test_load_credentials_missing_env_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("BLUESKY_HANDLE", "test.example.invalid")
-    monkeypatch.delenv("BLUESKY_APP_PASSWORD", raising=False)
-    monkeypatch.delenv("BLUESKY_SERVICE", raising=False)
+def test_load_credentials_missing_password_raises() -> None:
     with pytest.raises(RuntimeError, match="BLUESKY_APP_PASSWORD"):
-        load_bluesky_credentials()
-    monkeypatch.setenv("BLUESKY_APP_PASSWORD", "pw-secret")
-    creds = load_bluesky_credentials()
+        load_bluesky_credentials(Settings(bluesky_handle="test.example.invalid"))
+    creds = load_bluesky_credentials(
+        Settings(bluesky_handle="test.example.invalid", bluesky_app_password=SecretStr("pw-secret"))
+    )
     assert creds.service == "https://bsky.social"
     assert "pw-secret" not in repr(creds)
 

@@ -8,10 +8,11 @@ from typing import cast
 import anthropic
 import httpx2
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 from temporalio.exceptions import ApplicationError
 from temporalio.testing import ActivityEnvironment
 
+from ai_trend_pipeline.config import Settings
 from ai_trend_pipeline.hn import HNStory
 from ai_trend_pipeline.owid import CATALOG
 from ai_trend_pipeline.topic import (
@@ -140,12 +141,11 @@ def test_input_requires_stories() -> None:
         PickTopicInput(stories=[])
 
 
-def test_make_anthropic_client_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-    assert make_anthropic_client().api_key == "test-key"
-    monkeypatch.delenv("ANTHROPIC_API_KEY")
+def test_make_anthropic_client_uses_settings() -> None:
+    client = make_anthropic_client(Settings(anthropic_api_key=SecretStr("test-key")))
+    assert client.api_key == "test-key"
     with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
-        make_anthropic_client()
+        make_anthropic_client(Settings())
 
 
 @pytest.mark.asyncio

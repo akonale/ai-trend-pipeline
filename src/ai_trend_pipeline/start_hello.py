@@ -2,12 +2,13 @@
 
 import asyncio
 
+from ai_trend_pipeline.config import load_settings
 from ai_trend_pipeline.hello import TASK_QUEUE, HelloInput, HelloWorkflow
 from ai_trend_pipeline.temporal_client import connect
 
 
 async def main() -> None:
-    client = await connect()
+    client = await connect(load_settings())
     result = await client.execute_workflow(
         HelloWorkflow.run,
         HelloInput(name="World"),

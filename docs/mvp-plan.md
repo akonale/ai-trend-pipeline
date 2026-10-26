@@ -92,6 +92,51 @@ limit and "spec is wrong or unclear" still stop and ask you in every case.
 | 018 | Fix: topic picker chooses from the OWID catalog titles | Off-catalog pick raises a retryable error; every catalog title matches `match_dataset`; fixture tests pass | no |
 | 019 | Optional manual topic override (`just chart --topic "..."`), depends on 018 | With a topic the workflow skips HN + `pick_topic`; CLI and time-skipping tests pass | no |
 
+## Next: Topic Studio (runs before 012–016)
+
+**Goal:** you and a friend open a web page, type any topic, click Generate, review the chart, and
+approve it, from any browser, behind a login that needs no auth code in the app.
+**Order:** user experience first, then Cloudflare for sharing, then your style, then refining.
+012–016 (schedule, feedback, deploy) resume after phase 7.
+
+**Where it runs for now:** the dev server, with `just dev` and `just web` each in their own tmux
+window. Production deploy (014) can host it later without changes.
+
+### Phase 4: Web UI (local, through your SSH tunnel)
+| # | Task | Done when | Your approval? |
+| --- | --- | --- | --- |
+| 020 | Web app skeleton: FastAPI + Jinja templates + htmx, `just web` on `127.0.0.1:8000`, one health page | Page loads through the SSH tunnel; test hits it with FastAPI's test client | no |
+| 021 | Home page: topic box + Generate button starts `DailyChartWorkflow` with that topic, then opens its run page | Clicking Generate starts a run visible in the Temporal UI | yes |
+| 022 | Run page: live status (htmx polling the `review_state` query), PNG preview, caption, critique, Approve / Reject buttons sending the `decide` signal | A chart can go from Generate to posted without the CLI | yes |
+| 023 | Runs list on the home page: recent runs with topic, status, and link (Temporal list API) | Both pending and finished runs show up | no |
+
+### Phase 5: Share with a friend (Cloudflare)
+| # | Task | Done when | Your approval? |
+| --- | --- | --- | --- |
+| 024 | Cloudflare Tunnel: `cloudflared` service in compose, runbook `docs/runbooks/cloudflare.md`, web app reachable only through the tunnel | Page opens at your domain after the email login; still nothing listens publicly on the server | yes |
+| 025 | Know who's who: read the `Cf-Access-Authenticated-User-Email` header, store requester and approver on each run, show them in the UI; refuse requests without it unless `AUTH_MODE=local` | Runs list shows who requested and approved each chart | yes |
+| 026 | Per-person daily cap (default 10 charts, `DAILY_CHART_CAP`) | The 11th Generate of the day shows a friendly "limit reached" | no |
+
+**You do these by hand before 024 (about 20 minutes, not agent work):**
+1. Buy a domain or move one to Cloudflare (free plan), so Cloudflare manages its DNS.
+2. In Cloudflare Zero Trust (free for up to 50 users): create a tunnel and copy its token into the
+   server's `.env` as `CLOUDFLARE_TUNNEL_TOKEN`.
+3. Add an Access application for the hostname (for example `charts.yourdomain.com`) with a policy
+   allowing exactly two emails: yours and your friend's. Login method: one-time PIN by email.
+
+### Phase 6: Your style
+| # | Task | Done when | Your approval? |
+| --- | --- | --- | --- |
+| 027 | Style profiles: per-person defaults (palette, font, caption tone, hashtags, signature), stored in Postgres, editable on a settings page, applied to the chart-spec and caption prompts | Two people get visibly different charts for the same topic | yes |
+| 028 | Per-post options on the home page: chart type, time range, countries, caption tone, free-text instructions | Options visibly change the chart; blank options fall back to the style profile | yes |
+
+### Phase 7: Refine before posting
+| # | Task | Done when | Your approval? |
+| --- | --- | --- | --- |
+| 029 | Refine loop: a `refine` signal with an instruction ("make it a bar chart") regenerates spec and caption, re-runs critique, and waits for review again (max 5 rounds); `just refine ID "..."` | Time-skipping test covers refine → refine → approve | yes |
+| 030 | Refine box on the run page, with the history of versions | Refining from the browser updates the preview | yes |
+| 031 | Topic matching: show the 5 closest OWID datasets for a typed topic and let you pick one | A vague topic leads to a pick list, not a failed run | yes |
+
 ## Running a task
 
 In Claude Code on the dev server, inside the repo:

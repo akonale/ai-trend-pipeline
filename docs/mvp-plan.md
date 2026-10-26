@@ -130,8 +130,8 @@ The web app is a thin layer over a service layer that the CLI also uses. Depende
 ### Phase 4: Share with a friend (Cloudflare)
 | # | Task | Done when | Your approval? |
 | --- | --- | --- | --- |
-| 025 | Cloudflare Tunnel: `cloudflared` service in compose, two hostnames (web app, Temporal UI), runbook `docs/runbooks/cloudflare.md`; both reachable only through the tunnel | Web app opens for both of you after the email login; Temporal UI opens for you only; nothing listens publicly on the server | yes |
-| 026 | Know who's who: `current_user` dependency reads the `Cf-Access-Authenticated-User-Email` header (or a fixed dev user when `AUTH_MODE=local`); requester and approver stored on each run and shown in the UI | Runs list shows who requested and approved each chart | yes |
+| 025 | Cloudflare Tunnel: `cloudflared` service in compose, two hostnames (web app, Temporal UI), runbook `docs/runbooks/cloudflare.md`; both reachable only through the tunnel | Web app opens for both of you after the email login; Temporal UI opens for you only; nothing listens publicly on the server | no |
+| 026 | Know who's who: `current_user` dependency reads the `Cf-Access-Authenticated-User-Email` header (or a fixed dev user when `AUTH_MODE=local`); requester and approver stored on each run and shown in the UI | Runs list shows who requested and approved each chart | no |
 | 027 | Per-person daily cap (default 10 charts, `DAILY_CHART_CAP`) | The 11th Generate of the day shows a friendly "limit reached" | no |
 
 **You do these by hand before 025 (about 20 minutes, not agent work):**
@@ -146,8 +146,8 @@ The web app is a thin layer over a service layer that the CLI also uses. Depende
 ### Phase 5: Your style
 | # | Task | Done when | Your approval? |
 | --- | --- | --- | --- |
-| 028 | Style profiles: per-person defaults (palette, font, caption tone, hashtags, signature), stored in Postgres, editable on a settings page, applied to the chart-spec and caption prompts | Two people get visibly different charts for the same topic | yes |
-| 029 | Per-post options on the home page: chart type, time range, countries, caption tone, free-text instructions | Options visibly change the chart; blank options fall back to the style profile | yes |
+| 028 | Style profiles: per-person defaults (palette, font, caption tone, hashtags, signature), stored in Postgres, editable on a settings page, applied to the chart-spec and caption prompts | Two people get visibly different charts for the same topic | no |
+| 029 | Per-post options on the home page: chart type, time range, countries, caption tone, free-text instructions | Options visibly change the chart; blank options fall back to the style profile | no |
 
 ### Phase 6: Refine before posting
 | # | Task | Done when | Your approval? |

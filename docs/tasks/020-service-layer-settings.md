@@ -1,6 +1,6 @@
 # 020: Service layer + settings
 
-Status: built
+Status: pr-open
 
 ## Goal
 
@@ -142,3 +142,9 @@ Odd: CLAUDE.md has no "Architecture rules" section. I followed mvp-plan "Web arc
 `test_hello`, `test_topic` and `test_bluesky` change, because their env-reading helpers now take `Settings`. Next: approval (orchestrator, task is `no`).
 **builder**: Implemented config.py, services/charts.py, services/temporal_gateway.py; thin cli; Settings passed into connect/topic/bluesky/worker/start_hello. `test_cli.py` untouched. Lint, pyright and full suite pass (126).
 Followed CLAUDE.md "Architecture rules". `bluesky.py` no longer exposes `DEFAULT_SERVICE` (nothing used it). Next: verifier.
+**verifier**: `just lint` passed (ruff check, ruff format, pyright 0 errors). `just test` passed (126 tests). All checks pass.
+Next: reviewer.
+**reviewer**: Approved. All acceptance criteria and architecture rules hold (env only in config.py, no upward imports, thin CLI, Settings passed in); test_cli.py untouched.
+Note: `bluesky.py` dropped the `DEFAULT_SERVICE` alias (spec said "may"), harmless. Next: scribe.
+**scribe**: README Configuration section checked, accurate, no change. Pushed branch and opened PR: https://github.com/akonale/ai-trend-pipeline/pull/22
+Next: human merges (task is `no`, orchestrator approves once CI is green).

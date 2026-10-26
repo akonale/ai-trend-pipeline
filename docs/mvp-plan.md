@@ -130,7 +130,7 @@ The web app is a thin layer over a service layer that the CLI also uses. Depende
 ### Phase 4: Foundations
 | # | Task | Done when | Your approval? |
 | --- | --- | --- | --- |
-| 020 | Service layer + settings: move start/show/decide out of `cli.py` into `services/charts.py`, add `config.py`; the CLI becomes a thin wrapper. No behaviour change | Existing CLI tests pass unchanged; new service tests use a fake Temporal handle | yes |
+| 020 | Service layer + settings: move start/show/decide out of `cli.py` into `services/charts.py`, add `config.py` and move every existing env var read into it (`cli.py`, `topic.py`, `temporal_client.py`, `bluesky.py`); the CLI becomes a thin wrapper. No behaviour change | Existing CLI tests pass unchanged; new service tests use a fake Temporal handle | yes |
 | 021 | Web app skeleton: FastAPI + Jinja + htmx per the architecture above, `create_app`, `just web` on `127.0.0.1:8000`, one health page | Page loads through the SSH tunnel; route test uses the FastAPI test client | yes |
 
 ### Phase 5: Web UI (local, through your SSH tunnel)

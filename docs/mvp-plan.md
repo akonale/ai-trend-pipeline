@@ -117,20 +117,20 @@ The web app is a thin layer over a service layer that the CLI also uses. Depende
 ### Phase 2: Foundations
 | # | Task | Done when | Your approval? |
 | --- | --- | --- | --- |
-| 020 | Service layer + settings: move start/show/decide out of `cli.py` into `services/charts.py`, add `config.py` and move every existing env var read into it (`cli.py`, `topic.py`, `temporal_client.py`, `bluesky.py`); the CLI becomes a thin wrapper. No behaviour change | Existing CLI tests pass unchanged; new service tests use a fake Temporal handle | yes |
-| 021 | Web app skeleton: FastAPI + Jinja + htmx per the architecture above, `create_app`, `just web` on `127.0.0.1:8000`, one health page | Page loads through the SSH tunnel; route test uses the FastAPI test client | yes |
+| 020 | Service layer + settings: move start/show/decide out of `cli.py` into `services/charts.py`, add `config.py` and move every existing env var read into it (`cli.py`, `topic.py`, `temporal_client.py`, `bluesky.py`); the CLI becomes a thin wrapper. No behaviour change | Existing CLI tests pass unchanged; new service tests use a fake Temporal handle | no |
+| 021 | Web app skeleton: FastAPI + Jinja + htmx per the architecture above, `create_app`, `just web` on `127.0.0.1:8000`, one health page | Page loads through the SSH tunnel; route test uses the FastAPI test client | noo |
 
 ### Phase 3: Web UI (local, through your SSH tunnel)
 | # | Task | Done when | Your approval? |
 | --- | --- | --- | --- |
 | 022 | Home page: topic box + Generate button starts a chart run via the service, then opens its run page | Clicking Generate starts a run visible in the Temporal UI | yes |
-| 023 | Run page: live status (htmx polling), PNG preview, caption, critique, Approve / Reject buttons, and a "View in Temporal" link (`TEMPORAL_UI_URL` setting + workflow id) | A chart goes from Generate to posted without the CLI; the link opens that run in the Temporal UI | yes |
+| 023 | Run page: live status (htmx polling), PNG preview, caption, critique, Approve / Reject buttons, and a "View in Temporal" link (`TEMPORAL_UI_URL` setting + workflow id) | A chart goes from Generate to posted without the CLI; the link opens that run in the Temporal UI | no |
 | 024 | Runs list on the home page: recent runs with topic, status, and link (service wraps the Temporal list API) | Both pending and finished runs show up | no |
 
 ### Phase 4: Share with a friend (Cloudflare)
 | # | Task | Done when | Your approval? |
 | --- | --- | --- | --- |
-| 025 | Cloudflare Tunnel: `cloudflared` service in compose, two hostnames (web app, Temporal UI), runbook `docs/runbooks/cloudflare.md`; both reachable only through the tunnel | Web app opens for both of you after the email login; Temporal UI opens for you only; nothing listens publicly on the server | no |
+| 025 | Cloudflare Tunnel: `cloudflared` service in compose, two hostnames (web app, Temporal UI), runbook `docs/runbooks/cloudflare.md`; both reachable only through the tunnel | Web app opens for both of you after the email login; Temporal UI opens for you only; nothing listens publicly on the server | yes |
 | 026 | Know who's who: `current_user` dependency reads the `Cf-Access-Authenticated-User-Email` header (or a fixed dev user when `AUTH_MODE=local`); requester and approver stored on each run and shown in the UI | Runs list shows who requested and approved each chart | no |
 | 027 | Per-person daily cap (default 10 charts, `DAILY_CHART_CAP`) | The 11th Generate of the day shows a friendly "limit reached" | no |
 

@@ -96,46 +96,79 @@ limit and "spec is wrong or unclear" still stop and ask you in every case.
 
 **Goal:** you and a friend open a web page, type any topic, click Generate, review the chart, and
 approve it, from any browser, behind a login that needs no auth code in the app.
-**Order:** user experience first, then Cloudflare for sharing, then your style, then refining.
-012–016 (schedule, feedback, deploy) resume after phase 7.
+**Order:** clean foundations, then user experience, then Cloudflare for sharing, then your style,
+then refining. 012–016 (schedule, feedback, deploy) resume after phase 8.
 
 **Where it runs for now:** the dev server, with `just dev` and `just web` each in their own tmux
 window. Production deploy (014) can host it later without changes.
 
-### Phase 4: Web UI (local, through your SSH tunnel)
+### Web architecture (rules for every Topic Studio task)
+
+The web app is a thin layer over a service layer that the CLI also uses. Dependencies point one way:
+
+```
+ web routes ─┐
+             ├──▶ services ──▶ Temporal client ──▶ workflows ──▶ activities
+ CLI ────────┘     (charts)                        (no web or service imports)
+```
+
+| Folder | Holds | Never does |
+| --- | --- | --- |
+| `src/ai_trend_pipeline/services/` | Use cases: start a chart, get its state, decide, refine, list runs. Plain async functions/classes taking Pydantic models | Read HTTP requests, render HTML, print |
+| `src/ai_trend_pipeline/web/app.py` | `create_app(settings)` factory: wires routes, templates, static files, dependencies | Business logic |
+| `src/ai_trend_pipeline/web/routes/` | One module per page (`home.py`, `runs.py`, ...). Parse input, call one service, render a template | Call Temporal or the LLM directly |
+| `src/ai_trend_pipeline/web/templates/` | Jinja templates; `partials/` for htmx fragments | Logic beyond loops and ifs |
+| `src/ai_trend_pipeline/web/view_models.py` | Pydantic models shaped for templates | I/O |
+| `src/ai_trend_pipeline/config.py` | One `Settings` model read from env vars, passed in, not imported as a global | Read env vars anywhere else |
+
+- Routes get services and settings through FastAPI dependencies, so tests swap in fakes. Route tests
+  never need Temporal running.
+- The signed-in user (task 026) is one dependency, `current_user`, used by every route that changes
+  something.
+- No JavaScript build step: htmx and a small CSS file, served from `web/static/`.
+
+### Phase 4: Foundations
 | # | Task | Done when | Your approval? |
 | --- | --- | --- | --- |
-| 020 | Web app skeleton: FastAPI + Jinja templates + htmx, `just web` on `127.0.0.1:8000`, one health page | Page loads through the SSH tunnel; test hits it with FastAPI's test client | no |
-| 021 | Home page: topic box + Generate button starts `DailyChartWorkflow` with that topic, then opens its run page | Clicking Generate starts a run visible in the Temporal UI | yes |
-| 022 | Run page: live status (htmx polling the `review_state` query), PNG preview, caption, critique, Approve / Reject buttons sending the `decide` signal | A chart can go from Generate to posted without the CLI | yes |
-| 023 | Runs list on the home page: recent runs with topic, status, and link (Temporal list API) | Both pending and finished runs show up | no |
+| 020 | Service layer + settings: move start/show/decide out of `cli.py` into `services/charts.py`, add `config.py`; the CLI becomes a thin wrapper. No behaviour change | Existing CLI tests pass unchanged; new service tests use a fake Temporal handle | yes |
+| 021 | Web app skeleton: FastAPI + Jinja + htmx per the architecture above, `create_app`, `just web` on `127.0.0.1:8000`, one health page | Page loads through the SSH tunnel; route test uses the FastAPI test client | yes |
 
-### Phase 5: Share with a friend (Cloudflare)
+### Phase 5: Web UI (local, through your SSH tunnel)
 | # | Task | Done when | Your approval? |
 | --- | --- | --- | --- |
-| 024 | Cloudflare Tunnel: `cloudflared` service in compose, runbook `docs/runbooks/cloudflare.md`, web app reachable only through the tunnel | Page opens at your domain after the email login; still nothing listens publicly on the server | yes |
-| 025 | Know who's who: read the `Cf-Access-Authenticated-User-Email` header, store requester and approver on each run, show them in the UI; refuse requests without it unless `AUTH_MODE=local` | Runs list shows who requested and approved each chart | yes |
-| 026 | Per-person daily cap (default 10 charts, `DAILY_CHART_CAP`) | The 11th Generate of the day shows a friendly "limit reached" | no |
+| 022 | Home page: topic box + Generate button starts a chart run via the service, then opens its run page | Clicking Generate starts a run visible in the Temporal UI | yes |
+| 023 | Run page: live status (htmx polling), PNG preview, caption, critique, Approve / Reject buttons, and a "View in Temporal" link (`TEMPORAL_UI_URL` setting + workflow id) | A chart goes from Generate to posted without the CLI; the link opens that run in the Temporal UI | yes |
+| 024 | Runs list on the home page: recent runs with topic, status, and link (service wraps the Temporal list API) | Both pending and finished runs show up | no |
 
-**You do these by hand before 024 (about 20 minutes, not agent work):**
+### Phase 6: Share with a friend (Cloudflare)
+| # | Task | Done when | Your approval? |
+| --- | --- | --- | --- |
+| 025 | Cloudflare Tunnel: `cloudflared` service in compose, two hostnames (web app, Temporal UI), runbook `docs/runbooks/cloudflare.md`; both reachable only through the tunnel | Web app opens for both of you after the email login; Temporal UI opens for you only; nothing listens publicly on the server | yes |
+| 026 | Know who's who: `current_user` dependency reads the `Cf-Access-Authenticated-User-Email` header (or a fixed dev user when `AUTH_MODE=local`); requester and approver stored on each run and shown in the UI | Runs list shows who requested and approved each chart | yes |
+| 027 | Per-person daily cap (default 10 charts, `DAILY_CHART_CAP`) | The 11th Generate of the day shows a friendly "limit reached" | no |
+
+**You do these by hand before 025 (about 20 minutes, not agent work):**
 1. Buy a domain or move one to Cloudflare (free plan), so Cloudflare manages its DNS.
 2. In Cloudflare Zero Trust (free for up to 50 users): create a tunnel and copy its token into the
    server's `.env` as `CLOUDFLARE_TUNNEL_TOKEN`.
-3. Add an Access application for the hostname (for example `charts.yourdomain.com`) with a policy
-   allowing exactly two emails: yours and your friend's. Login method: one-time PIN by email.
+3. Add two Access applications, both with login by one-time PIN:
+   - `charts.yourdomain.com`: allow your email and your friend's.
+   - `temporal.yourdomain.com`: allow **only your email**. The Temporal UI has no permissions of its
+     own, so anyone let in can cancel or reset workflows.
 
-### Phase 6: Your style
+### Phase 7: Your style
 | # | Task | Done when | Your approval? |
 | --- | --- | --- | --- |
-| 027 | Style profiles: per-person defaults (palette, font, caption tone, hashtags, signature), stored in Postgres, editable on a settings page, applied to the chart-spec and caption prompts | Two people get visibly different charts for the same topic | yes |
-| 028 | Per-post options on the home page: chart type, time range, countries, caption tone, free-text instructions | Options visibly change the chart; blank options fall back to the style profile | yes |
+| 028 | Style profiles: per-person defaults (palette, font, caption tone, hashtags, signature), stored in Postgres, editable on a settings page, applied to the chart-spec and caption prompts | Two people get visibly different charts for the same topic | yes |
+| 029 | Per-post options on the home page: chart type, time range, countries, caption tone, free-text instructions | Options visibly change the chart; blank options fall back to the style profile | yes |
 
-### Phase 7: Refine before posting
+### Phase 8: Refine before posting
 | # | Task | Done when | Your approval? |
 | --- | --- | --- | --- |
-| 029 | Refine loop: a `refine` signal with an instruction ("make it a bar chart") regenerates spec and caption, re-runs critique, and waits for review again (max 5 rounds); `just refine ID "..."` | Time-skipping test covers refine → refine → approve | yes |
-| 030 | Refine box on the run page, with the history of versions | Refining from the browser updates the preview | yes |
-| 031 | Topic matching: show the 5 closest OWID datasets for a typed topic and let you pick one | A vague topic leads to a pick list, not a failed run | yes |
+| 030 | Refine loop: a `refine` signal with an instruction ("make it a bar chart") regenerates spec and caption, re-runs critique, and waits for review again (max 5 rounds); `just refine ID "..."` | Time-skipping test covers refine → refine → approve | yes |
+| 031 | Refine box on the run page, with the history of versions | Refining from the browser updates the preview | yes |
+| 032 | Topic matching: show the 5 closest OWID datasets for a typed topic and let you pick one | A vague topic leads to a pick list, not a failed run | yes |
+| 033 | Friendly run timeline on the run page: plain-language steps with timings, read from the workflow history via the service | Your friend can follow a run without the Temporal UI | yes |
 
 ## Running a task
 

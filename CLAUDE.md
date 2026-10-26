@@ -34,6 +34,18 @@ Project rules for every agent (planner, builder, verifier, reviewer, scribe). Ke
 - Keep changes small and in scope. No speculative code for things that don't exist yet
   (deploy, Bluesky specifics).
 
+## Architecture rules
+
+- Layers point one way: `web/` and `cli.py` → `services/` → Temporal client → workflows → activities.
+  Workflows and activities never import from `services/` or `web/`.
+- `services/` holds the use cases (start, show, decide, refine, list). The CLI and web routes only
+  parse input, call one service, and render output.
+- Web routes never call Temporal or the LLM directly; they get services and settings through FastAPI
+  dependencies so tests can swap in fakes.
+- Templates hold no logic beyond loops and ifs. Shape data in `web/view_models.py` first.
+- Env vars are read only in `config.py` (one `Settings` model, passed in, not a global).
+- Details and folder layout: "Web architecture" in `docs/mvp-plan.md`.
+
 ## Temporal rules
 
 - No I/O, randomness, clock or LLM calls in workflow code. Do them in activities, or use
@@ -87,4 +99,5 @@ Tick off each item against `git diff main...HEAD`. Report only real problems.
 8. LLM and HTTP tests use fixtures under `tests/fixtures/`, with no live calls.
 9. No secrets, keys or real account details committed.
 10. `README.md` (and `CLAUDE.md` if a rule changed) updated when behaviour changed.
-11. `just lint` and `just test` still pass.
+11. Architecture rules hold: no layer imports upward, routes stay thin, env vars only in `config.py`.
+12. `just lint` and `just test` still pass.

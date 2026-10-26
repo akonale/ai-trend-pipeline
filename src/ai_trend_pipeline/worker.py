@@ -17,6 +17,7 @@ from ai_trend_pipeline.bluesky import (
     make_bluesky_client,
 )
 from ai_trend_pipeline.chart_spec import ChartSpecActivities
+from ai_trend_pipeline.config import Settings, load_settings
 from ai_trend_pipeline.critique import CritiqueActivities
 from ai_trend_pipeline.daily_chart import DAILY_CHART_TASK_QUEUE, DailyChartWorkflow
 from ai_trend_pipeline.hello import TASK_QUEUE, HelloWorkflow, say_hello
@@ -30,11 +31,11 @@ CONNECT_TIMEOUT_S = 30.0
 RETRY_DELAY_S = 1.0
 
 
-async def connect_with_retry() -> Client:
+async def connect_with_retry(settings: Settings) -> Client:
     deadline = time.monotonic() + CONNECT_TIMEOUT_S
     while True:
         try:
-            return await connect()
+            return await connect(settings)
         except RuntimeError:
             if time.monotonic() >= deadline:
                 raise
@@ -67,9 +68,10 @@ def daily_chart_activities(
 
 
 async def main() -> None:
-    client = await connect_with_retry()
-    anthropic_client = make_anthropic_client()
-    credentials = load_bluesky_credentials()
+    settings = load_settings()
+    client = await connect_with_retry(settings)
+    anthropic_client = make_anthropic_client(settings)
+    credentials = load_bluesky_credentials(settings)
     async with (
         make_hn_client() as hn_client,
         make_owid_client() as owid_client,

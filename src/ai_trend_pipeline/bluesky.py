@@ -1,7 +1,6 @@
 """Activity: post an approved chart to Bluesky over plain XRPC, exactly once per input."""
 
 import asyncio
-import os
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -12,8 +11,9 @@ from pydantic import BaseModel, Field, SecretStr, field_validator
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
+from ai_trend_pipeline.config import Settings
+
 MAX_IMAGE_BYTES = 1_000_000
-DEFAULT_SERVICE = "https://bsky.social"
 POST_COLLECTION = "app.bsky.feed.post"
 TID_ALPHABET = "234567abcdefghijklmnopqrstuvwxyz"
 TID_LENGTH = 13
@@ -47,14 +47,21 @@ class BlueskyCredentials(BaseModel):
     service: str
 
 
-def load_bluesky_credentials() -> BlueskyCredentials:
-    missing = [n for n in ("BLUESKY_HANDLE", "BLUESKY_APP_PASSWORD") if not os.environ.get(n)]
-    if missing:
+def load_bluesky_credentials(settings: Settings) -> BlueskyCredentials:
+    missing = [
+        name
+        for name, value in (
+            ("BLUESKY_HANDLE", settings.bluesky_handle),
+            ("BLUESKY_APP_PASSWORD", settings.bluesky_app_password),
+        )
+        if value is None
+    ]
+    if missing or settings.bluesky_handle is None or settings.bluesky_app_password is None:
         raise RuntimeError(f"Missing required environment variable(s): {', '.join(missing)}")
     return BlueskyCredentials(
-        handle=os.environ["BLUESKY_HANDLE"],
-        app_password=SecretStr(os.environ["BLUESKY_APP_PASSWORD"]),
-        service=os.environ.get("BLUESKY_SERVICE") or DEFAULT_SERVICE,
+        handle=settings.bluesky_handle,
+        app_password=settings.bluesky_app_password,
+        service=settings.bluesky_service,
     )
 
 

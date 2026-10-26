@@ -1,14 +1,10 @@
 """Temporal client helpers."""
 
-import os
-
 from temporalio.client import Client
 from temporalio.contrib.pydantic import pydantic_data_converter
 
-
-def temporal_address() -> str:
-    return os.environ.get("TEMPORAL_ADDRESS", "localhost:7233")
+from ai_trend_pipeline.config import Settings
 
 
-async def connect() -> Client:
-    return await Client.connect(temporal_address(), data_converter=pydantic_data_converter)
+async def connect(settings: Settings) -> Client:
+    return await Client.connect(settings.temporal_address, data_converter=pydantic_data_converter)

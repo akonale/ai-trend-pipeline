@@ -1,13 +1,12 @@
 """Activity that asks Claude to pick a chartable topic from HN stories."""
 
-import os
-
 import anthropic
 from anthropic.types import ToolParam, ToolUseBlock
 from pydantic import BaseModel, Field
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
+from ai_trend_pipeline.config import Settings
 from ai_trend_pipeline.hn import HNStory
 from ai_trend_pipeline.owid import CATALOG
 
@@ -35,11 +34,12 @@ class PickTopicOutput(BaseModel):
     reason: str = Field(min_length=1)
 
 
-def make_anthropic_client() -> anthropic.AsyncAnthropic:
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
+def make_anthropic_client(settings: Settings) -> anthropic.AsyncAnthropic:
+    if settings.anthropic_api_key is None:
         raise RuntimeError("ANTHROPIC_API_KEY environment variable is not set")
-    return anthropic.AsyncAnthropic(api_key=api_key, timeout=60.0)
+    return anthropic.AsyncAnthropic(
+        api_key=settings.anthropic_api_key.get_secret_value(), timeout=60.0
+    )
 
 
 def _format_stories(stories: list[HNStory]) -> str:

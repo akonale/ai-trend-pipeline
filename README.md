@@ -41,6 +41,11 @@ the UI port first: `ssh -L 8233:localhost:8233 <host>`.
 Every pull request and every push to `main` runs `just lint` and `just test` through
 `.github/workflows/ci.yml`. A PR is ready to merge only when the `check` job is green.
 
+## Configuration
+
+Environment variables are read only in `ai_trend_pipeline.config` (`load_settings()` returns a
+`Settings` model that is passed to the code that needs it).
+
 ## Hacker News
 
 `ai_trend_pipeline.hn` provides the `HNActivities.fetch_hn_top_stories` activity, which fetches

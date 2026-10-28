@@ -37,3 +37,6 @@ approve id:
 
 reject id:
     uv run python -m ai_trend_pipeline.cli reject {{id}}
+
+web:
+    uv run python -m ai_trend_pipeline.web

@@ -130,18 +130,27 @@ The web app is a thin layer over a service layer that the CLI also uses. Depende
 ### Phase 4: Share with a friend (Cloudflare)
 | # | Task | Done when | Your approval? |
 | --- | --- | --- | --- |
-| 025 | Cloudflare Tunnel: `cloudflared` service in compose, two hostnames (web app, Temporal UI), runbook `docs/runbooks/cloudflare.md`; both reachable only through the tunnel | Web app opens for both of you after the email login; Temporal UI opens for you only; nothing listens publicly on the server | yes |
+| 025 | Cloudflare Tunnel: `cloudflared` service in compose with `network_mode: host` (the web app runs on the host at `127.0.0.1:8000`), token from `CLOUDFLARE_TUNNEL_TOKEN`, pinned image version, two hostnames (web app, Temporal UI), runbook `docs/runbooks/cloudflare.md`; both reachable only through the tunnel | Web app opens for both of you after the email login; Temporal UI opens for you only; nothing listens publicly on the server | yes |
 | 026 | Know who's who: `current_user` dependency reads the `Cf-Access-Authenticated-User-Email` header (or a fixed dev user when `AUTH_MODE=local`); requester and approver stored on each run and shown in the UI | Runs list shows who requested and approved each chart | no |
 | 027 | Per-person daily cap (default 10 charts, `DAILY_CHART_CAP`) | The 11th Generate of the day shows a friendly "limit reached" | no |
 
-**You do these by hand before 025 (about 20 minutes, not agent work):**
-1. Buy a domain or move one to Cloudflare (free plan), so Cloudflare manages its DNS.
-2. In Cloudflare Zero Trust (free for up to 50 users): create a tunnel and copy its token into the
-   server's `.env` as `CLOUDFLARE_TUNNEL_TOKEN`.
-3. Add two Access applications, both with login by one-time PIN:
-   - `charts.yourdomain.com`: allow your email and your friend's.
-   - `temporal.yourdomain.com`: allow **only your email**. The Temporal UI has no permissions of its
-     own, so anyone let in can cancel or reset workflows.
+**You do these by hand before 025 (about 20 minutes, not agent work).** Order matters: create the
+Access applications (login rules) before the tunnel routes, so the pages are never public without a login.
+1. Get a domain on Cloudflare (free plan): buy one in Cloudflare Registrar, or add one you own and
+   switch its nameservers to Cloudflare.
+2. Open Zero Trust in the Cloudflare dashboard, pick a team name, and choose the Free plan.
+3. Check that **One-time PIN** is enabled as a login method (Settings → Authentication).
+4. Add two **self-hosted Access applications**, each with one Allow policy that includes emails:
+   - `charts.yourdomain.com`: your email and your friend's.
+   - `temporal.yourdomain.com`: **only your email**. The Temporal UI has no permissions of its own,
+     so anyone let in can cancel or reset workflows.
+5. Create a **tunnel** (Networks → Tunnels, type Cloudflared, environment Docker). Copy only the
+   token from the command it shows (don't run the command) into the server's `.env` as
+   `CLOUDFLARE_TUNNEL_TOKEN`.
+6. Add the tunnel's **public hostnames**:
+   - `charts.yourdomain.com` → `http://localhost:8000` (the web app from `just web`)
+   - `temporal.yourdomain.com` → `http://localhost:8233` (the Temporal UI)
+7. In `.env`, set `TEMPORAL_UI_URL=https://temporal.yourdomain.com` so the run page's link works remotely.
 
 ### Phase 5: Your style
 | # | Task | Done when | Your approval? |

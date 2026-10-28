@@ -1,6 +1,6 @@
 # 023: Run page with live status, preview, Approve / Reject and Temporal UI link
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -116,3 +116,7 @@ Decision form is two plain forms (hidden `approved` field), one per button. Miss
 
 **reviewer**: Approved. Diff matches spec and Files to touch; workflow change is one state assignment, no I/O added; services/routes/view model layering holds; README updated.
 Note: `RunView.critique_reasons: list[str] = []` is fine in Pydantic (copied per instance).
+
+**scribe**: Docs checked: README "Web app" already covers the run page and `TEMPORAL_UI_URL`, no change needed. Pushed `task/023-run-page`.
+PR: https://github.com/akonale/ai-trend-pipeline/pull/25
+Next: human reviews and merges PR #25 (task is `yes`).

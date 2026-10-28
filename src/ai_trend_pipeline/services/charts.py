@@ -3,6 +3,7 @@
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Protocol
+from uuid import uuid4
 
 from pydantic import BaseModel
 
@@ -18,6 +19,7 @@ from ai_trend_pipeline.daily_chart import (
 class StartChartRequest(BaseModel):
     wf_id: str | None = None
     topic: str | None = None
+    unique_id: bool = False
 
 
 class StartChartResult(BaseModel):
@@ -78,19 +80,31 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+def _new_suffix() -> str:
+    return uuid4().hex[:8]
+
+
 class ChartService:
     def __init__(
         self,
         gateway: ChartRunGateway,
         settings: Settings,
         now: Callable[[], datetime] = _utc_now,
+        new_suffix: Callable[[], str] = _new_suffix,
     ) -> None:
         self._gateway = gateway
         self._settings = settings
         self._now = now
+        self._new_suffix = new_suffix
 
     async def start(self, req: StartChartRequest) -> StartChartResult:
-        wf_id = req.wf_id or f"daily-chart-{self._now().date().isoformat()}"
+        date = self._now().date().isoformat()
+        if req.wf_id:
+            wf_id = req.wf_id
+        elif req.unique_id:
+            wf_id = f"chart-{date}-{self._new_suffix()}"
+        else:
+            wf_id = f"daily-chart-{date}"
         output_dir = self._settings.chart_output_dir
         if output_dir:
             data = DailyChartInput(output_dir=output_dir, topic=req.topic)

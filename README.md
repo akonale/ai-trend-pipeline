@@ -33,7 +33,9 @@ just hello   # terminal 2: run HelloWorkflow
 just down    # stop the stack
 ```
 
-Open http://localhost:8233 to see `hello-workflow` as Completed. On a remote dev server, tunnel
+Open http://localhost:8233 to see `hello-workflow` as Completed. Open `/`, type a topic and click Generate to start a run (needs `just dev` running).
+
+On a remote dev server, tunnel
 the UI port first: `ssh -L 8233:localhost:8233 <host>`.
 
 ## Web app

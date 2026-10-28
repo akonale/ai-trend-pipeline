@@ -135,3 +135,30 @@ async def test_decide_not_awaiting_raises_without_signal() -> None:
         await service.decide(DecideChartRequest(wf_id="a", approved=True))
     assert exc.value.status == "approved"
     assert gw.handles["a"].decisions == []
+
+
+@pytest.mark.asyncio
+async def test_unique_id_uses_suffix() -> None:
+    service = ChartService(
+        FakeGateway(), Settings(), now=lambda: NOW, new_suffix=lambda: "abc12345"
+    )
+    res = await service.start(StartChartRequest(topic="x", unique_id=True))
+    assert res.wf_id == "chart-2026-05-01-abc12345"
+
+
+@pytest.mark.asyncio
+async def test_unique_ids_differ() -> None:
+    counter = iter(range(10))
+    service = ChartService(
+        FakeGateway(), Settings(), now=lambda: NOW, new_suffix=lambda: f"s{next(counter)}"
+    )
+    a = await service.start(StartChartRequest(topic="x", unique_id=True))
+    b = await service.start(StartChartRequest(topic="x", unique_id=True))
+    assert a.wf_id != b.wf_id
+
+
+@pytest.mark.asyncio
+async def test_unique_id_keeps_explicit_wf_id() -> None:
+    service = ChartService(FakeGateway(), Settings(), now=lambda: NOW, new_suffix=lambda: "zzz")
+    res = await service.start(StartChartRequest(wf_id="mine", unique_id=True))
+    assert res.wf_id == "mine"

@@ -1,6 +1,6 @@
 # 025: Cloudflare Tunnel
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -211,3 +211,6 @@ All checks pass.
 **reviewer**: Approved. All criteria and listed tests present; no real domains/secrets; cloudflared has no ports, token has no default; `.env.prod` in .gitignore and .dockerignore; deploy uses `env -i` with `--env-file .env.prod`.
 Note 1: CLAUDE.md line 23 (`just deploy` row, from 034) still says `--env-file .env`; not in this spec's files, fix in a follow-up.
 Note 2: mvp-plan 034 acceptance-cell edit is consistent with the spec. Image tag `2024.12.2` unverified; confirm on first deploy.
+**scribe**: CLAUDE.md `just deploy` row fixed (env -i, `.env.prod`); README and both runbooks checked, consistent, no changes needed.
+PR opened: https://github.com/akonale/ai-trend-pipeline/pull/29 (not merged; human merges).
+Status set to pr-open. Next: human runs the live checklist in `docs/runbooks/cloudflare.md` after deploy and confirms image tag `2024.12.2`.

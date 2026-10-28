@@ -1,6 +1,6 @@
 # 027: Per-person daily cap
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -120,3 +120,6 @@ Next: reviewer checks the diff against `main` (checklist).
 
 **reviewer**: Approved. Cap check is in ChartService.start (UTC midnight, injectable clock); route stays thin (429, topic kept). Workflow/activities/CLI untouched; email is never put in the query (memo compared client-side). Config parses int() then Field(ge=1), no ignore added.
 Note: count_started_since scans all of the UTC day runs, fine at this scale.
+
+**scribe**: README and deploy runbook already had the DAILY_CHART_CAP notes (checked, not duplicated). Pushed branch and opened PR #34 (base main): https://github.com/akonale/ai-trend-pipeline/pull/34
+Next: human reviews and merges PR #34 (not merged by agent). After merge, prod needs `just deploy`.

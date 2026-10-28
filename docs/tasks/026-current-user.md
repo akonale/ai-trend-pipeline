@@ -1,6 +1,6 @@
 # 026: Know who's who (current user, requester and approver on each run)
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -121,3 +121,6 @@ One pyright ignore in config.py for the Literal from env (Pydantic validates it)
 
 **reviewer**: Approved. All criteria and listed tests present; workflow changes are model fields (all optional, default None) plus state assignments, no new imports or commands; cloudflare mode 401s on missing/blank header with no dev fallback; only the two POST routes use current_user; no real emails (example.com, dev@localhost only).
 Note: the `# pyright: ignore` in config.py is explained but could be dropped by validating via `Settings.model_validate`/a `cast`; optional.
+
+**scribe**: Docs already had the AUTH_MODE note in README.md and docs/runbooks/cloudflare.md, so no doc edits. Pushed task/026-current-user and opened PR #32 against main (body notes the header trust, prod AUTH_MODE=cloudflare, and that `just deploy` is needed after merge).
+PR: https://github.com/akonale/ai-trend-pipeline/pull/32 . Status set to pr-open. Next: human reviews and merges (not merged by agents).

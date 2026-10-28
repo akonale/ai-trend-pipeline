@@ -157,6 +157,11 @@ The web app is a thin layer over a service layer that the CLI also uses. Depende
 | 032 | Topic matching: show the 5 closest OWID datasets for a typed topic and let you pick one | A vague topic leads to a pick list, not a failed run | yes |
 | 033 | Friendly run timeline on the run page: plain-language steps with timings, read from the workflow history via the service | Your friend can follow a run without the Temporal UI | yes |
 
+### Phase 7: Production
+| # | Task | Done when | Your approval? |
+| --- | --- | --- | --- |
+| 034 | Run everything on the server with docker-compose: `Dockerfile` (uv), `infra/compose.prod.yaml` (postgres, temporal, worker, web; restart policy, volumes, nothing published beyond `127.0.0.1`), `just deploy` (`git pull --ff-only`, then compose up with `--env-file .env`), runbook `docs/runbooks/deploy.md`. Public access stays with 025 (Cloudflare Tunnel) | `docker compose -f infra/compose.prod.yaml --env-file .env up -d --build` starts the stack; a chart runs from Generate to posted through the SSH tunnel; secrets come from the server's `.env` | yes |
+
 ## Running a task
 
 In Claude Code on the dev server, inside the repo:

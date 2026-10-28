@@ -1,0 +1,75 @@
+# Production stack. Secrets come from the server's .env (pass --env-file .env from the repo root).
+x-app: &app
+  build:
+    context: ..
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  depends_on:
+    - temporal
+
+services:
+  postgres:
+    image: postgres:16.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  temporal:
+    image: temporalio/auto-setup:1.25.2
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: "5432"
+      POSTGRES_USER: postgres
+      POSTGRES_PWD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_SEEDS: postgres
+
+  temporal-ui:
+    image: temporalio/ui:2.31.2
+    restart: unless-stopped
+    depends_on:
+      - temporal
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+    ports:
+      - "127.0.0.1:8233:8080"
+
+  worker:
+    <<: *app
+    command: ["python", "-m", "ai_trend_pipeline.worker"]
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      CHART_OUTPUT_DIR: /data/charts
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      BLUESKY_HANDLE: ${BLUESKY_HANDLE}
+      BLUESKY_APP_PASSWORD: ${BLUESKY_APP_PASSWORD}
+    volumes:
+      - charts:/data/charts
+
+  web:
+    <<: *app
+    command: ["python", "-m", "ai_trend_pipeline.web"]
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      CHART_OUTPUT_DIR: /data/charts
+      WEB_HOST: 0.0.0.0
+    volumes:
+      - charts:/data/charts
+    ports:
+      - "127.0.0.1:8000:8000"
+
+volumes:
+  postgres-data:
+  charts:

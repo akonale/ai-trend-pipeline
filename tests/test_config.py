@@ -62,3 +62,8 @@ def test_reads_os_environ_at_call_time(monkeypatch: pytest.MonkeyPatch) -> None:
     assert load_settings().temporal_address == "localhost:7233"
     monkeypatch.setenv("TEMPORAL_ADDRESS", "example:1234")
     assert load_settings().temporal_address == "example:1234"
+
+
+def test_web_host_read_and_defaults() -> None:
+    assert load_settings({"WEB_HOST": "0.0.0.0"}).web_host == "0.0.0.0"
+    assert load_settings({}).web_host == "127.0.0.1"

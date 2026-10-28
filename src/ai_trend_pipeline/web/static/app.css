@@ -183,7 +183,7 @@ input::placeholder { color: var(--color-muted); opacity: 1; }
   border-color: var(--color-danger);
 }
 
-.chips { list-style: none; margin: var(--space-4) 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.chips { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .chip {
   display: inline-block;
   padding: var(--space-1) var(--space-3);
@@ -262,7 +262,7 @@ input::placeholder { color: var(--color-muted); opacity: 1; }
   color: var(--color-muted);
 }
 
-.card ul { padding-left: var(--space-5); margin: 0; }
+.card ul:not(.chips) { padding-left: var(--space-5); margin: 0; }
 
 /* Decisions */
 .decisions { display: flex; flex-wrap: wrap; gap: var(--space-3); }

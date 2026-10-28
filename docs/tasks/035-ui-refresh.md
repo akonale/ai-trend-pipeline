@@ -1,6 +1,6 @@
 # 035: UI refresh
 
-Status: built
+Status: verified
 
 ## Goal
 
@@ -175,3 +175,10 @@ Next: orchestrator approves (approval: no), then builder on `task/035-ui-refresh
 **builder**: Implemented tokens/themes CSS, templates, `TopicChip`/`build_home_view`/badge mapping, `GET /?topic=`; added `tests/test_web_ui.py`; `test_web.py` untouched, lint and 224 tests pass.
 Visual check NOT done: no Chromium/Playwright/node exists in this environment (none found on disk). Did a computed contrast check of token pairs instead (all >= 4.5:1 text, >= 3:1 borders/buttons, both themes). Orchestrator/human must eyeball 360/1280px, light/dark.
 Added unlisted tokens `--color-field-border` (input/chip border for 3:1) and `--color-chart-bg`. Next: verifier.
+
+**verifier**: `just lint` passed (ruff check, ruff format, pyright 0 errors). `just test` passed (224 tests).
+`git diff origin/main -- tests/test_web.py` is empty, so test_web.py is unchanged.
+All checks pass. Visual (360/1280px, light/dark) check is still open for the human.
+Next: reviewer.
+
+**builder** (fix 1): chips were hit by `.card ul` (padding-left, margin 0); scoped that rule to `ul:not(.chips)` and set chips margin-top to --space-3. Lint and tests pass; not re-screenshotted.

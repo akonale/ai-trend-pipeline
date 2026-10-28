@@ -1,6 +1,6 @@
 # 025: Cloudflare Tunnel
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -205,3 +205,9 @@ Files to touch and tests unchanged by this revision. Open flags: `env -i` in dep
 Next: human approves (approval: yes), then builder on `task/025-cloudflare-tunnel`.
 **builder**: Implemented per spec: cloudflared service (image pinned to `2024.12.2`, NOT pulled or verified against the registry), prod ports 18000/18233, `name: ai-trend-prod`, `.env.prod`, env -i deploy, runbooks, tests.
 Compose not run (static tests only). Open flags unchanged: `APP_URL` setting wanted? Next: verifier.
+**verifier**: `just lint` passed (ruff check, ruff format --check, pyright 0 errors).
+`just test` passed (184 passed).
+All checks pass.
+**reviewer**: Approved. All criteria and listed tests present; no real domains/secrets; cloudflared has no ports, token has no default; `.env.prod` in .gitignore and .dockerignore; deploy uses `env -i` with `--env-file .env.prod`.
+Note 1: CLAUDE.md line 23 (`just deploy` row, from 034) still says `--env-file .env`; not in this spec's files, fix in a follow-up.
+Note 2: mvp-plan 034 acceptance-cell edit is consistent with the spec. Image tag `2024.12.2` unverified; confirm on first deploy.

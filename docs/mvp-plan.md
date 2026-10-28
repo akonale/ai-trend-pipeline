@@ -144,10 +144,10 @@ Access applications (login rules) before the tunnel routes, so the pages are nev
    - `charts.yourdomain.com`: your email and your friend's.
    - `temporal.yourdomain.com`: **only your email**. The Temporal UI has no permissions of its own,
      so anyone let in can cancel or reset workflows.
-5. Create a **tunnel** (Networks → Tunnels, type Cloudflared, environment Docker). Copy only the
-   token from the command it shows (don't run the command) into the server's `.env` as
-   `CLOUDFLARE_TUNNEL_TOKEN`.
-6. Add the tunnel's **public hostnames**:
+5. Create a **tunnel** in the main Cloudflare dashboard (not Zero Trust): Networking → Tunnels →
+   Create a tunnel. Copy only the token (the `eyJ...` value after `--token` in the install command it
+   shows; don't run the command) into the server's `.env` as `CLOUDFLARE_TUNNEL_TOKEN`.
+6. On the tunnel's **Routes** tab, add two **published application** routes:
    - `charts.yourdomain.com` → `http://localhost:8000` (the web app from `just web`)
    - `temporal.yourdomain.com` → `http://localhost:8233` (the Temporal UI)
 7. In `.env`, set `TEMPORAL_UI_URL=https://temporal.yourdomain.com` so the run page's link works remotely.

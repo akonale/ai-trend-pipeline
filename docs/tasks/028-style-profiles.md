@@ -22,8 +22,9 @@ signature). Two people get visibly different charts for the same topic.
     (colour-blind safe) and `ink` (dark greys plus one accent).
   - `FONTS: dict[str, str]`, which maps a key to a Vega font stack: `sans` maps to
     `"Liberation Sans, Arial, Helvetica, sans-serif"`, `serif` to
-    `"Liberation Serif, Georgia, Times New Roman, serif"` and `mono` to
-    `"Liberation Mono, Courier New, monospace"`.
+    `"Liberation Serif, Georgia, Times New Roman, serif, Liberation Sans"` and `mono` to
+    `"Liberation Mono, Courier New, monospace, Liberation Sans"` (the trailing fallback keeps text
+    visible where no system font exists; the Dockerfile installs `fonts-liberation`).
   - `TONES: dict[str, str]`, which maps a key to a one-line instruction. The keys are `neutral`,
     `friendly`, `punchy` and `academic`, and every instruction says the caption stays factual.
   - `class ChartStyle(BaseModel)` (frozen). Its fields are `palette: str = "classic"`,
@@ -211,7 +212,7 @@ and note in the handoff whether serif and mono look different from sans. If one 
 
 - Per-post options on the home page, chart type, time range, countries or free-text instructions
   (029).
-- Custom hex palettes, uploaded fonts, or installing fonts in the Docker image.
+- Custom hex palettes or uploaded fonts.
 - Clickable Bluesky hashtag facets. Hashtags are posted as plain text.
 - Applying the style to `pick_topic` or the critique prompt, or changing the critique. Any change to
   `bluesky.py`, `render.py`, `worker.py`, `cli.py` or `compose.dev.yaml`.
@@ -240,3 +241,5 @@ Next: orchestrator sets `approved` (task is `no`), then builder on `task/028-sty
 **builder**: Built as specced; `just lint` and `just test` pass (273+ tests). Manual Postgres check (container `ai-trend-scratch-pg`, port 15432, removed): `ensure_schema` twice OK, table in `topic_studio`, save/get round trip and overwrite OK.
 Fonts: vl_convert bundles only Liberation Sans and the slim image has no system fonts, so the spec's serif and mono stacks rendered charts with NO text (title, axes). Deviation: serif and mono stacks now end with `, Liberation Sans` (text shows, but all three fonts look identical until fonts are installed). Decide whether to install fonts (out of scope here).
 Settings page: screenshots light/dark at 360 and 1280 px show no horizontal overflow; no CSS fixes needed. `get_chart_service` now needs the style store, so every run route needs Postgres (as specced).
+
+**builder (fix 1)**: Dockerfile now installs `fonts-liberation` (apt, no-recommends, lists removed). Throwaway build rendered sans/serif/mono PNGs with different sha256 (a4b477e43669, 8a394be82855, 7cd6d4a98d37) and they visibly differ; vl_convert picks up system fonts, so no code change. Scratch image removed.

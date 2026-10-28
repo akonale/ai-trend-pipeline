@@ -1,6 +1,6 @@
 # 021: Web app skeleton (FastAPI + Jinja + htmx, health page)
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -98,3 +98,7 @@ All checks pass.
 
 **reviewer**: Approved. All criteria and listed tests present; layering, lazy Temporal connect and no-env-var rules hold.
 Notes: `pyright: ignore[reportAny]` in `web/dependencies.py` lacks an explanatory comment (starlette untyped `app.state`); the ruff `extend-immutable-calls` change is outside the file list but justified.
+
+**scribe**: Docs already current (README "Web app" section, CLAUDE.md `just web` row); no doc edits needed.
+Pushed `task/021-web-skeleton`, opened PR #23: https://github.com/akonale/ai-trend-pipeline/pull/23
+Next: human reviews and merges PR #23.

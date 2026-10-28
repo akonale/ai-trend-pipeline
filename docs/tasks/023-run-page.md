@@ -1,6 +1,6 @@
 # 023: Run page with live status, preview, Approve / Reject and Temporal UI link
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -111,3 +111,8 @@ Next: orchestrator sets `approved` (task is `no`), then builder on `task/023-run
 **builder**: Implemented all spec items on `task/023-run-page`; tests written first, lint, pyright and full pytest pass.
 Old 022 run-page tests now assert the status label ("Drafting the chart") instead of the raw status string.
 Decision form is two plain forms (hidden `approved` field), one per button. Missing/blank `approved` is 400.
+
+**verifier**: Ran `just lint` (ruff check, ruff format --check, pyright: clean) and `just test` (169 passed). All checks pass. Next: reviewer.
+
+**reviewer**: Approved. Diff matches spec and Files to touch; workflow change is one state assignment, no I/O added; services/routes/view model layering holds; README updated.
+Note: `RunView.critique_reasons: list[str] = []` is fine in Pydantic (copied per instance).

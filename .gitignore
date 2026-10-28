@@ -221,3 +221,6 @@ __marimo__/
 
 # Rendered charts
 charts/
+
+.claude/settings.local.json
+.claude/worktrees/

@@ -24,11 +24,9 @@ from ai_trend_pipeline.web.dependencies import (
     get_settings,
     get_templates,
 )
-from ai_trend_pipeline.web.view_models import HomeView, build_run_view
+from ai_trend_pipeline.web.view_models import MAX_TOPIC_LENGTH, HomeView, build_run_view
 
 router = APIRouter()
-
-MAX_TOPIC_LENGTH = 200
 
 
 @router.post("/runs", response_model=None)

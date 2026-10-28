@@ -1,35 +1,52 @@
 # Deploy runbook
 
-Runs Postgres, Temporal, the Temporal UI, the worker and the web app on the server with
-`infra/compose.prod.yaml`. Run every command from the repo root: compose reads `.env` next to the
-compose file (`infra/`), so we always pass `--env-file .env`.
+Runs Postgres, Temporal, the Temporal UI, the worker, the web app and `cloudflared` on the server
+with `infra/compose.prod.yaml` (compose project `ai-trend-prod`). Run every command from the repo
+root and always pass `--env-file .env.prod`: compose would otherwise look for `.env` next to the
+compose file (`infra/`).
 
-## `.env` keys
+`.env.prod` is separate from the dev `.env`. Prod never reads `.env`. Public access through the
+Cloudflare Tunnel is covered in [cloudflare.md](cloudflare.md).
+
+## `.env.prod` keys
 
 - `POSTGRES_PASSWORD` (required; compose refuses to start without it)
+- `CLOUDFLARE_TUNNEL_TOKEN` (required; compose refuses to start without it)
+- `TEMPORAL_UI_URL` (optional; public Temporal UI URL, for example `https://temporal.example.com`)
 - `ANTHROPIC_API_KEY`
 - `BLUESKY_HANDLE`
 - `BLUESKY_APP_PASSWORD`
+- `APP_URL` (optional, documentation only; the web hostname, for example `app.example.com`)
 
-Never commit `.env`.
+Never commit `.env.prod`.
+
+## Shell environment warning
+
+Compose gives shell variables priority over `--env-file`. Do not run prod compose commands from a
+shell that has sourced the dev `.env`: its values would silently win. `just deploy` runs compose
+under `env -i PATH="$PATH" HOME="$HOME" ...` for this reason; do the same by hand:
+
+```sh
+env -i PATH="$PATH" HOME="$HOME" docker compose -f infra/compose.prod.yaml --env-file .env.prod <command>
+```
 
 ## First deploy
 
 ```sh
 git clone <repo> && cd ai-trend-pipeline
-cp /path/to/your/secrets .env   # or create it with the keys above
-docker compose -f infra/compose.prod.yaml --env-file .env up -d --build
+cp /path/to/your/secrets .env.prod   # or create it with the keys above
+env -i PATH="$PATH" HOME="$HOME" docker compose -f infra/compose.prod.yaml --env-file .env.prod up -d --build
 ```
 
 ## Reach the app (SSH tunnel)
 
-Nothing is public. Only `127.0.0.1:8000` (web) and `127.0.0.1:8233` (Temporal UI) are published.
+Nothing is public. Only `127.0.0.1:18000` (web) and `127.0.0.1:18233` (Temporal UI) are published.
 
 ```sh
-ssh -L 8000:127.0.0.1:8000 -L 8233:127.0.0.1:8233 <host>
+ssh -L 18000:127.0.0.1:18000 -L 18233:127.0.0.1:18233 <host>
 ```
 
-Then open http://localhost:8000 and http://localhost:8233.
+Then open http://localhost:18000 and http://localhost:18233.
 
 ## Update
 
@@ -40,17 +57,20 @@ just deploy   # git pull --ff-only, then compose up -d --build
 ## Logs
 
 ```sh
-docker compose -f infra/compose.prod.yaml --env-file .env logs -f worker web
+env -i PATH="$PATH" HOME="$HOME" docker compose -f infra/compose.prod.yaml --env-file .env.prod logs -f worker web cloudflared
 ```
 
 ## Stop
 
 ```sh
-docker compose -f infra/compose.prod.yaml --env-file .env down
+env -i PATH="$PATH" HOME="$HOME" docker compose -f infra/compose.prod.yaml --env-file .env.prod down
 ```
 
 Add `-v` only if you want to delete the database and charts.
 
-## Warning
+## Notes
 
-Do not run `just dev` while the prod stack is up: both bind port 8233 on the host.
+Dev and prod run side by side: they use different host ports and project names.
+
+The compose project is named `ai-trend-prod`. If a stack was ever started under the old default
+name `infra`, it can be removed with `docker compose -p infra down`.

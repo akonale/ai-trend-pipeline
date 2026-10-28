@@ -68,6 +68,26 @@ env -i PATH="$PATH" HOME="$HOME" docker compose -f infra/compose.prod.yaml --env
 
 Add `-v` only if you want to delete the database and charts.
 
+## Upgrading image tags
+
+- Confirm each new tag exists in the registry before editing the pinned tags.
+- If the stack holds data, bump one service group at a time (Postgres first) and deploy between steps.
+- Run `just deploy`, then check `ps` and the logs with the commands above.
+
+### Postgres collation version mismatch
+
+Symptom: after a Postgres bump on an existing data volume, Temporal crash-loops with
+`template database "template1" has a collation version mismatch`. The new image's OS library
+differs from the one the data was created with. Fix it once, inside the Postgres container.
+It only changes metadata, loses no data, and Temporal recovers through its restart policy:
+
+```sh
+docker exec ai-trend-prod-postgres-1 sh -c 'for d in template1 postgres; do psql -U "$POSTGRES_USER" -d postgres -c "ALTER DATABASE $d REFRESH COLLATION VERSION;"; done'
+```
+
+Any other database that reports a collation warning may need the same statement.
+A Postgres major-version bump (16 to 17 or 18) is different: it needs a dump and restore, not this.
+
 ## Notes
 
 Dev and prod run side by side: they use different host ports and project names.

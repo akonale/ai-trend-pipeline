@@ -1,6 +1,6 @@
 # 026: Know who's who (current user, requester and approver on each run)
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -116,3 +116,8 @@ Size fits one PR. Next: orchestrator sets `approved` (task is `no`), then builde
 
 **builder**: Implemented all spec items with tests first (config AUTH_MODE, current_user dep, workflow/service/view fields, template, compose, docs).
 One pyright ignore in config.py for the Literal from env (Pydantic validates it). just lint and just test pass (202 tests).
+
+**verifier**: Ran just lint (ruff check, ruff format --check, pyright strict: 0 errors) and just test (202 passed) on task/026-current-user. No failures. Next: reviewer checks the diff against the checklist.
+
+**reviewer**: Approved. All criteria and listed tests present; workflow changes are model fields (all optional, default None) plus state assignments, no new imports or commands; cloudflare mode 401s on missing/blank header with no dev fallback; only the two POST routes use current_user; no real emails (example.com, dev@localhost only).
+Note: the `# pyright: ignore` in config.py is explained but could be dropped by validating via `Settings.model_validate`/a `cast`; optional.

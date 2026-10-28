@@ -62,7 +62,9 @@ class FakeDailyActivities:
         critiques: list[ChartCritique] | None = None,
         owid_fails: bool = False,
         post_fails: bool = False,
+        post_gate: asyncio.Event | None = None,
     ):
+        self._post_gate = post_gate
         self._critiques = list(critiques or [PASS])
         self._owid_fails = owid_fails
         self._post_fails = post_fails
@@ -121,6 +123,8 @@ class FakeDailyActivities:
     async def post_chart_to_bluesky(self, data: PostChartInput) -> PostChartOutput:
         self.calls.append("post_chart_to_bluesky")
         self.post_inputs.append(data)
+        if self._post_gate is not None:
+            await self._post_gate.wait()
         if self._post_fails:
             raise ApplicationError("auth", type="BlueskyAuthFailed", non_retryable=True)
         return POST_OUT
@@ -335,6 +339,37 @@ async def test_post_failure_fails_workflow() -> None:
         await handle.signal(DailyChartWorkflow.decide, ApprovalDecision(approved=True))
         with pytest.raises(WorkflowFailureError):
             await handle.result()
+
+
+@pytest.mark.asyncio
+async def test_approve_goes_through_posting_then_approved() -> None:
+    gate = asyncio.Event()
+    fakes = FakeDailyActivities(post_gate=gate)
+    async with await start_env() as env, make_worker(env, fakes):
+        handle = await start_workflow(env)
+        await wait_for_state(handle, "awaiting_decision")
+        await handle.signal(DailyChartWorkflow.decide, ApprovalDecision(approved=True, note="go"))
+        state = await wait_for_state(handle, "posting")
+        assert state.review is not None
+        assert state.note == "go"
+        gate.set()
+        result = await handle.result()
+        final = await handle.query(DailyChartWorkflow.review_state)
+    assert result.status == "approved"
+    assert final.status == "approved"
+
+
+@pytest.mark.asyncio
+async def test_reject_never_posting() -> None:
+    fakes = FakeDailyActivities()
+    async with await start_env() as env, make_worker(env, fakes):
+        handle = await start_workflow(env)
+        await wait_for_state(handle, "awaiting_decision")
+        await handle.signal(DailyChartWorkflow.decide, ApprovalDecision(approved=False))
+        await handle.result()
+        state = await handle.query(DailyChartWorkflow.review_state)
+    assert state.status == "rejected"
+    assert fakes.post_inputs == []
 
 
 MANUAL_TOPIC = "Life expectancy"

@@ -52,7 +52,7 @@ class ApprovalDecision(BaseModel):
 
 
 class ReviewState(BaseModel):
-    status: Literal["drafting", "awaiting_decision", "approved", "rejected", "expired"]
+    status: Literal["drafting", "awaiting_decision", "posting", "approved", "rejected", "expired"]
     review: ReviewRequest | None = None
     note: str = ""
 
@@ -123,6 +123,7 @@ class DailyChartWorkflow:
         status: Literal["approved", "rejected"] = "approved" if decision.approved else "rejected"
         post: PostChartOutput | None = None
         if decision.approved:
+            self._state = ReviewState(status="posting", review=review, note=decision.note)
             post = await workflow.execute_activity_method(
                 BlueskyActivities.post_chart_to_bluesky,
                 PostChartInput(

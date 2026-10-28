@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Protocol
 from uuid import uuid4
 
@@ -57,6 +58,12 @@ class NotAwaitingDecision(ChartServiceError):
         super().__init__(f"cannot decide {wf_id}: status is {status}")
         self.wf_id = wf_id
         self.status = status
+
+
+class ChartImageNotFound(ChartServiceError):
+    def __init__(self, wf_id: str) -> None:
+        super().__init__(f"no chart image for {wf_id}")
+        self.wf_id = wf_id
 
 
 class ChartRunHandle(Protocol):
@@ -123,3 +130,22 @@ class ChartService:
             raise NotAwaitingDecision(req.wf_id, state.status)
         await handle.send_decision(ApprovalDecision(approved=req.approved, note=req.note))
         return await handle.result()
+
+    async def submit_decision(self, req: DecideChartRequest) -> None:
+        handle = self._gateway.handle(req.wf_id)
+        state = await handle.review_state()
+        if state.status != "awaiting_decision":
+            raise NotAwaitingDecision(req.wf_id, state.status)
+        await handle.send_decision(ApprovalDecision(approved=req.approved, note=req.note))
+
+    async def chart_image(self, ref: ChartRunRef) -> Path:
+        state = await self._gateway.handle(ref.wf_id).review_state()
+        if state.review is None:
+            raise ChartImageNotFound(ref.wf_id)
+        path = Path(state.review.png_path).resolve()
+        output_dir = Path(
+            self._settings.chart_output_dir or DailyChartInput.model_fields["output_dir"].default
+        ).resolve()
+        if not path.is_relative_to(output_dir) or not path.is_file():
+            raise ChartImageNotFound(ref.wf_id)
+        return path

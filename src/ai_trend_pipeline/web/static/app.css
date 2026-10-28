@@ -5,3 +5,5 @@ dd { margin: 0 0 0.5rem; }
 
 form input[name="topic"] { padding: 0.4rem; width: 20rem; max-width: 100%; }
 .error { color: #b00020; }
+.preview { max-width: 100%; height: auto; }
+.decision { display: inline-block; margin-right: 0.5rem; }

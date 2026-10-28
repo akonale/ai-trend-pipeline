@@ -63,10 +63,12 @@ PALETTES: dict[str, tuple[str, ...]] = {
     ),
 }
 
+# vl-convert bundles only Liberation Sans and the slim image has no system fonts. A stack with no
+# installed family renders no text at all, so serif and mono end with Liberation Sans.
 FONTS: dict[str, str] = {
     "sans": "Liberation Sans, Arial, Helvetica, sans-serif",
-    "serif": "Liberation Serif, Georgia, Times New Roman, serif",
-    "mono": "Liberation Mono, Courier New, monospace",
+    "serif": "Liberation Serif, Georgia, Times New Roman, serif, Liberation Sans",
+    "mono": "Liberation Mono, Courier New, monospace, Liberation Sans",
 }
 
 TONES: dict[str, str] = {

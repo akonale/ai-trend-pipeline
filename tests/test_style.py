@@ -38,6 +38,12 @@ def test_catalogue_entries_are_valid() -> None:
     assert FONTS["sans"] == "Liberation Sans, Arial, Helvetica, sans-serif"
 
 
+def test_every_font_stack_has_the_bundled_font() -> None:
+    # vl-convert only bundles Liberation Sans; without it a stack renders no text at all.
+    for stack in FONTS.values():
+        assert "Liberation Sans" in stack.split(", ")
+
+
 @pytest.mark.parametrize(
     "bad",
     [

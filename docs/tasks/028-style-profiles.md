@@ -1,6 +1,6 @@
 # 028: Style profiles
 
-Status: approved
+Status: built
 
 ## Goal
 
@@ -236,3 +236,7 @@ optional fields need no migration.
 Storage: psycopg 3 async (binary extra, no pool), table in schema `topic_studio` of the default `postgres` DB, created lazily once per process with IF NOT EXISTS. `DATABASE_URL` has a dev default, and prod compose builds it from `POSTGRES_PASSWORD` (key/value form, no new secret).
 `StyleStore` protocol and `StyleService` live in `services/`. `ChartService.start` resolves the style, and the CLI has no store. Routes use an in-memory fake. Builder does one manual check on a throwaway Postgres on port 15432.
 Next: orchestrator sets `approved` (task is `no`), then builder on `task/028-style-profiles`.
+
+**builder**: Built as specced; `just lint` and `just test` pass (273+ tests). Manual Postgres check (container `ai-trend-scratch-pg`, port 15432, removed): `ensure_schema` twice OK, table in `topic_studio`, save/get round trip and overwrite OK.
+Fonts: vl_convert bundles only Liberation Sans and the slim image has no system fonts, so the spec's serif and mono stacks rendered charts with NO text (title, axes). Deviation: serif and mono stacks now end with `, Liberation Sans` (text shows, but all three fonts look identical until fonts are installed). Decide whether to install fonts (out of scope here).
+Settings page: screenshots light/dark at 360 and 1280 px show no horizontal overflow; no CSS fixes needed. `get_chart_service` now needs the style store, so every run route needs Postgres (as specced).

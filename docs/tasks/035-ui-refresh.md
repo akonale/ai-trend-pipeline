@@ -1,6 +1,6 @@
 # 035: UI refresh
 
-Status: verified
+Status: reviewed
 
 ## Goal
 
@@ -182,3 +182,6 @@ All checks pass. Visual (360/1280px, light/dark) check is still open for the hum
 Next: reviewer.
 
 **builder** (fix 1): chips were hit by `.card ul` (padding-left, margin 0); scoped that rule to `ul:not(.chips)` and set chips margin-top to --space-3. Lint and tests pass; not re-screenshotted.
+
+**reviewer**: Approved. Checked diff vs spec and checklist: test_web.py untouched; templates only use if/for/output; badge and chips come from view_models.py; home route only passes `topic` to build_home_view; no @import/url()/http in CSS; viewport meta present; hx-trigger only under view.polling; no type-ignore/Any; workflows, services, config and CLI untouched.
+Note: `badge_for` returns a plain tuple, fine as an internal helper (not an activity/workflow I/O).

@@ -7,6 +7,7 @@ from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 from ai_trend_pipeline.owid import OwidRow, OwidTable
+from ai_trend_pipeline.style import ChartStyle, apply_style_to_spec, caption_suffix, style_prompt
 from ai_trend_pipeline.topic import DEFAULT_MODEL
 
 MAX_TOKENS = 4096
@@ -28,6 +29,7 @@ class WriteChartSpecInput(BaseModel):
     topic: str = Field(min_length=1)
     table: OwidTable
     feedback: list[str] = Field(default_factory=list)
+    style: ChartStyle | None = None
 
 
 class ChartDraft(BaseModel):
@@ -42,7 +44,13 @@ class ChartSpec(BaseModel):
     entities: list[str]
 
 
-def _format_request(topic: str, table: OwidTable, feedback: list[str]) -> str:
+def _caption_budget(suffix: str) -> int:
+    return MAX_CAPTION_CHARS - len(suffix) - 2 if suffix else MAX_CAPTION_CHARS
+
+
+def _format_request(
+    topic: str, table: OwidTable, feedback: list[str], style_block: str = ""
+) -> str:
     entities = list(dict.fromkeys(r.entity for r in table.rows))
     years = [r.year for r in table.rows]
     sample = "\n".join(f"{r.entity} | {r.year} | {r.value}" for r in table.rows[:SAMPLE_ROWS])
@@ -55,6 +63,8 @@ def _format_request(topic: str, table: OwidTable, feedback: list[str]) -> str:
         f"Row count: {len(table.rows)}\n"
         f"First {min(SAMPLE_ROWS, len(table.rows))} rows (entity | year | value):\n{sample}"
     )
+    if style_block:
+        text += f"\n{style_block}"
     if feedback:
         text += "\nA previous draft was rejected for these reasons:\n"
         text += "\n".join(f"- {reason}" for reason in feedback)
@@ -79,6 +89,10 @@ class ChartSpecActivities:
         table = data.table
         if not table.rows:
             raise _invalid("OWID table has no rows")
+        style = data.style
+        suffix = caption_suffix(style) if style else ""
+        budget = _caption_budget(suffix)
+        style_block = style_prompt(style, budget) if style else ""
         tool: ToolParam = {
             "name": TOOL_NAME,
             "description": "Report the chosen entities, the Vega-Lite spec and a caption.",
@@ -91,7 +105,10 @@ class ChartSpecActivities:
             tools=[tool],
             tool_choice={"type": "auto"},
             messages=[
-                {"role": "user", "content": _format_request(data.topic, table, data.feedback)}
+                {
+                    "role": "user",
+                    "content": _format_request(data.topic, table, data.feedback, style_block),
+                }
             ],
         )
         block = next(
@@ -106,6 +123,11 @@ class ChartSpecActivities:
             draft = ChartDraft.model_validate(block.input)
         except ValidationError as exc:
             raise _invalid(f"Invalid chart draft: {exc}") from exc
+        if len(draft.caption) > budget:
+            raise _invalid(
+                f"Caption is {len(draft.caption)} characters; the limit is {budget} "
+                "because hashtags and a signature are added."
+            )
         known = {r.entity for r in table.rows}
         unknown = [e for e in draft.entities if e not in known]
         if unknown:
@@ -114,4 +136,9 @@ class ChartSpecActivities:
         spec = {k: v for k, v in draft.vega_lite_spec.items() if k not in ("data", "datasets")}
         values = _row_values([r for r in table.rows if r.entity in chosen])
         spec["data"] = {"values": values}
-        return ChartSpec(vega_lite_spec=spec, caption=draft.caption, entities=draft.entities)
+        caption = draft.caption
+        if style:
+            spec = apply_style_to_spec(spec, style)
+            if suffix:
+                caption = f"{caption}\n\n{suffix}"
+        return ChartSpec(vega_lite_spec=spec, caption=caption, entities=draft.entities)

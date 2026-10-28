@@ -1,5 +1,7 @@
 """FastAPI dependencies for settings, templates and the chart service."""
 
+import asyncio
+
 from fastapi import Depends, HTTPException, Request
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -8,6 +10,8 @@ from temporalio.client import Client
 from ai_trend_pipeline import temporal_client
 from ai_trend_pipeline.config import Settings
 from ai_trend_pipeline.services.charts import ChartService
+from ai_trend_pipeline.services.postgres_style_store import PostgresStyleStore
+from ai_trend_pipeline.services.styles import StyleService, StyleStore
 from ai_trend_pipeline.services.temporal_gateway import TemporalChartRunGateway
 
 DEV_USER_EMAIL = "dev@localhost"
@@ -32,14 +36,39 @@ def get_templates(request: Request) -> Jinja2Templates:
     return templates
 
 
-async def get_chart_service(
+async def get_style_store(
     request: Request, settings: Settings = Depends(get_settings)
+) -> StyleStore:
+    """Build the Postgres store once per process; DDL runs under a lock on first use."""
+    cached = getattr(request.app.state, "style_store", None)
+    if isinstance(cached, PostgresStyleStore):
+        return cached
+    lock = request.app.state.style_store_lock  # pyright: ignore[reportAny]
+    if not isinstance(lock, asyncio.Lock):
+        raise RuntimeError("app.state.style_store_lock is not set")
+    async with lock:
+        cached = getattr(request.app.state, "style_store", None)
+        if not isinstance(cached, PostgresStyleStore):
+            cached = PostgresStyleStore(settings.database_url.get_secret_value())
+            await cached.ensure_schema()
+            request.app.state.style_store = cached
+    return cached
+
+
+async def get_style_service(store: StyleStore = Depends(get_style_store)) -> StyleService:
+    return StyleService(store)
+
+
+async def get_chart_service(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    styles: StyleStore = Depends(get_style_store),
 ) -> ChartService:
     client = getattr(request.app.state, "temporal_client", None)
     if not isinstance(client, Client):
         client = await temporal_client.connect(settings)
         request.app.state.temporal_client = client
-    return ChartService(TemporalChartRunGateway(client), settings)
+    return ChartService(TemporalChartRunGateway(client), settings, styles=styles)
 
 
 def current_user(request: Request, settings: Settings = Depends(get_settings)) -> CurrentUser:

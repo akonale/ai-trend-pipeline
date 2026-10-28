@@ -63,12 +63,18 @@ services:
   web:
     <<: *app
     command: ["python", "-m", "ai_trend_pipeline.web"]
+    depends_on:
+      temporal:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     environment:
       TEMPORAL_ADDRESS: temporal:7233
       CHART_OUTPUT_DIR: /data/charts
       WEB_HOST: 0.0.0.0
       AUTH_MODE: cloudflare
       DAILY_CHART_CAP: ${DAILY_CHART_CAP:-10}
+      DATABASE_URL: "host=postgres port=5432 dbname=postgres user=postgres password=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}"
       TEMPORAL_UI_URL: ${TEMPORAL_UI_URL:-http://localhost:18233}
     volumes:
       - charts:/data/charts

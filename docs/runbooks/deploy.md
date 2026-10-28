@@ -19,6 +19,9 @@ Cloudflare Tunnel is covered in [cloudflare.md](cloudflare.md).
 - `BLUESKY_APP_PASSWORD`
 - `APP_URL` (optional, documentation only; the web hostname, for example `app.example.com`)
 
+`DATABASE_URL` (style profiles) is assembled in compose from `POSTGRES_PASSWORD`, so it needs no new
+`.env.prod` key. It requires a password without spaces, quotes or backslashes.
+
 Never commit `.env.prod`.
 
 ## Shell environment warning

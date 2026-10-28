@@ -20,6 +20,14 @@ from ai_trend_pipeline.chart_spec import (
     WriteChartSpecInput,
 )
 from ai_trend_pipeline.owid import OwidRow, OwidTable
+from ai_trend_pipeline.render import RenderChartInput, render_chart_png
+from ai_trend_pipeline.style import (
+    FONTS,
+    PALETTES,
+    TONES,
+    ChartStyle,
+    caption_suffix,
+)
 from ai_trend_pipeline.topic import DEFAULT_MODEL
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -208,3 +216,90 @@ async def test_system_prompt_mentions_tool() -> None:
     for text in (system, SYSTEM_PROMPT):
         assert TOOL_NAME in text
         assert "calling" in text
+
+
+STYLE = ChartStyle(
+    palette="ocean", font="serif", tone="punchy", hashtags=["ai", "data"], signature="By Ash"
+)
+
+
+async def _run_styled(
+    style: ChartStyle | None,
+    requests: list[dict[str, object]] | None = None,
+    body: dict[str, object] | None = None,
+) -> ChartSpec:
+    activities = ChartSpecActivities(make_client(requests=requests, body=body))
+    return await ActivityEnvironment().run(
+        activities.write_chart_spec,
+        WriteChartSpecInput(topic=TOPIC, table=make_table(), style=style),
+    )
+
+
+@pytest.mark.asyncio
+async def test_style_goes_into_prompt_spec_and_caption() -> None:
+    requests: list[dict[str, object]] = []
+    result = await _run_styled(STYLE, requests)
+    suffix = caption_suffix(STYLE)
+    budget = 280 - len(suffix) - 2
+    messages = cast(list[dict[str, object]], requests[0]["messages"])
+    content = cast(str, messages[0]["content"])
+    assert TONES["punchy"] in content
+    assert f"at most {budget} characters" in content
+    assert requests[0]["system"] == SYSTEM_PROMPT
+    config = cast(dict[str, object], result.vega_lite_spec["config"])
+    assert cast(dict[str, object], config["range"])["category"] == list(PALETTES["ocean"])
+    assert cast(dict[str, object], config["mark"])["color"] == PALETTES["ocean"][0]
+    assert config["font"] == FONTS["serif"]
+    draft_caption = cast(str, _draft_input(_fixture(FIXTURE))["caption"])
+    assert result.caption == f"{draft_caption}\n\n{suffix}"
+    assert result.caption.endswith("#ai #data\n\nBy Ash")
+
+
+@pytest.mark.asyncio
+async def test_no_style_is_unchanged() -> None:
+    requests: list[dict[str, object]] = []
+    result = await _run_styled(None, requests)
+    messages = cast(list[dict[str, object]], requests[0]["messages"])
+    content = cast(str, messages[0]["content"])
+    assert "Style" not in content
+    assert content.endswith("Japan | 2002 | 82.0")
+    assert "config" not in result.vega_lite_spec
+    assert result.caption == _draft_input(_fixture(FIXTURE))["caption"]
+
+
+@pytest.mark.asyncio
+async def test_default_style_without_suffix_keeps_caption() -> None:
+    result = await _run_styled(ChartStyle())
+    assert result.caption == _draft_input(_fixture(FIXTURE))["caption"]
+    assert "config" in result.vega_lite_spec
+
+
+@pytest.mark.asyncio
+async def test_caption_over_budget_is_non_retryable() -> None:
+    body = _modified(caption="x" * 270)
+    with pytest.raises(ApplicationError) as exc:
+        await _run_styled(STYLE, body=body)
+    assert exc.value.type == INVALID_DRAFT_ERROR_TYPE
+    assert exc.value.non_retryable is True
+    assert (await _run_styled(None, body=body)).caption == "x" * 270
+
+
+@pytest.mark.asyncio
+async def test_two_styles_look_different(tmp_path: Path) -> None:
+    other = ChartStyle(palette="sunset", font="mono", hashtags=["x"])
+    first, second = await _run_styled(STYLE), await _run_styled(other)
+    c1 = cast(dict[str, dict[str, object]], first.vega_lite_spec["config"])
+    c2 = cast(dict[str, dict[str, object]], second.vega_lite_spec["config"])
+    assert c1["range"]["category"] != c2["range"]["category"]
+    assert c1["font"] != c2["font"]
+    assert first.caption != second.caption
+    shas: list[str] = []
+    for i, result in enumerate((first, second)):
+        out = await ActivityEnvironment().run(
+            render_chart_png,
+            RenderChartInput(
+                vega_lite_spec=result.vega_lite_spec, output_dir=str(tmp_path / str(i))
+            ),
+        )
+        shas.append(out.spec_sha256)
+    assert shas[0] != shas[1]

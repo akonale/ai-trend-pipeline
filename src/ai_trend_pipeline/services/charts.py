@@ -15,6 +15,7 @@ from ai_trend_pipeline.daily_chart import (
     DailyChartResult,
     ReviewState,
 )
+from ai_trend_pipeline.services.styles import StyleStore
 
 
 class StartChartRequest(BaseModel):
@@ -108,7 +109,9 @@ class ChartService:
         settings: Settings,
         now: Callable[[], datetime] = _utc_now,
         new_suffix: Callable[[], str] = _new_suffix,
+        styles: StyleStore | None = None,
     ) -> None:
+        self._styles = styles
         self._gateway = gateway
         self._settings = settings
         self._now = now
@@ -128,13 +131,16 @@ class ChartService:
             wf_id = f"chart-{date}-{self._new_suffix()}"
         else:
             wf_id = f"daily-chart-{date}"
+        style = None
+        if req.requested_by and self._styles is not None:
+            style = await self._styles.get(req.requested_by)
         output_dir = self._settings.chart_output_dir
         if output_dir:
             data = DailyChartInput(
-                output_dir=output_dir, topic=req.topic, requested_by=req.requested_by
+                output_dir=output_dir, topic=req.topic, requested_by=req.requested_by, style=style
             )
         else:
-            data = DailyChartInput(topic=req.topic, requested_by=req.requested_by)
+            data = DailyChartInput(topic=req.topic, requested_by=req.requested_by, style=style)
         await self._gateway.start(wf_id, data)
         return StartChartResult(wf_id=wf_id)
 

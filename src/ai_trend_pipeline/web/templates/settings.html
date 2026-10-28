@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Your style - Topic Studio{% endblock %}
+{% block content %}
+<h1>Your style</h1>
+<p class="meta">Signed in as {{ view.email }}</p>
+{% if view.saved %}<p class="notice" role="status">Saved. Your next chart will use this style.</p>{% endif %}
+{% if view.error %}<p class="error" role="alert">{{ view.error }}</p>{% endif %}
+<section class="card">
+  <form class="settings-form" method="post" action="/settings">
+    <fieldset>
+      <legend>Palette</legend>
+      <div class="swatches">
+        {% for p in view.palettes %}<label class="swatch">
+          <input type="radio" name="palette" value="{{ p.key }}"{% if p.checked %} checked{% endif %}>
+          <span class="swatch-colors" aria-hidden="true">{% for c in p.colors %}<i style="background: {{ c }}"></i>{% endfor %}</span>
+          <span class="swatch-name">{{ p.key }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <label for="font">Font</label>
+    <select id="font" name="font">
+      {% for o in view.fonts %}<option value="{{ o.key }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>
+      {% endfor %}
+    </select>
+    <label for="tone">Caption tone</label>
+    <select id="tone" name="tone">
+      {% for o in view.tones %}<option value="{{ o.key }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>
+      {% endfor %}
+    </select>
+    <label for="hashtags">Hashtags</label>
+    <input type="text" id="hashtags" name="hashtags" value="{{ view.hashtags }}" aria-describedby="hashtags-help">
+    <p class="meta" id="hashtags-help">Up to 3, separated by spaces or commas.</p>
+    <label for="signature">Signature</label>
+    <input type="text" id="signature" name="signature" maxlength="{{ view.max_signature }}" value="{{ view.signature }}">
+    <button type="submit" class="btn btn--primary">Save style</button>
+  </form>
+</section>
+{% endblock %}

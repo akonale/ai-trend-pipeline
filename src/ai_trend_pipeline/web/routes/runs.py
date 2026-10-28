@@ -18,6 +18,7 @@ from ai_trend_pipeline.services.charts import (
     RunNotFound,
     StartChartRequest,
 )
+from ai_trend_pipeline.services.styles import StyleStoreUnavailable
 from ai_trend_pipeline.web.dependencies import (
     CurrentUser,
     current_user,
@@ -25,7 +26,12 @@ from ai_trend_pipeline.web.dependencies import (
     get_settings,
     get_templates,
 )
-from ai_trend_pipeline.web.view_models import MAX_TOPIC_LENGTH, HomeView, build_run_view
+from ai_trend_pipeline.web.view_models import (
+    MAX_TOPIC_LENGTH,
+    STYLE_UNAVAILABLE_ERROR,
+    HomeView,
+    build_run_view,
+)
 
 router = APIRouter()
 
@@ -54,6 +60,9 @@ async def create_run(
     except RunAlreadyExists as exc:
         view = HomeView(error=f"Error: {exc}", topic=topic)
         return templates.TemplateResponse(request, "home.html", {"view": view}, status_code=409)
+    except StyleStoreUnavailable:
+        view = HomeView(error=STYLE_UNAVAILABLE_ERROR, topic=topic)
+        return templates.TemplateResponse(request, "home.html", {"view": view}, status_code=503)
     return RedirectResponse(f"/runs/{result.wf_id}", status_code=303)
 
 

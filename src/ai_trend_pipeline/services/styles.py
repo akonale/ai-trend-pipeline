@@ -5,6 +5,10 @@ from typing import Protocol
 from ai_trend_pipeline.style import ChartStyle
 
 
+class StyleStoreUnavailable(Exception):
+    """The style store could not be reached; callers show a friendly retry message."""
+
+
 class StyleStore(Protocol):
     async def get(self, email: str) -> ChartStyle | None: ...
 

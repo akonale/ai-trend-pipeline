@@ -1,6 +1,5 @@
 """Application factory."""
 
-import asyncio
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -18,7 +17,6 @@ def create_app(settings: Settings) -> FastAPI:
     app = FastAPI(title="Topic Studio")
     app.state.settings = settings
     app.state.templates = Jinja2Templates(directory=WEB_DIR / "templates")
-    app.state.style_store_lock = asyncio.Lock()
     app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
     app.include_router(health.router)
     app.include_router(home.router)

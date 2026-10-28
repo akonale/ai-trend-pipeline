@@ -5,7 +5,7 @@ from typing import Literal
 from fastapi.testclient import TestClient
 
 from ai_trend_pipeline.config import Settings
-from ai_trend_pipeline.services.styles import StyleService
+from ai_trend_pipeline.services.styles import StyleService, StyleStoreUnavailable
 from ai_trend_pipeline.style import ChartStyle
 from ai_trend_pipeline.web.app import create_app
 from ai_trend_pipeline.web.dependencies import DEV_USER_EMAIL, get_style_service
@@ -116,3 +116,37 @@ def test_cloudflare_users_see_their_own_style() -> None:
     ta, tb = client.get("/settings", headers=a).text, client.get("/settings", headers=b).text
     assert "a@x.com" in ta and 'value="ocean" checked' in ta and 'value="By Ash"' in ta
     assert "b@x.com" in tb and 'value="sunset" checked' in tb and 'value="Bee"' in tb
+
+
+class BrokenStore:
+    """Raises on ANY call, to prove a route never touches the store."""
+
+    def __init__(self, exc: Exception | None = None) -> None:
+        self.exc = exc or AssertionError("store must not be used")
+
+    async def get(self, email: str) -> ChartStyle | None:
+        raise self.exc
+
+    async def save(self, email: str, style: ChartStyle) -> None:
+        raise self.exc
+
+
+def test_unavailable_store_gives_friendly_503_on_settings() -> None:
+    store = BrokenStore(StyleStoreUnavailable())
+    client = make_client(store)  # pyright: ignore[reportArgumentType]  # structural fake
+    res = client.get("/settings")
+    assert res.status_code == 503
+    assert 'role="alert"' in res.text
+    assert "load your style settings right now. Please try again in a moment." in res.text
+    res = client.post("/settings", data=FORM)
+    assert res.status_code == 503
+    assert "load your style settings right now. Please try again in a moment." in res.text
+    assert 'value="By Ash"' in res.text
+
+
+def test_signature_with_control_character_is_400() -> None:
+    store = InMemoryStyleStore()
+    res = make_client(store).post("/settings", data={**FORM, "signature": "a\x07b"})
+    assert res.status_code == 400
+    assert "Signature" in res.text
+    assert store.styles == {}

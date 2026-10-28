@@ -1,7 +1,5 @@
 """FastAPI dependencies for settings, templates and the chart service."""
 
-import asyncio
-
 from fastapi import Depends, HTTPException, Request
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -39,19 +37,11 @@ def get_templates(request: Request) -> Jinja2Templates:
 async def get_style_store(
     request: Request, settings: Settings = Depends(get_settings)
 ) -> StyleStore:
-    """Build the Postgres store once per process; DDL runs under a lock on first use."""
+    """Build the store once per process. It connects lazily, so this does no I/O."""
     cached = getattr(request.app.state, "style_store", None)
-    if isinstance(cached, PostgresStyleStore):
-        return cached
-    lock = request.app.state.style_store_lock  # pyright: ignore[reportAny]
-    if not isinstance(lock, asyncio.Lock):
-        raise RuntimeError("app.state.style_store_lock is not set")
-    async with lock:
-        cached = getattr(request.app.state, "style_store", None)
-        if not isinstance(cached, PostgresStyleStore):
-            cached = PostgresStyleStore(settings.database_url.get_secret_value())
-            await cached.ensure_schema()
-            request.app.state.style_store = cached
+    if not isinstance(cached, PostgresStyleStore):
+        cached = PostgresStyleStore(settings.database_url.get_secret_value())
+        request.app.state.style_store = cached
     return cached
 
 

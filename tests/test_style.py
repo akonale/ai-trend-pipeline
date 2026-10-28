@@ -55,6 +55,8 @@ def test_every_font_stack_has_the_bundled_font() -> None:
         {"hashtags": ["x" * 25]},
         {"signature": "x" * 41},
         {"signature": "a\nb"},
+        {"signature": "a\x00b"},
+        {"signature": "a\u202eb"},
     ],
 )
 def test_invalid_styles_raise(bad: dict[str, object]) -> None:

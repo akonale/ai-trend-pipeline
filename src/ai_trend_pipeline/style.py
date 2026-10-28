@@ -123,8 +123,8 @@ class ChartStyle(BaseModel):
     @classmethod
     def _signature(cls, value: str) -> str:
         value = value.strip()
-        if "\n" in value or "\r" in value:
-            raise ValueError("signature must be a single line")
+        if not value.isprintable():
+            raise ValueError("signature must be one line of printable characters")
         if len(value) > MAX_SIGNATURE_CHARS:
             raise ValueError(f"signature must be at most {MAX_SIGNATURE_CHARS} characters")
         return value

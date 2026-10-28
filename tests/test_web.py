@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
+import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
@@ -23,9 +24,12 @@ from ai_trend_pipeline.services.charts import (
     RunAlreadyExists,
     RunNotFound,
 )
+from ai_trend_pipeline.services.styles import StyleStoreUnavailable
+from ai_trend_pipeline.web import dependencies
 from ai_trend_pipeline.web.app import create_app
-from ai_trend_pipeline.web.dependencies import get_chart_service, get_settings
+from ai_trend_pipeline.web.dependencies import get_chart_service, get_settings, get_style_store
 from ai_trend_pipeline.web.view_models import RunView, build_run_view
+from tests.test_web_settings import BrokenStore
 
 ADDRESS = "temporal.example:7233"
 
@@ -547,3 +551,60 @@ def test_blank_topic_and_missing_header_do_not_count() -> None:
     res = auth_client(gateway, "cloudflare").post("/runs", data={"topic": "abc"})
     assert res.status_code == 401
     assert gateway.count_calls == 0
+
+
+def lazy_store_client(
+    monkeypatch: pytest.MonkeyPatch, gateway: RecGateway, store: object
+) -> TestClient:
+    """Real get_chart_service with a fake gateway and a store that fails on any use."""
+
+    async def fake_connect(settings: Settings) -> object:
+        return object()
+
+    def make_gateway(client: object) -> RecGateway:
+        return gateway
+
+    monkeypatch.setattr(dependencies.temporal_client, "connect", fake_connect)
+    monkeypatch.setattr(dependencies, "TemporalChartRunGateway", make_gateway)
+    app = make_app()
+    app.dependency_overrides[get_style_store] = lambda: store
+    return TestClient(app)
+
+
+def test_read_routes_never_touch_the_style_store(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    png = tmp_path / "c.png"
+    png.write_bytes(b"png")
+    review = ReviewRequest(
+        topic="T",
+        topic_reason="r",
+        caption="c",
+        png_path=str(png),
+        spec_sha256="0" * 64,
+        critique=ChartCritique(passed=True),
+        attempts=1,
+    )
+    gateway = RecGateway(ReviewState(status="awaiting_decision", review=review))
+    client = lazy_store_client(monkeypatch, gateway, BrokenStore())
+    monkeypatch.chdir(tmp_path)
+    assert client.get("/").status_code == 200
+    assert client.get("/health").status_code == 200
+    assert client.get("/runs/wf-1").status_code == 200
+    assert client.get("/runs/wf-1/status").status_code == 200
+    assert client.get("/runs/wf-1/chart.png").status_code in (200, 404)
+    res = client.post("/runs/wf-1/decision", data={"approved": "true"}, follow_redirects=False)
+    assert res.status_code == 303
+
+
+def test_post_runs_style_lookup_failure_is_503_and_starts_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gateway = RecGateway()
+    client = lazy_store_client(monkeypatch, gateway, BrokenStore(StyleStoreUnavailable()))
+    res = client.post("/runs", data={"topic": "Life expectancy"})
+    assert res.status_code == 503
+    assert "load your style settings right now. Please try again in a moment." in res.text
+    assert 'role="alert"' in res.text
+    assert 'value="Life expectancy"' in res.text
+    assert gateway.started == []

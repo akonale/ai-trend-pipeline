@@ -21,6 +21,9 @@ class HealthView(BaseModel):
 
 
 MAX_TOPIC_LENGTH = 200
+STYLE_UNAVAILABLE_ERROR = (
+    "We couldn't load your style settings right now. Please try again in a moment."
+)
 
 EXAMPLE_TOPICS = ["Life expectancy", "CO2 emissions", "Internet users", "Renewable energy"]
 
@@ -191,5 +194,7 @@ def style_error_message(exc: ValidationError) -> str:
             f"Hashtags: use at most {MAX_HASHTAGS}, each 1 to 24 letters, digits or underscores."
         )
     if "signature" in fields:
-        parts.append(f"Signature: use at most {MAX_SIGNATURE_CHARS} characters on a single line.")
+        parts.append(
+            f"Signature: use at most {MAX_SIGNATURE_CHARS} printable characters on a single line."
+        )
     return " ".join(parts) or "Check your style and try again."

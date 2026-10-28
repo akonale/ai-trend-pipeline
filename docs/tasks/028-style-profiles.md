@@ -1,6 +1,6 @@
 # 028: Style profiles
 
-Status: built
+Status: needs-fix
 
 ## Goal
 
@@ -68,11 +68,13 @@ signature). Two people get visibly different charts for the same topic.
   no apt packages. Two people generate a handful of requests a day, so one short connection per call
   (`await psycopg.AsyncConnection.connect(url)`) is enough. That avoids `psycopg_pool` and its
   open/close lifecycle. Run `uv add "psycopg[binary]"`.
-- **Schema creation happens once per process, lazily, like the Temporal client.**
-  `get_style_store` builds the `PostgresStyleStore`, awaits `ensure_schema()` and only then caches it
-  on `app.state.style_store`. An `asyncio.Lock` created in `create_app` guards this, so two first
-  requests do not race the DDL. There is no lifespan hook, so route tests that use fakes never touch
-  Postgres.
+- **Schema creation happens once per process, lazily, on first real use.**
+  `get_style_store` builds and caches `PostgresStyleStore` on `app.state.style_store` without any I/O.
+  The store's own `get`/`save` run `ensure_schema()` once under an `asyncio.Lock`; a failure is not
+  cached and is retried on the next call, and driver errors become `StyleStoreUnavailable`. Routes
+  that do not read or write styles (run page, PNG, decide, health, home) never touch Postgres. A
+  failed lookup on `POST /runs` re-renders the home page with a friendly 503 and starts no run;
+  `/settings` shows the same message with 503. A signature must be `str.isprintable()`.
 - **Connection string: one setting, no new secret.** `Settings.database_url: SecretStr`, read from
   `DATABASE_URL` in `config.py`. When unset or empty it defaults to
   `postgresql://postgres:postgres@localhost:5432/postgres`, the dev credentials and port from
@@ -243,3 +245,13 @@ Fonts: vl_convert bundles only Liberation Sans and the slim image has no system 
 Settings page: screenshots light/dark at 360 and 1280 px show no horizontal overflow; no CSS fixes needed. `get_chart_service` now needs the style store, so every run route needs Postgres (as specced).
 
 **builder (fix 1)**: Dockerfile now installs `fonts-liberation` (apt, no-recommends, lists removed). Throwaway build rendered sans/serif/mono PNGs with different sha256 (a4b477e43669, 8a394be82855, 7cd6d4a98d37) and they visibly differ; vl_convert picks up system fonts, so no code change. Scratch image removed.
+
+**verifier**: `just lint` passes (ruff check and format, pyright 0 errors). `just test` passes (274 passed). No ai-trend-scratch containers or images left. ai-trend-prod containers still up and untouched. Diff vs main: pyproject adds only psycopg[binary]; uv.lock adds psycopg, psycopg-binary and tzdata (transitive) and removes nothing. Next: reviewer.
+
+Reviewer: needs-fix. get_chart_service depends on get_style_store, which runs ensure_schema (connects to Postgres) on first use,
+so every runs.py route (GET /runs/{id}, chart png, decide, refine, list) fails when Postgres is down. Fix: make the store lazy
+(connect/ensure_schema inside get/save, under the lock, only on first real call) and add a test with a failing store on GET /runs/{id}.
+Everything else checked OK (layering, SQL parameterised, escaping, per-user scoping, config/compose, Dockerfile).
+
+**builder (fix 2)**: Store is now lazy (`PostgresStyleStore` ensures schema on first get/save, retries after failure, raises `StyleStoreUnavailable`); `get_style_store` does no I/O. POST /runs and /settings give a friendly 503; signature uses `isprintable`.
+Tests added: broken-store read routes stay 200, schema retry, 503 paths, control-char signature. No list/refine routes exist yet. Removed the lock pyright ignore with the lock.

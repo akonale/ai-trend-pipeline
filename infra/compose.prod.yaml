@@ -11,7 +11,7 @@ x-app: &app
 
 services:
   postgres:
-    image: postgres:16.4
+    image: postgres:16.15
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
@@ -26,7 +26,7 @@ services:
       retries: 10
 
   temporal:
-    image: temporalio/auto-setup:1.25.2
+    image: temporalio/auto-setup:1.29.7
     restart: unless-stopped
     depends_on:
       postgres:
@@ -39,7 +39,7 @@ services:
       POSTGRES_SEEDS: postgres
 
   temporal-ui:
-    image: temporalio/ui:2.31.2
+    image: temporalio/ui:2.51.1
     restart: unless-stopped
     depends_on:
       - temporal
@@ -74,7 +74,7 @@ services:
       - "127.0.0.1:18000:8000"
 
   cloudflared:
-    image: cloudflare/cloudflared:2024.12.2
+    image: cloudflare/cloudflared:2026.10.4
     restart: unless-stopped
     command: ["tunnel", "--no-autoupdate", "run"]
     depends_on:

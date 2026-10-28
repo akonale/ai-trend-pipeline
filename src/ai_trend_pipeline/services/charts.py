@@ -62,6 +62,12 @@ class NotAwaitingDecision(ChartServiceError):
         self.status = status
 
 
+class DailyCapReached(ChartServiceError):
+    def __init__(self, cap: int) -> None:
+        super().__init__(f"You've reached today's limit of {cap} charts. It resets at 00:00 UTC.")
+        self.cap = cap
+
+
 class ChartImageNotFound(ChartServiceError):
     def __init__(self, wf_id: str) -> None:
         super().__init__(f"no chart image for {wf_id}")
@@ -83,6 +89,8 @@ class ChartRunGateway(Protocol):
     async def start(self, wf_id: str, data: DailyChartInput) -> None: ...
 
     def handle(self, wf_id: str) -> ChartRunHandle: ...
+
+    async def count_started_since(self, requested_by: str, since: datetime) -> int: ...
 
 
 def _utc_now() -> datetime:
@@ -107,6 +115,12 @@ class ChartService:
         self._new_suffix = new_suffix
 
     async def start(self, req: StartChartRequest) -> StartChartResult:
+        if req.requested_by:
+            utc_now = self._now().astimezone(UTC)
+            since = utc_now.replace(hour=0, minute=0, second=0, microsecond=0)
+            count = await self._gateway.count_started_since(req.requested_by, since)
+            if count >= self._settings.daily_chart_cap:
+                raise DailyCapReached(self._settings.daily_chart_cap)
         date = self._now().date().isoformat()
         if req.wf_id:
             wf_id = req.wf_id

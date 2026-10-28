@@ -68,6 +68,7 @@ services:
       CHART_OUTPUT_DIR: /data/charts
       WEB_HOST: 0.0.0.0
       AUTH_MODE: cloudflare
+      DAILY_CHART_CAP: ${DAILY_CHART_CAP:-10}
       TEMPORAL_UI_URL: ${TEMPORAL_UI_URL:-http://localhost:18233}
     volumes:
       - charts:/data/charts

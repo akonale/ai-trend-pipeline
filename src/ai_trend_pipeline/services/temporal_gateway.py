@@ -1,6 +1,7 @@
 """Temporal adapter for the chart run gateway."""
 
 from collections.abc import Awaitable
+from datetime import UTC, datetime
 
 from temporalio.client import Client, WorkflowHandle
 from temporalio.common import WorkflowIDConflictPolicy
@@ -16,6 +17,11 @@ from ai_trend_pipeline.daily_chart import (
     ReviewState,
 )
 from ai_trend_pipeline.services.charts import RunAlreadyExists, RunNotFound
+
+
+def started_since_query(since: datetime) -> str:
+    stamp = since.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return f"WorkflowType = 'DailyChartWorkflow' AND StartTime >= '{stamp}'"
 
 
 async def _translate[T](wf_id: str, call: Awaitable[T]) -> T:
@@ -50,6 +56,7 @@ class TemporalChartRunGateway:
         self._client = client
 
     async def start(self, wf_id: str, data: DailyChartInput) -> None:
+        memo = {"requested_by": data.requested_by} if data.requested_by is not None else None
         try:
             await self._client.start_workflow(
                 DailyChartWorkflow.run,
@@ -57,9 +64,17 @@ class TemporalChartRunGateway:
                 id=wf_id,
                 task_queue=DAILY_CHART_TASK_QUEUE,
                 id_conflict_policy=WorkflowIDConflictPolicy.FAIL,
+                memo=memo,
             )
         except WorkflowAlreadyStartedError as exc:
             raise RunAlreadyExists(wf_id) from exc
+
+    async def count_started_since(self, requested_by: str, since: datetime) -> int:
+        count = 0
+        async for wf in self._client.list_workflows(started_since_query(since)):
+            if await wf.memo_value("requested_by", None, type_hint=str) == requested_by:
+                count += 1
+        return count
 
     def handle(self, wf_id: str) -> TemporalChartRunHandle:
         return TemporalChartRunHandle(

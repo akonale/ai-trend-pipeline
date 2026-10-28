@@ -1,6 +1,6 @@
 """Tests for ChartService with a fake gateway and no Temporal environment."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -19,6 +19,7 @@ from ai_trend_pipeline.services.charts import (
     ChartImageNotFound,
     ChartRunRef,
     ChartService,
+    DailyCapReached,
     DecideChartRequest,
     NotAwaitingDecision,
     RunAlreadyExists,
@@ -76,6 +77,12 @@ class FakeGateway:
         self.handles: dict[str, FakeHandle] = {}
         self.exists = False
         self.review: ReviewRequest | None = REVIEW
+        self.counts: dict[str, int] = {}
+        self.count_calls: list[tuple[str, datetime]] = []
+
+    async def count_started_since(self, requested_by: str, since: datetime) -> int:
+        self.count_calls.append((requested_by, since))
+        return self.counts.get(requested_by, 0)
 
     async def start(self, wf_id: str, data: DailyChartInput) -> None:
         if self.exists:
@@ -257,3 +264,87 @@ async def test_requests_without_user_give_none() -> None:
     await service.submit_decision(DecideChartRequest(wf_id="a", approved=True))
     assert gw.started[0][1].requested_by is None
     assert gw.handles["a"].decisions[0].decided_by is None
+
+
+def cap_service(gateway: FakeGateway, cap: int = 10, now: datetime = NOW) -> ChartService:
+    return ChartService(gateway, Settings(daily_chart_cap=cap), now=lambda: now)
+
+
+@pytest.mark.asyncio
+async def test_under_cap_starts_and_passes_since() -> None:
+    gw = FakeGateway()
+    gw.counts["a@x.com"] = 9
+    await cap_service(gw).start(StartChartRequest(unique_id=True, requested_by="a@x.com"))
+    assert len(gw.started) == 1
+    assert gw.count_calls == [("a@x.com", datetime(2026, 5, 1, tzinfo=UTC))]
+
+
+@pytest.mark.asyncio
+async def test_at_cap_raises_and_does_not_start() -> None:
+    gw = FakeGateway()
+    gw.counts["a@x.com"] = 10
+    with pytest.raises(DailyCapReached) as info:
+        await cap_service(gw).start(StartChartRequest(requested_by="a@x.com"))
+    assert info.value.cap == 10
+    assert str(info.value) == "You've reached today's limit of 10 charts. It resets at 00:00 UTC."
+    assert gw.started == []
+
+
+@pytest.mark.asyncio
+async def test_other_person_unaffected() -> None:
+    gw = FakeGateway()
+    gw.counts["a@x.com"] = 10
+    svc = cap_service(gw)
+    with pytest.raises(DailyCapReached):
+        await svc.start(StartChartRequest(requested_by="a@x.com"))
+    await svc.start(StartChartRequest(requested_by="b@x.com", unique_id=True))
+    assert len(gw.started) == 1
+
+
+class CountingGateway(FakeGateway):
+    def __init__(self) -> None:
+        super().__init__()
+        self.times: list[tuple[str, datetime]] = []
+        self.clock = NOW
+
+    async def count_started_since(self, requested_by: str, since: datetime) -> int:
+        self.count_calls.append((requested_by, since))
+        return sum(1 for who, t in self.times if who == requested_by and t >= since)
+
+    async def start(self, wf_id: str, data: DailyChartInput) -> None:
+        await super().start(wf_id, data)
+        assert data.requested_by is not None
+        self.times.append((data.requested_by, self.clock))
+
+
+@pytest.mark.asyncio
+async def test_day_rollover_resets_count() -> None:
+    gw = CountingGateway()
+    clock = {"now": datetime(2026, 5, 1, 23, 58, tzinfo=UTC)}
+    svc = ChartService(gw, Settings(daily_chart_cap=2), now=lambda: clock["now"])
+    for i in range(2):
+        gw.clock = clock["now"] + timedelta(seconds=i)
+        await svc.start(StartChartRequest(requested_by="a@x.com", wf_id=f"w{i}"))
+    clock["now"] = datetime(2026, 5, 1, 23, 59, tzinfo=UTC)
+    with pytest.raises(DailyCapReached):
+        await svc.start(StartChartRequest(requested_by="a@x.com", wf_id="w2"))
+    clock["now"] = datetime(2026, 5, 2, 0, 0, 1, tzinfo=UTC)
+    gw.clock = clock["now"]
+    await svc.start(StartChartRequest(requested_by="a@x.com", wf_id="w3"))
+    assert gw.count_calls[-1][1] == datetime(2026, 5, 2, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+async def test_non_utc_now_uses_utc_midnight() -> None:
+    gw = FakeGateway()
+    now = datetime(2026, 5, 1, 1, 30, tzinfo=timezone(timedelta(hours=2)))
+    await cap_service(gw, now=now).start(StartChartRequest(requested_by="a@x.com"))
+    assert gw.count_calls[0][1] == datetime(2026, 4, 30, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+async def test_no_requested_by_is_never_counted() -> None:
+    gw = FakeGateway()
+    await cap_service(gw, cap=1).start(StartChartRequest())
+    assert gw.count_calls == []
+    assert len(gw.started) == 1

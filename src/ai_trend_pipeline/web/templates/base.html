@@ -2,11 +2,17 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>{% block title %}Topic Studio{% endblock %}</title>
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/htmx.min.js"></script>
 </head>
 <body>
+  <header class="site-header">
+    <a class="brand" href="/">Topic Studio</a>
+    <p class="tagline">An editorial desk for one good chart a day.</p>
+  </header>
   <main>{% block content %}{% endblock %}</main>
 </body>
 </html>

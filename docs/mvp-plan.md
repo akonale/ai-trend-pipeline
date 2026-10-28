@@ -162,6 +162,11 @@ The web app is a thin layer over a service layer that the CLI also uses. Depende
 | --- | --- | --- | --- |
 | 034 | Run everything on the server with docker-compose: `Dockerfile` (uv), `infra/compose.prod.yaml` (postgres, temporal, worker, web; restart policy, volumes, nothing published beyond `127.0.0.1`), `just deploy` (`git pull --ff-only`, then compose up with `--env-file .env.prod`), runbook `docs/runbooks/deploy.md`. Public access stays with 025 (Cloudflare Tunnel) | `docker compose -f infra/compose.prod.yaml --env-file .env.prod up -d --build` starts the stack; a chart runs from Generate to posted through the SSH tunnel; secrets come from the server's `.env.prod` | yes |
 
+### Phase 8: Look and feel
+| # | Task | Done when | Your approval? |
+| --- | --- | --- | --- |
+| 035 | UI refresh: a distinctive, cohesive look for the home and run pages (type scale, colour tokens with light and dark themes, spacing, buttons, cards, a status badge, a loading state for polling), htmx and plain CSS only, no build step and no new JavaScript libraries | Home and run pages look polished at phone and desktop widths in both themes; all existing route tests pass unchanged; templates stay logic-free | no |
+
 ## Running a task
 
 In Claude Code on the dev server, inside the repo:

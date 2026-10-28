@@ -2,7 +2,7 @@
 
 from urllib.parse import quote
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ai_trend_pipeline.daily_chart import ReviewState
 
@@ -12,9 +12,28 @@ class HealthView(BaseModel):
     temporal_address: str
 
 
+MAX_TOPIC_LENGTH = 200
+
+EXAMPLE_TOPICS = ["Life expectancy", "CO2 emissions", "Internet users", "Renewable energy"]
+
+
+class TopicChip(BaseModel):
+    label: str
+    href: str
+
+
+def _chips() -> list[TopicChip]:
+    return [TopicChip(label=t, href=f"/?topic={quote(t)}") for t in EXAMPLE_TOPICS]
+
+
 class HomeView(BaseModel):
     error: str = ""
     topic: str = ""
+    examples: list[TopicChip] = Field(default_factory=_chips)
+
+
+def build_home_view(topic: str = "") -> HomeView:
+    return HomeView(topic=topic.strip()[:MAX_TOPIC_LENGTH])
 
 
 STATUS_LABELS = {
@@ -30,10 +49,29 @@ STATUS_LABELS = {
 DECIDED_LABELS = {"posting": "Approved", "approved": "Approved", "rejected": "Rejected"}
 
 
+def badge_for(status: str, sent: bool) -> tuple[str, str]:
+    if status == "awaiting_decision":
+        return (
+            ("Decision sent", "badge--progress") if sent else ("Needs review", "badge--attention")
+        )
+    return BADGES[status]
+
+
+BADGES = {
+    "drafting": ("Drafting", "badge--progress"),
+    "posting": ("Posting", "badge--progress"),
+    "approved": ("Posted", "badge--success"),
+    "rejected": ("Rejected", "badge--danger"),
+    "expired": ("Expired", "badge--muted"),
+}
+
+
 class RunView(BaseModel):
     wf_id: str
     status: str
     status_label: str
+    badge_label: str
+    badge_class: str
     topic: str | None = None
     topic_reason: str | None = None
     caption: str | None = None
@@ -57,10 +95,13 @@ def build_run_view(
 ) -> RunView:
     review = state.review
     awaiting = state.status == "awaiting_decision"
+    badge_label, badge_class = badge_for(state.status, sent)
     return RunView(
         wf_id=wf_id,
         status=state.status,
         status_label=STATUS_LABELS[state.status],
+        badge_label=badge_label,
+        badge_class=badge_class,
         topic=review.topic if review else None,
         topic_reason=review.topic_reason if review else None,
         caption=review.caption if review else None,

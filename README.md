@@ -52,6 +52,11 @@ page at `/runs/<id>` updates live (htmx polling) and, once the chart is ready, s
 caption and critique with Approve and Reject buttons; approving posts to Bluesky. It also links to
 the run in the Temporal UI, at `TEMPORAL_UI_URL` (default `http://localhost:8233`).
 
+## Production
+
+`just deploy` runs the full stack with docker compose on the server. See
+`docs/runbooks/deploy.md`.
+
 ## CI
 
 Every pull request and every push to `main` runs `just lint` and `just test` through

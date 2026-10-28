@@ -40,3 +40,7 @@ reject id:
 
 web:
     uv run python -m ai_trend_pipeline.web
+
+deploy:
+    git pull --ff-only
+    docker compose -f infra/compose.prod.yaml --env-file .env up -d --build

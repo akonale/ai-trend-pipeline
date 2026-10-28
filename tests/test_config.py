@@ -15,6 +15,12 @@ def test_defaults() -> None:
     assert s.bluesky_app_password is None
 
 
+def test_temporal_ui_url_default_and_trailing_slash() -> None:
+    assert load_settings({}).temporal_ui_url == "http://localhost:8233"
+    assert load_settings({"TEMPORAL_UI_URL": ""}).temporal_ui_url == "http://localhost:8233"
+    assert load_settings({"TEMPORAL_UI_URL": "http://x:1/"}).temporal_ui_url == "http://x:1"
+
+
 def test_maps_every_env_var_and_hides_secrets() -> None:
     s = load_settings(
         {

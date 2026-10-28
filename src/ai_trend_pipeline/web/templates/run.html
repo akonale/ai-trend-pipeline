@@ -3,7 +3,6 @@
 {% block content %}
 <h1>Run</h1>
 <p>Workflow id: {{ view.wf_id }}</p>
-<p>Status: {{ view.status }}</p>
-{% if view.topic %}<p>Topic: {{ view.topic }}</p>{% endif %}
+{% include "partials/run_status.html" %}
 <p><a href="/">Back</a></p>
 {% endblock %}

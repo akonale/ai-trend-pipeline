@@ -48,7 +48,9 @@ On a remote dev server, tunnel the port first: `ssh -L 8000:localhost:8000 <host
 no Temporal connection. htmx 2.0.4 is vendored as-is in `src/ai_trend_pipeline/web/static/`.
 
 Open `/`, type a topic and click Generate to start a run. This needs `just dev` running. The run
-page at `/runs/<id>` shows the workflow id and status.
+page at `/runs/<id>` updates live (htmx polling) and, once the chart is ready, shows the preview,
+caption and critique with Approve and Reject buttons; approving posts to Bluesky. It also links to
+the run in the Temporal UI, at `TEMPORAL_UI_URL` (default `http://localhost:8233`).
 
 ## CI
 

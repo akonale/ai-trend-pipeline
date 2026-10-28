@@ -7,12 +7,14 @@ from pydantic import BaseModel, ConfigDict, SecretStr
 
 DEFAULT_BLUESKY_SERVICE = "https://bsky.social"
 DEFAULT_TEMPORAL_ADDRESS = "localhost:7233"
+DEFAULT_TEMPORAL_UI_URL = "http://localhost:8233"
 
 
 class Settings(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     temporal_address: str = DEFAULT_TEMPORAL_ADDRESS
+    temporal_ui_url: str = DEFAULT_TEMPORAL_UI_URL
     chart_output_dir: str | None = None
     anthropic_api_key: SecretStr | None = None
     bluesky_handle: str | None = None
@@ -26,6 +28,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
     password = env.get("BLUESKY_APP_PASSWORD")
     return Settings(
         temporal_address=env.get("TEMPORAL_ADDRESS", DEFAULT_TEMPORAL_ADDRESS),
+        temporal_ui_url=(env.get("TEMPORAL_UI_URL") or DEFAULT_TEMPORAL_UI_URL).rstrip("/"),
         chart_output_dir=env.get("CHART_OUTPUT_DIR") or None,
         anthropic_api_key=SecretStr(api_key) if api_key else None,
         bluesky_handle=env.get("BLUESKY_HANDLE") or None,

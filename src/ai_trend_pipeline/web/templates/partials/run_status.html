@@ -1,0 +1,26 @@
+<div id="run-status" class="run-status"{% if view.polling %} hx-get="/runs/{{ view.wf_id }}/status{% if view.sent %}?sent=1{% endif %}" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  <p>Status: {{ view.status_label }}</p>
+  {% if view.error %}<p class="error">{{ view.error }}</p>{% endif %}
+  {% if view.topic %}
+  <p>Topic: {{ view.topic }}</p>
+  <p>Why: {{ view.topic_reason }}</p>
+  {% endif %}
+  {% if view.image_url %}<img class="preview" src="{{ view.image_url }}" alt="Chart preview">{% endif %}
+  {% if view.caption %}<p>Caption: {{ view.caption }}</p>{% endif %}
+  {% if view.attempts %}
+  <p>Critique: {% if view.critique_passed %}passed{% else %}failed{% endif %} after {{ view.attempts }} attempt(s)</p>
+  <ul>{% for reason in view.critique_reasons %}<li>{{ reason }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if view.note %}<p>Note: {{ view.note }}</p>{% endif %}
+  {% if view.can_decide %}
+  <form method="post" action="/runs/{{ view.wf_id }}/decision" class="decision">
+    <input type="hidden" name="approved" value="true">
+    <button type="submit">Approve</button>
+  </form>
+  <form method="post" action="/runs/{{ view.wf_id }}/decision" class="decision">
+    <input type="hidden" name="approved" value="false">
+    <button type="submit">Reject</button>
+  </form>
+  {% endif %}
+  <p><a href="{{ view.temporal_url }}" target="_blank" rel="noopener">View in Temporal</a></p>
+</div>

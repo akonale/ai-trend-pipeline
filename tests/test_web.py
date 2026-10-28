@@ -1,5 +1,6 @@
 """Route tests for the web skeleton, using the FastAPI test client and no Temporal."""
 
+from pathlib import Path
 from typing import Literal
 
 from fastapi import Depends, FastAPI
@@ -23,6 +24,7 @@ from ai_trend_pipeline.services.charts import (
 )
 from ai_trend_pipeline.web.app import create_app
 from ai_trend_pipeline.web.dependencies import get_chart_service, get_settings
+from ai_trend_pipeline.web.view_models import RunView, build_run_view
 
 ADDRESS = "temporal.example:7233"
 
@@ -113,9 +115,12 @@ REVIEW = ReviewRequest(
 
 
 class RecHandle:
-    def __init__(self, wf_id: str, state: ReviewState | None) -> None:
+    def __init__(
+        self, wf_id: str, state: ReviewState | None, decisions: list[ApprovalDecision]
+    ) -> None:
         self.id = wf_id
         self.state = state
+        self.decisions = decisions
 
     async def review_state(self) -> ReviewState:
         if self.state is None:
@@ -123,7 +128,7 @@ class RecHandle:
         return self.state
 
     async def send_decision(self, decision: ApprovalDecision) -> None:
-        return None
+        self.decisions.append(decision)
 
     async def result(self) -> DailyChartResult:
         raise NotImplementedError
@@ -134,6 +139,7 @@ class RecGateway:
         self.state = state
         self.exists = exists
         self.started: list[tuple[str, DailyChartInput]] = []
+        self.decisions: list[ApprovalDecision] = []
 
     async def start(self, wf_id: str, data: DailyChartInput) -> None:
         if self.exists:
@@ -141,12 +147,12 @@ class RecGateway:
         self.started.append((wf_id, data))
 
     def handle(self, wf_id: str) -> ChartRunHandle:
-        return RecHandle(wf_id, self.state)
+        return RecHandle(wf_id, self.state, self.decisions)
 
 
-def client_for(gateway: RecGateway) -> TestClient:
+def client_for(gateway: RecGateway, output_dir: str | None = None) -> TestClient:
     app = make_app()
-    service = ChartService(gateway, Settings())
+    service = ChartService(gateway, Settings(chart_output_dir=output_dir))
 
     async def fake_service() -> ChartService:
         return service
@@ -198,9 +204,10 @@ def test_post_runs_already_exists_is_409() -> None:
     assert "already exists" in res.text
 
 
-def run_page(
-    status: Literal["drafting", "awaiting_decision"], review: ReviewRequest | None
-) -> tuple[int, str]:
+Status = Literal["drafting", "awaiting_decision", "posting", "approved", "rejected", "expired"]
+
+
+def run_page(status: Status, review: ReviewRequest | None) -> tuple[int, str]:
     gateway = RecGateway(ReviewState(status=status, review=review))
     res = client_for(gateway).get("/runs/wf-1")
     return res.status_code, res.text
@@ -210,7 +217,7 @@ def test_run_page_awaiting_decision() -> None:
     code, text = run_page("awaiting_decision", REVIEW)
     assert code == 200
     assert "wf-1" in text
-    assert "awaiting_decision" in text
+    assert "Waiting for your decision" in text
     assert "CO2 emissions" in text
 
 
@@ -218,10 +225,184 @@ def test_run_page_drafting() -> None:
     code, text = run_page("drafting", None)
     assert code == 200
     assert "wf-1" in text
-    assert "drafting" in text
+    assert "Drafting the chart" in text
 
 
 def test_run_page_not_found() -> None:
     res = client_for(RecGateway(None)).get("/runs/nope")
     assert res.status_code == 404
     assert "not found" in res.text.lower()
+
+
+REVIEW_FAILED = REVIEW.model_copy(
+    update={
+        "caption": "Emissions rose",
+        "critique": ChartCritique(passed=False, reasons=["axis unlabeled"]),
+    }
+)
+POLL = 'hx-trigger="every 2s"'
+
+
+def test_run_page_drafting_polls_without_buttons() -> None:
+    _, text = run_page("drafting", None)
+    assert 'hx-get="/runs/wf-1/status"' in text
+    assert POLL in text
+    assert 'hx-swap="outerHTML"' in text
+    assert "<button" not in text
+
+
+def test_run_page_awaiting_shows_review() -> None:
+    _, text = run_page("awaiting_decision", REVIEW_FAILED)
+    assert 'src="/runs/wf-1/chart.png"' in text
+    assert "Emissions rose" in text
+    assert "axis unlabeled" in text
+    assert 'action="/runs/wf-1/decision"' in text
+    assert "Approve" in text
+    assert "Reject" in text
+    assert "http://localhost:8233/namespaces/default/workflows/wf-1" in text
+    assert 'target="_blank"' in text
+    assert 'rel="noopener"' in text
+    assert POLL not in text
+
+
+def test_run_page_uses_temporal_ui_url_setting() -> None:
+    app = create_app(Settings(temporal_ui_url="http://ui.example:9"))
+    service = ChartService(
+        RecGateway(ReviewState(status="awaiting_decision", review=REVIEW)), Settings()
+    )
+
+    async def fake_service() -> ChartService:
+        return service
+
+    app.dependency_overrides[get_chart_service] = fake_service
+    text = TestClient(app).get("/runs/wf-1").text
+    assert "http://ui.example:9/namespaces/default/workflows/wf-1" in text
+
+
+def test_run_page_terminal_states() -> None:
+    for status in ("approved", "rejected", "expired"):
+        _, text = run_page(status, REVIEW)
+        assert status in text.lower()
+        assert POLL not in text
+        assert "<button" not in text
+        assert 'action="/runs/wf-1/decision"' not in text
+
+
+def test_run_page_posting_polls() -> None:
+    _, text = run_page("posting", REVIEW)
+    assert POLL in text
+    assert "<button" not in text
+
+
+def test_status_fragment_only() -> None:
+    gateway = RecGateway(ReviewState(status="drafting"))
+    res = client_for(gateway).get("/runs/wf-1/status")
+    assert res.status_code == 200
+    assert "<html" not in res.text
+    assert POLL in res.text
+
+
+def test_status_fragment_keeps_sent_in_poll_url() -> None:
+    gateway = RecGateway(ReviewState(status="awaiting_decision", review=REVIEW))
+    text = client_for(gateway).get("/runs/wf-1/status?sent=1").text
+    assert 'hx-get="/runs/wf-1/status?sent=1"' in text
+    assert "<button" not in text
+
+
+def test_run_page_sent_hides_buttons_and_polls() -> None:
+    gateway = RecGateway(ReviewState(status="awaiting_decision", review=REVIEW))
+    text = client_for(gateway).get("/runs/wf-1?sent=1").text
+    assert "<button" not in text
+    assert POLL in text
+
+
+def test_chart_png_served(tmp_path: Path) -> None:
+    png = tmp_path / "c.png"
+    png.write_bytes(b"\x89PNGdata")
+    review = REVIEW.model_copy(update={"png_path": str(png)})
+    gateway = RecGateway(ReviewState(status="awaiting_decision", review=review))
+    res = client_for(gateway, str(tmp_path)).get("/runs/wf-1/chart.png")
+    assert res.status_code == 200
+    assert res.headers["content-type"] == "image/png"
+    assert res.content == b"\x89PNGdata"
+
+
+def test_chart_png_missing_is_404(tmp_path: Path) -> None:
+    review = REVIEW.model_copy(update={"png_path": str(tmp_path / "gone.png")})
+    gateway = RecGateway(ReviewState(status="awaiting_decision", review=review))
+    assert client_for(gateway, str(tmp_path)).get("/runs/wf-1/chart.png").status_code == 404
+
+
+def test_decision_approve_redirects_and_signals() -> None:
+    gateway = RecGateway(ReviewState(status="awaiting_decision", review=REVIEW))
+    res = client_for(gateway).post(
+        "/runs/wf-1/decision", data={"approved": "true"}, follow_redirects=False
+    )
+    assert res.status_code == 303
+    assert res.headers["location"] == "/runs/wf-1?sent=1"
+    assert [d.approved for d in gateway.decisions] == [True]
+
+
+def test_decision_reject_signals() -> None:
+    gateway = RecGateway(ReviewState(status="awaiting_decision", review=REVIEW))
+    res = client_for(gateway).post(
+        "/runs/wf-1/decision", data={"approved": "false"}, follow_redirects=False
+    )
+    assert res.status_code == 303
+    assert [d.approved for d in gateway.decisions] == [False]
+
+
+def test_decision_invalid_value_is_400() -> None:
+    gateway = RecGateway(ReviewState(status="awaiting_decision", review=REVIEW))
+    res = client_for(gateway).post("/runs/wf-1/decision", data={"approved": "maybe"})
+    assert res.status_code == 400
+    assert gateway.decisions == []
+
+
+def test_decision_not_awaiting_is_409_with_error() -> None:
+    gateway = RecGateway(ReviewState(status="approved", review=REVIEW))
+    res = client_for(gateway).post("/runs/wf-1/decision", data={"approved": "true"})
+    assert res.status_code == 409
+    assert "Error" in res.text
+    assert gateway.decisions == []
+
+
+def test_every_run_route_404_when_not_found() -> None:
+    client = client_for(RecGateway(None))
+    assert client.get("/runs/x").status_code == 404
+    assert client.get("/runs/x/status").status_code == 404
+    assert client.get("/runs/x/chart.png").status_code == 404
+    assert client.post("/runs/x/decision", data={"approved": "true"}).status_code == 404
+
+
+def view(status: Status, sent: bool = False, with_review: bool = True) -> RunView:
+    state = ReviewState(status=status, review=REVIEW if with_review else None)
+    return build_run_view("wf-1", state, "http://t", sent=sent)
+
+
+def test_build_run_view_flags() -> None:
+    cases: list[tuple[Status, bool, bool, bool]] = [
+        # status, sent, can_decide, polling
+        ("drafting", False, False, True),
+        ("awaiting_decision", False, True, False),
+        ("awaiting_decision", True, False, True),
+        ("posting", False, False, True),
+        ("approved", False, False, False),
+        ("rejected", False, False, False),
+        ("expired", False, False, False),
+    ]
+    for status, sent, can_decide, polling in cases:
+        v = view(status, sent)
+        assert (v.can_decide, v.polling) == (can_decide, polling), (status, sent)
+
+
+def test_build_run_view_image_and_label() -> None:
+    assert view("awaiting_decision").image_url == "/runs/wf-1/chart.png"
+    assert view("drafting", with_review=False).image_url is None
+    assert view("drafting", with_review=False).status_label
+
+
+def test_build_run_view_temporal_url_quotes_id() -> None:
+    state = ReviewState(status="drafting")
+    v = build_run_view("a b/c", state, "http://t:1")
+    assert v.temporal_url == "http://t:1/namespaces/default/workflows/a%20b%2Fc"

@@ -36,6 +36,15 @@ just down    # stop the stack
 Open http://localhost:8233 to see `hello-workflow` as Completed. On a remote dev server, tunnel
 the UI port first: `ssh -L 8233:localhost:8233 <host>`.
 
+## Web app
+
+```sh
+just web     # serves http://127.0.0.1:8000 (health page at /health)
+```
+
+On a remote dev server, tunnel the port first: `ssh -L 8000:localhost:8000 <host>`. The page needs
+no Temporal connection. htmx 2.0.4 is vendored as-is in `src/ai_trend_pipeline/web/static/`.
+
 ## CI
 
 Every pull request and every push to `main` runs `just lint` and `just test` through

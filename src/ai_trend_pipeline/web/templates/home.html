@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Topic Studio{% endblock %}
+{% block content %}
+<h1>Topic Studio</h1>
+{% if view.error %}<p class="error">{{ view.error }}</p>{% endif %}
+<form method="post" action="/runs">
+  <input type="text" name="topic" required maxlength="200" value="{{ view.topic }}" placeholder="Topic">
+  <button type="submit">Generate</button>
+</form>
+{% endblock %}

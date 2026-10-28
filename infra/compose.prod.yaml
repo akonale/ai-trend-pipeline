@@ -1,4 +1,6 @@
-# Production stack. Secrets come from the server's .env (pass --env-file .env from the repo root).
+# Production stack. Settings come from the server's .env.prod (pass --env-file .env.prod from the repo root).
+name: ai-trend-prod
+
 x-app: &app
   build:
     context: ..
@@ -13,7 +15,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}
       POSTGRES_DB: postgres
     volumes:
       - postgres-data:/var/lib/postgresql/data
@@ -33,7 +35,7 @@ services:
       DB: postgres12
       DB_PORT: "5432"
       POSTGRES_USER: postgres
-      POSTGRES_PWD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_PWD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}
       POSTGRES_SEEDS: postgres
 
   temporal-ui:
@@ -44,7 +46,7 @@ services:
     environment:
       TEMPORAL_ADDRESS: temporal:7233
     ports:
-      - "127.0.0.1:8233:8080"
+      - "127.0.0.1:18233:8080"
 
   worker:
     <<: *app
@@ -65,10 +67,21 @@ services:
       TEMPORAL_ADDRESS: temporal:7233
       CHART_OUTPUT_DIR: /data/charts
       WEB_HOST: 0.0.0.0
+      TEMPORAL_UI_URL: ${TEMPORAL_UI_URL:-http://localhost:18233}
     volumes:
       - charts:/data/charts
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:18000:8000"
+
+  cloudflared:
+    image: cloudflare/cloudflared:2024.12.2
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "run"]
+    depends_on:
+      - web
+      - temporal-ui
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in .env.prod}
 
 volumes:
   postgres-data:

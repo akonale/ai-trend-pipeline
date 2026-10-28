@@ -54,8 +54,10 @@ the run in the Temporal UI, at `TEMPORAL_UI_URL` (default `http://localhost:8233
 
 ## Production
 
-`just deploy` runs the full stack with docker compose on the server. See
-`docs/runbooks/deploy.md`.
+`just deploy` runs the full stack with docker compose on the server. Production reads its settings
+from `.env.prod` (separate from the dev `.env`) and publishes only `127.0.0.1:18000` (web) and
+`127.0.0.1:18233` (Temporal UI). Public access goes through a Cloudflare Tunnel. See
+`docs/runbooks/deploy.md` and `docs/runbooks/cloudflare.md`.
 
 ## CI
 

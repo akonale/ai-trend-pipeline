@@ -7,17 +7,28 @@ from typing import cast
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-SERVICES = {"postgres", "temporal", "temporal-ui", "worker", "web"}
+SERVICES = {"postgres", "temporal", "temporal-ui", "worker", "web", "cloudflared"}
 SECRET_WORDS = ("PASSWORD", "KEY", "TOKEN", "SECRET", "HANDLE")
 
 Service = dict[str, object]
 
 
-def _load() -> dict[str, Service]:
+def _doc(name: str = "compose.prod.yaml") -> dict[str, object]:
     # yaml.safe_load returns Any by design; the result is cast to the known compose shape below.
-    raw = yaml.safe_load((ROOT / "infra" / "compose.prod.yaml").read_text())  # pyright: ignore[reportAny]
-    doc = cast(dict[str, object], raw)
-    return cast(dict[str, Service], doc["services"])
+    raw = yaml.safe_load((ROOT / "infra" / name).read_text())  # pyright: ignore[reportAny]
+    return cast(dict[str, object], raw)
+
+
+def _load() -> dict[str, Service]:
+    return cast(dict[str, Service], _doc()["services"])
+
+
+def _host_ports(services: dict[str, Service]) -> set[str]:
+    out: set[str] = set()
+    for svc in services.values():
+        for port in cast(list[str], svc.get("ports", [])):
+            out.add(port.split(":")[-2])
+    return out
 
 
 def _env(service: Service) -> dict[str, str]:
@@ -28,7 +39,7 @@ def _env(service: Service) -> dict[str, str]:
     return {k: str(v) for k, v in cast(dict[str, object], raw).items()}
 
 
-def test_has_exactly_five_services() -> None:
+def test_has_exactly_six_services() -> None:
     assert set(_load()) == SERVICES
 
 
@@ -40,9 +51,46 @@ def test_every_service_restarts() -> None:
 def test_published_ports() -> None:
     published = {name: svc["ports"] for name, svc in _load().items() if "ports" in svc}
     assert published == {
-        "web": ["127.0.0.1:8000:8000"],
-        "temporal-ui": ["127.0.0.1:8233:8080"],
+        "web": ["127.0.0.1:18000:8000"],
+        "temporal-ui": ["127.0.0.1:18233:8080"],
     }
+
+
+def test_project_name() -> None:
+    assert _doc()["name"] == "ai-trend-prod"
+
+
+def test_prod_ports_differ_from_dev() -> None:
+    dev = cast(dict[str, Service], _doc("compose.dev.yaml")["services"])
+    prod_ports = _host_ports(_load())
+    assert prod_ports
+    assert not prod_ports & _host_ports(dev)
+    assert "8000" not in prod_ports
+
+
+def test_cloudflared_service() -> None:
+    svc = _load()["cloudflared"]
+    image = cast(str, svc["image"])
+    assert re.fullmatch(r"cloudflare/cloudflared:[\w.\-]+", image)
+    assert not image.endswith(":latest")
+    assert svc["command"] == ["tunnel", "--no-autoupdate", "run"]
+    deps = cast(list[str] | dict[str, object], svc["depends_on"])
+    assert {"web", "temporal-ui"} <= set(deps)
+    assert "ports" not in svc
+    assert "network_mode" not in svc
+
+
+def test_tunnel_token_required_without_default() -> None:
+    svc = _load()["cloudflared"]
+    token = _env(svc)["TUNNEL_TOKEN"]
+    assert re.fullmatch(r"\$\{CLOUDFLARE_TUNNEL_TOKEN:\?[^}]+\}", token)
+    assert ":-" not in token
+    assert "TOKEN" not in " ".join(cast(list[str], svc["command"]))
+
+
+def test_web_temporal_ui_url_from_env() -> None:
+    web = _env(_load()["web"])
+    assert web["TEMPORAL_UI_URL"] == "${TEMPORAL_UI_URL:-http://localhost:18233}"
 
 
 def test_worker_and_web_share_build_and_volume() -> None:
@@ -67,7 +115,7 @@ def test_secrets_are_interpolations_without_defaults() -> None:
             if any(w in key for w in SECRET_WORDS):
                 checked += 1
                 assert re.fullmatch(r"\$\{[A-Z_]+(:\?[^}]*)?\}", value), f"{name}.{key}"
-    assert checked >= 3
+    assert checked >= 4
     assert _env(_load()["postgres"])["POSTGRES_PASSWORD"].startswith("${POSTGRES_PASSWORD:?")
 
 
@@ -77,3 +125,42 @@ def test_dockerfile_and_dockerignore() -> None:
     assert re.search(r"^USER (?!root)\S+", dockerfile, re.MULTILINE)
     ignored = (ROOT / ".dockerignore").read_text().split()
     assert ".env" in ignored
+    assert ".env.prod" in ignored
+
+
+def test_env_prod_ignored() -> None:
+    for name in (".gitignore", ".dockerignore"):
+        assert ".env.prod" in (ROOT / name).read_text().splitlines(), name
+
+
+def _deploy_recipe() -> str:
+    text = (ROOT / "justfile").read_text()
+    match = re.search(r"^deploy:\n((?:[ \t]+.*\n?)+)", text, re.MULTILINE)
+    assert match
+    return match.group(1)
+
+
+def test_prod_uses_env_prod() -> None:
+    deploy = _deploy_recipe()
+    assert "--env-file .env.prod" in deploy
+    assert "env -i" in deploy
+    texts = [
+        deploy,
+        (ROOT / "infra" / "compose.prod.yaml").read_text(),
+        (ROOT / "docs" / "runbooks" / "deploy.md").read_text(),
+        (ROOT / "docs" / "runbooks" / "cloudflare.md").read_text(),
+        (ROOT / "README.md").read_text(),
+    ]
+    for text in texts:
+        assert not re.search(r"--env-file \.env(?!\.prod)", text)
+
+
+def test_no_real_domain() -> None:
+    paths = [
+        ROOT / "infra" / "compose.prod.yaml",
+        ROOT / "docs" / "runbooks" / "cloudflare.md",
+        ROOT / "docs" / "runbooks" / "deploy.md",
+        ROOT / "README.md",
+    ]
+    for path in paths:
+        assert "trendrunner" not in path.read_text(), path.name

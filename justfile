@@ -43,4 +43,4 @@ web:
 
 deploy:
     git pull --ff-only
-    docker compose -f infra/compose.prod.yaml --env-file .env up -d --build
+    env -i PATH="$PATH" HOME="$HOME" docker compose -f infra/compose.prod.yaml --env-file .env.prod up -d --build

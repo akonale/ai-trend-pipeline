@@ -1,4 +1,5 @@
 .env
+.env.prod
 .venv
 .git
 charts/

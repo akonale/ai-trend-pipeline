@@ -1,6 +1,6 @@
 # 021: Web app skeleton (FastAPI + Jinja + htmx, health page)
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -92,3 +92,9 @@ Manual "Done when" check (page loads through the SSH tunnel) is for the human af
 **builder**: Built web skeleton (create_app, dependencies, /health, htmx 2.0.4 vendored, `just web`); tests in tests/test_web.py.
 Added ruff `extend-immutable-calls = ["fastapi.Depends"]` in pyproject (B008 on `Depends` defaults); not in spec's file list but pyproject is touched anyway.
 Tests use two `pyright: ignore[reportAny]`-style comments for starlette's untyped `app.state`. Next: verifier.
+
+**verifier**: `just lint` (ruff check, ruff format --check, pyright strict) passed; `just test` passed (134 passed).
+All checks pass.
+
+**reviewer**: Approved. All criteria and listed tests present; layering, lazy Temporal connect and no-env-var rules hold.
+Notes: `pyright: ignore[reportAny]` in `web/dependencies.py` lacks an explanatory comment (starlette untyped `app.state`); the ruff `extend-immutable-calls` change is outside the file list but justified.

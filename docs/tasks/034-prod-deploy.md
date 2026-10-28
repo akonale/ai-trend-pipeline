@@ -1,6 +1,6 @@
 # 034: Production stack with docker-compose
 
-Status: built
+Status: verified
 
 ## Goal
 
@@ -93,3 +93,5 @@ All checks pass.
 **reviewer**: Approved. All acceptance criteria and listed tests present; compose, Dockerfile, config and ports match the spec.
 Notes: (1) docs/mvp-plan.md was edited (new Phase 7 row) though not in "Files to touch"; its row still mentions `just up`, which the spec excludes. (2) `# pyright: ignore[reportAny]` in tests/test_compose_prod.py has no explanatory comment. (3) Image tags unverified; confirm on first deploy.
 **builder (fix 1)**: Added explanatory comment for the pyright ignore in tests/test_compose_prod.py; aligned the 034 row in docs/mvp-plan.md with the spec (`just deploy`, `--env-file .env`).
+**verifier (re-run after fix 1)**: `just lint` passed (ruff check, ruff format --check on 78 files, pyright 0 errors). `just test` passed (176 tests).
+All checks pass.

@@ -14,6 +14,7 @@ Service = dict[str, object]
 
 
 def _load() -> dict[str, Service]:
+    # yaml.safe_load returns Any by design; the result is cast to the known compose shape below.
     raw = yaml.safe_load((ROOT / "infra" / "compose.prod.yaml").read_text())  # pyright: ignore[reportAny]
     doc = cast(dict[str, object], raw)
     return cast(dict[str, Service], doc["services"])

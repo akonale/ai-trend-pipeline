@@ -88,3 +88,8 @@ Next: human approves (`approved`), then builder on `task/034-prod-deploy`.
 **builder**: Added Dockerfile, .dockerignore, compose.prod.yaml (auto-setup 1.25.2 + ui 2.31.2, no fallback used), `just deploy`, runbook, `web_host`, static tests. lint and test pass (176).
 Image tags (python 3.12.7, uv 0.5.5, temporal auto-setup 1.25.2, ui 2.31.2) were chosen from memory and never pulled; verify they exist on first deploy. Stack not started.
 `docker compose config` parses the file (only blank-secret warnings with an empty env file).
+**verifier**: `just lint` passed (ruff check, ruff format --check, pyright 0 errors). `just test` passed (176 tests).
+All checks pass.
+**reviewer**: Approved. All acceptance criteria and listed tests present; compose, Dockerfile, config and ports match the spec.
+Notes: (1) docs/mvp-plan.md was edited (new Phase 7 row) though not in "Files to touch"; its row still mentions `just up`, which the spec excludes. (2) `# pyright: ignore[reportAny]` in tests/test_compose_prod.py has no explanatory comment. (3) Image tags unverified; confirm on first deploy.
+**builder (fix 1)**: Added explanatory comment for the pyright ignore in tests/test_compose_prod.py; aligned the 034 row in docs/mvp-plan.md with the spec (`just deploy`, `--env-file .env`).

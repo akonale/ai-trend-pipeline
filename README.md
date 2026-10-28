@@ -33,7 +33,7 @@ just hello   # terminal 2: run HelloWorkflow
 just down    # stop the stack
 ```
 
-Open http://localhost:8233 to see `hello-workflow` as Completed. Open `/`, type a topic and click Generate to start a run (needs `just dev` running).
+Open http://localhost:8233 to see `hello-workflow` as Completed.
 
 On a remote dev server, tunnel
 the UI port first: `ssh -L 8233:localhost:8233 <host>`.
@@ -46,6 +46,9 @@ just web     # serves http://127.0.0.1:8000 (health page at /health)
 
 On a remote dev server, tunnel the port first: `ssh -L 8000:localhost:8000 <host>`. The page needs
 no Temporal connection. htmx 2.0.4 is vendored as-is in `src/ai_trend_pipeline/web/static/`.
+
+Open `/`, type a topic and click Generate to start a run. This needs `just dev` running. The run
+page at `/runs/<id>` shows the workflow id and status.
 
 ## CI
 

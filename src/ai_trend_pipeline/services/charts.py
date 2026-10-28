@@ -21,6 +21,7 @@ class StartChartRequest(BaseModel):
     wf_id: str | None = None
     topic: str | None = None
     unique_id: bool = False
+    requested_by: str | None = None
 
 
 class StartChartResult(BaseModel):
@@ -35,6 +36,7 @@ class DecideChartRequest(BaseModel):
     wf_id: str
     approved: bool
     note: str = ""
+    decided_by: str | None = None
 
 
 class ChartServiceError(Exception):
@@ -114,9 +116,11 @@ class ChartService:
             wf_id = f"daily-chart-{date}"
         output_dir = self._settings.chart_output_dir
         if output_dir:
-            data = DailyChartInput(output_dir=output_dir, topic=req.topic)
+            data = DailyChartInput(
+                output_dir=output_dir, topic=req.topic, requested_by=req.requested_by
+            )
         else:
-            data = DailyChartInput(topic=req.topic)
+            data = DailyChartInput(topic=req.topic, requested_by=req.requested_by)
         await self._gateway.start(wf_id, data)
         return StartChartResult(wf_id=wf_id)
 
@@ -128,7 +132,9 @@ class ChartService:
         state = await handle.review_state()
         if state.status != "awaiting_decision":
             raise NotAwaitingDecision(req.wf_id, state.status)
-        await handle.send_decision(ApprovalDecision(approved=req.approved, note=req.note))
+        await handle.send_decision(
+            ApprovalDecision(approved=req.approved, note=req.note, decided_by=req.decided_by)
+        )
         return await handle.result()
 
     async def submit_decision(self, req: DecideChartRequest) -> None:
@@ -136,7 +142,9 @@ class ChartService:
         state = await handle.review_state()
         if state.status != "awaiting_decision":
             raise NotAwaitingDecision(req.wf_id, state.status)
-        await handle.send_decision(ApprovalDecision(approved=req.approved, note=req.note))
+        await handle.send_decision(
+            ApprovalDecision(approved=req.approved, note=req.note, decided_by=req.decided_by)
+        )
 
     async def chart_image(self, ref: ChartRunRef) -> Path:
         state = await self._gateway.handle(ref.wf_id).review_state()

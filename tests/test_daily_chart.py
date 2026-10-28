@@ -407,3 +407,34 @@ async def test_manual_topic_no_match_fails() -> None:
             await handle.result()
     assert fakes.topic_inputs == []
     assert fakes.render_inputs == []
+
+
+@pytest.mark.asyncio
+async def test_requested_by_and_decided_by_recorded() -> None:
+    fakes = FakeDailyActivities()
+    async with await start_env() as env, make_worker(env, fakes):
+        handle = await start_workflow(env, DailyChartInput(requested_by="a@example.com"))
+        state = await wait_for_state(handle, "awaiting_decision")
+        assert state.requested_by == "a@example.com"
+        assert state.decided_by is None
+        await handle.signal(
+            DailyChartWorkflow.decide, ApprovalDecision(approved=True, decided_by="b@example.com")
+        )
+        result = await handle.result()
+        final = await handle.query(DailyChartWorkflow.review_state)
+    assert result.decided_by == "b@example.com"
+    assert final.requested_by == "a@example.com"
+    assert final.decided_by == "b@example.com"
+
+
+@pytest.mark.asyncio
+async def test_expired_run_keeps_requested_by_without_decider() -> None:
+    fakes = FakeDailyActivities()
+    async with await start_env() as env, make_worker(env, fakes):
+        handle = await start_workflow(env, DailyChartInput(requested_by="a@example.com"))
+        result = await handle.result()
+        final = await handle.query(DailyChartWorkflow.review_state)
+    assert result.status == "expired"
+    assert result.decided_by is None
+    assert final.decided_by is None
+    assert final.requested_by == "a@example.com"

@@ -164,3 +164,7 @@ def test_no_real_domain() -> None:
     ]
     for path in paths:
         assert "trendrunner" not in path.read_text(), path.name
+
+
+def test_web_auth_mode_is_literal_cloudflare() -> None:
+    assert _env(_load()["web"])["AUTH_MODE"] == "cloudflare"

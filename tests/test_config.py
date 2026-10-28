@@ -67,3 +67,11 @@ def test_reads_os_environ_at_call_time(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_web_host_read_and_defaults() -> None:
     assert load_settings({"WEB_HOST": "0.0.0.0"}).web_host == "0.0.0.0"
     assert load_settings({}).web_host == "127.0.0.1"
+
+
+def test_auth_mode() -> None:
+    assert load_settings({}).auth_mode == "local"
+    assert load_settings({"AUTH_MODE": ""}).auth_mode == "local"
+    assert load_settings({"AUTH_MODE": "cloudflare"}).auth_mode == "cloudflare"
+    with pytest.raises(ValueError):
+        load_settings({"AUTH_MODE": "bogus"})

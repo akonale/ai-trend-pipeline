@@ -1,6 +1,6 @@
 # 022: Home page with topic box and Generate button
 
-Status: built
+Status: pr-open
 
 ## Goal
 
@@ -95,3 +95,13 @@ Next: human approval (this task is `yes`), then builder on `task/022-home-genera
 Replaced `test_root_is_not_routed`; added web and service tests. Ruff, Pyright and the two test files pass; full suite left to the verifier.
 Note: tests avoid annotating `httpx.Response` because TestClient returns an `httpx2` type, which Pyright rejects.
 Next: verifier.
+
+**verifier**: `just lint` passed (ruff check, ruff format --check, pyright 0 errors); `just test` passed (144 tests).
+All checks pass.
+
+**reviewer**: Approved. All criteria and listed tests present; scope matches Files to touch; layers and Pydantic rules hold.
+Note: wf_id is not URL-quoted in the redirect (safe today, uuid hex ids).
+
+**scribe**: Moved the Generate guide line to "Web app" in README per reviewer note; pushed the branch.
+Opened PR: https://github.com/akonale/ai-trend-pipeline/pull/24
+Next: human merges the PR.

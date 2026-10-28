@@ -52,6 +52,12 @@ page at `/runs/<id>` updates live (htmx polling) and, once the chart is ready, s
 caption and critique with Approve and Reject buttons; approving posts to Bluesky. It also links to
 the run in the Temporal UI, at `TEMPORAL_UI_URL` (default `http://localhost:8233`).
 
+`AUTH_MODE` (`local` by default, or `cloudflare`) decides who the web app records as the requester
+and approver of a run. `local` uses the fixed user `dev@localhost`. `cloudflare` reads the
+`Cf-Access-Authenticated-User-Email` header and answers 401 to POST requests without it. Prod sets
+it in `infra/compose.prod.yaml`; the header is trusted only because the web port is bound to
+`127.0.0.1` and reached only through the tunnel.
+
 ## Production
 
 `just deploy` runs the full stack with docker compose on the server. Production reads its settings

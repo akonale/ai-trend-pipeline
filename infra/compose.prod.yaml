@@ -67,6 +67,7 @@ services:
       TEMPORAL_ADDRESS: temporal:7233
       CHART_OUTPUT_DIR: /data/charts
       WEB_HOST: 0.0.0.0
+      AUTH_MODE: cloudflare
       TEMPORAL_UI_URL: ${TEMPORAL_UI_URL:-http://localhost:18233}
     volumes:
       - charts:/data/charts

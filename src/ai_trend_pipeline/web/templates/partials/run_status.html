@@ -1,5 +1,7 @@
 <div id="run-status" class="run-status"{% if view.polling %} hx-get="/runs/{{ view.wf_id }}/status{% if view.sent %}?sent=1{% endif %}" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
   <p>Status: {{ view.status_label }}</p>
+  {% if view.requested_by %}<p>Requested by: {{ view.requested_by }}</p>{% endif %}
+  {% if view.decided_by and view.decided_label %}<p>{{ view.decided_label }} by: {{ view.decided_by }}</p>{% endif %}
   {% if view.error %}<p class="error">{{ view.error }}</p>{% endif %}
   {% if view.topic %}
   <p>Topic: {{ view.topic }}</p>

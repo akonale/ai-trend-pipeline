@@ -406,3 +406,114 @@ def test_build_run_view_temporal_url_quotes_id() -> None:
     state = ReviewState(status="drafting")
     v = build_run_view("a b/c", state, "http://t:1")
     assert v.temporal_url == "http://t:1/namespaces/default/workflows/a%20b%2Fc"
+
+
+CF_HEADER = "Cf-Access-Authenticated-User-Email"
+
+
+def auth_client(
+    gateway: RecGateway, auth_mode: Literal["local", "cloudflare"] = "local"
+) -> TestClient:
+    settings = Settings(auth_mode=auth_mode)
+    app = create_app(settings)
+    service = ChartService(gateway, settings)
+
+    async def fake_service() -> ChartService:
+        return service
+
+    app.dependency_overrides[get_chart_service] = fake_service
+    return TestClient(app)
+
+
+def test_local_mode_uses_dev_user() -> None:
+    gateway = RecGateway()
+    auth_client(gateway).post("/runs", data={"topic": "abc"}, follow_redirects=False)
+    assert gateway.started[0][1].requested_by == "dev@localhost"
+
+
+def test_local_mode_ignores_header() -> None:
+    gateway = RecGateway()
+    auth_client(gateway).post(
+        "/runs", data={"topic": "abc"}, headers={CF_HEADER: "x@example.com"}, follow_redirects=False
+    )
+    assert gateway.started[0][1].requested_by == "dev@localhost"
+
+
+def test_cloudflare_mode_normalizes_header() -> None:
+    gateway = RecGateway()
+    auth_client(gateway, "cloudflare").post(
+        "/runs",
+        data={"topic": "abc"},
+        headers={CF_HEADER: " Friend@Example.com "},
+        follow_redirects=False,
+    )
+    assert gateway.started[0][1].requested_by == "friend@example.com"
+
+
+def test_cloudflare_mode_missing_or_blank_header_is_401() -> None:
+    gateway = RecGateway()
+    client = auth_client(gateway, "cloudflare")
+    assert client.post("/runs", data={"topic": "abc"}).status_code == 401
+    res = client.post("/runs", data={"topic": "abc"}, headers={CF_HEADER: "   "})
+    assert res.status_code == 401
+    assert gateway.started == []
+
+
+def test_cloudflare_mode_decision_without_header_is_401() -> None:
+    gateway = RecGateway(ReviewState(status="awaiting_decision", review=REVIEW))
+    res = auth_client(gateway, "cloudflare").post("/runs/wf-1/decision", data={"approved": "true"})
+    assert res.status_code == 401
+    assert gateway.decisions == []
+
+
+def test_decision_records_decided_by() -> None:
+    gateway = RecGateway(ReviewState(status="awaiting_decision", review=REVIEW))
+    auth_client(gateway, "cloudflare").post(
+        "/runs/wf-1/decision",
+        data={"approved": "true"},
+        headers={CF_HEADER: "B@example.com"},
+        follow_redirects=False,
+    )
+    assert [d.decided_by for d in gateway.decisions] == ["b@example.com"]
+
+
+def test_get_run_not_gated_in_cloudflare_mode() -> None:
+    gateway = RecGateway(ReviewState(status="drafting"))
+    assert auth_client(gateway, "cloudflare").get("/runs/wf-1").status_code == 200
+
+
+def test_run_page_shows_requester_and_approver() -> None:
+    state = ReviewState(
+        status="approved", review=REVIEW, requested_by="a@example.com", decided_by="b@example.com"
+    )
+    text = client_for(RecGateway(state)).get("/runs/wf-1").text
+    assert "Requested by: a@example.com" in text
+    assert "Approved by: b@example.com" in text
+
+
+def test_run_page_shows_rejecter() -> None:
+    state = ReviewState(
+        status="rejected", review=REVIEW, requested_by="a@example.com", decided_by="b@example.com"
+    )
+    text = client_for(RecGateway(state)).get("/runs/wf-1").text
+    assert "Rejected by: b@example.com" in text
+
+
+def test_run_page_without_requester_has_no_line() -> None:
+    _, text = run_page("drafting", None)
+    assert "Requested by" not in text
+
+
+def test_build_run_view_copies_users_and_label() -> None:
+    state = ReviewState(
+        status="posting", review=REVIEW, requested_by="a@example.com", decided_by="b@example.com"
+    )
+    v = build_run_view("wf-1", state, "http://t")
+    assert (v.requested_by, v.decided_by, v.decided_label) == (
+        "a@example.com",
+        "b@example.com",
+        "Approved",
+    )
+    state = state.model_copy(update={"status": "rejected"})
+    assert build_run_view("wf-1", state, "http://t").decided_label == "Rejected"
+    assert view("expired").decided_label == ""

@@ -27,6 +27,9 @@ STATUS_LABELS = {
 }
 
 
+DECIDED_LABELS = {"posting": "Approved", "approved": "Approved", "rejected": "Rejected"}
+
+
 class RunView(BaseModel):
     wf_id: str
     status: str
@@ -44,6 +47,9 @@ class RunView(BaseModel):
     sent: bool = False
     temporal_url: str
     error: str = ""
+    requested_by: str | None = None
+    decided_by: str | None = None
+    decided_label: str = ""
 
 
 def build_run_view(
@@ -68,4 +74,7 @@ def build_run_view(
         sent=sent,
         temporal_url=f"{temporal_ui_url}/namespaces/default/workflows/{quote(wf_id, safe='')}",
         error=error,
+        requested_by=state.requested_by,
+        decided_by=state.decided_by,
+        decided_label=DECIDED_LABELS.get(state.status, ""),
     )

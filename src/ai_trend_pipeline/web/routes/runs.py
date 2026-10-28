@@ -17,7 +17,13 @@ from ai_trend_pipeline.services.charts import (
     RunNotFound,
     StartChartRequest,
 )
-from ai_trend_pipeline.web.dependencies import get_chart_service, get_settings, get_templates
+from ai_trend_pipeline.web.dependencies import (
+    CurrentUser,
+    current_user,
+    get_chart_service,
+    get_settings,
+    get_templates,
+)
 from ai_trend_pipeline.web.view_models import HomeView, build_run_view
 
 router = APIRouter()
@@ -29,6 +35,7 @@ MAX_TOPIC_LENGTH = 200
 async def create_run(
     request: Request,
     topic: Annotated[str, Form()] = "",
+    user: CurrentUser = Depends(current_user),
     service: ChartService = Depends(get_chart_service),
     templates: Jinja2Templates = Depends(get_templates),
 ) -> RedirectResponse | HTMLResponse:
@@ -39,7 +46,9 @@ async def create_run(
         )
         return templates.TemplateResponse(request, "home.html", {"view": view}, status_code=400)
     try:
-        result = await service.start(StartChartRequest(topic=topic, unique_id=True))
+        result = await service.start(
+            StartChartRequest(topic=topic, unique_id=True, requested_by=user.email)
+        )
     except RunAlreadyExists as exc:
         view = HomeView(error=f"Error: {exc}", topic=topic)
         return templates.TemplateResponse(request, "home.html", {"view": view}, status_code=409)
@@ -107,6 +116,7 @@ async def decide_run(
     request: Request,
     wf_id: str,
     approved: Annotated[str, Form()] = "",
+    user: CurrentUser = Depends(current_user),
     service: ChartService = Depends(get_chart_service),
     settings: Settings = Depends(get_settings),
     templates: Jinja2Templates = Depends(get_templates),
@@ -114,7 +124,9 @@ async def decide_run(
     if approved not in ("true", "false"):
         raise HTTPException(status_code=400, detail="approved must be true or false")
     try:
-        await service.submit_decision(DecideChartRequest(wf_id=wf_id, approved=approved == "true"))
+        await service.submit_decision(
+            DecideChartRequest(wf_id=wf_id, approved=approved == "true", decided_by=user.email)
+        )
     except RunNotFound:
         return templates.TemplateResponse(request, "run_not_found.html", {}, status_code=404)
     except NotAwaitingDecision as exc:

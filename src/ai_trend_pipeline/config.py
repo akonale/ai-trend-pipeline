@@ -2,6 +2,7 @@
 
 import os
 from collections.abc import Mapping
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, SecretStr
 
@@ -22,6 +23,7 @@ class Settings(BaseModel):
     bluesky_handle: str | None = None
     bluesky_app_password: SecretStr | None = None
     bluesky_service: str = DEFAULT_BLUESKY_SERVICE
+    auth_mode: Literal["local", "cloudflare"] = "local"
 
 
 def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
@@ -37,4 +39,5 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         bluesky_handle=env.get("BLUESKY_HANDLE") or None,
         bluesky_app_password=SecretStr(password) if password else None,
         bluesky_service=env.get("BLUESKY_SERVICE") or DEFAULT_BLUESKY_SERVICE,
+        auth_mode=env.get("AUTH_MODE") or "local",  # pyright: ignore[reportArgumentType]  # validated by Pydantic
     )

@@ -34,6 +34,7 @@ class DailyChartInput(BaseModel):
     since_year: int = Field(default=2000, ge=1800, le=2100)
     output_dir: str = Field(default="charts", min_length=1)
     topic: str | None = Field(default=None, min_length=1)
+    requested_by: str | None = None
 
 
 class ReviewRequest(BaseModel):
@@ -49,12 +50,15 @@ class ReviewRequest(BaseModel):
 class ApprovalDecision(BaseModel):
     approved: bool
     note: str = Field(default="", max_length=500)
+    decided_by: str | None = None
 
 
 class ReviewState(BaseModel):
     status: Literal["drafting", "awaiting_decision", "posting", "approved", "rejected", "expired"]
     review: ReviewRequest | None = None
     note: str = ""
+    requested_by: str | None = None
+    decided_by: str | None = None
 
 
 class DailyChartResult(BaseModel):
@@ -62,6 +66,7 @@ class DailyChartResult(BaseModel):
     review: ReviewRequest
     note: str = ""
     post: PostChartOutput | None = None
+    decided_by: str | None = None
 
 
 @workflow.defn
@@ -72,6 +77,7 @@ class DailyChartWorkflow:
 
     @workflow.run
     async def run(self, data: DailyChartInput) -> DailyChartResult:
+        self._state = ReviewState(status="drafting", requested_by=data.requested_by)
         if data.topic is not None:
             topic, reason = data.topic, MANUAL_TOPIC_REASON
         else:
@@ -110,20 +116,30 @@ class DailyChartWorkflow:
             critique=chart.critique,
             attempts=chart.attempts,
         )
-        self._state = ReviewState(status="awaiting_decision", review=review)
+        self._state = ReviewState(
+            status="awaiting_decision", review=review, requested_by=data.requested_by
+        )
         try:
             await workflow.wait_condition(
                 lambda: self._decision is not None, timeout=APPROVAL_TIMEOUT
             )
         except TimeoutError:
-            self._state = ReviewState(status="expired", review=review)
+            self._state = ReviewState(
+                status="expired", review=review, requested_by=data.requested_by
+            )
             return DailyChartResult(status="expired", review=review)
         decision = self._decision
         assert decision is not None
         status: Literal["approved", "rejected"] = "approved" if decision.approved else "rejected"
         post: PostChartOutput | None = None
         if decision.approved:
-            self._state = ReviewState(status="posting", review=review, note=decision.note)
+            self._state = ReviewState(
+                status="posting",
+                review=review,
+                note=decision.note,
+                requested_by=data.requested_by,
+                decided_by=decision.decided_by,
+            )
             post = await workflow.execute_activity_method(
                 BlueskyActivities.post_chart_to_bluesky,
                 PostChartInput(
@@ -136,8 +152,20 @@ class DailyChartWorkflow:
                 start_to_close_timeout=IO_ACTIVITY_TIMEOUT,
                 retry_policy=IO_RETRY_POLICY,
             )
-        self._state = ReviewState(status=status, review=review, note=decision.note)
-        return DailyChartResult(status=status, review=review, note=decision.note, post=post)
+        self._state = ReviewState(
+            status=status,
+            review=review,
+            note=decision.note,
+            requested_by=data.requested_by,
+            decided_by=decision.decided_by,
+        )
+        return DailyChartResult(
+            status=status,
+            review=review,
+            note=decision.note,
+            post=post,
+            decided_by=decision.decided_by,
+        )
 
     @workflow.signal
     def decide(self, decision: ApprovalDecision) -> None:

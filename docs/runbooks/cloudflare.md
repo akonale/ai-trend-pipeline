@@ -5,6 +5,10 @@ app and the Temporal UI are reachable behind Cloudflare Access while nothing on 
 publicly. Hostnames below are placeholders (`example.com`); real values live only in `.env.prod`
 and the Cloudflare dashboard.
 
+`infra/compose.prod.yaml` sets `AUTH_MODE: cloudflare` on `web`, so POST routes need the
+`Cf-Access-Authenticated-User-Email` header that Cloudflare Access adds. The app trusts it only
+because the web port is bound to `127.0.0.1` and reached only through the tunnel.
+
 ## Dashboard setup
 
 1. Zero Trust > Networks > Tunnels: create a tunnel and copy its token.

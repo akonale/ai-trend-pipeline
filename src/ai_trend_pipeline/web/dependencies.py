@@ -1,13 +1,21 @@
 """FastAPI dependencies for settings, templates and the chart service."""
 
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 from temporalio.client import Client
 
 from ai_trend_pipeline import temporal_client
 from ai_trend_pipeline.config import Settings
 from ai_trend_pipeline.services.charts import ChartService
 from ai_trend_pipeline.services.temporal_gateway import TemporalChartRunGateway
+
+DEV_USER_EMAIL = "dev@localhost"
+CF_EMAIL_HEADER = "Cf-Access-Authenticated-User-Email"
+
+
+class CurrentUser(BaseModel):
+    email: str
 
 
 def get_settings(request: Request) -> Settings:
@@ -32,3 +40,12 @@ async def get_chart_service(
         client = await temporal_client.connect(settings)
         request.app.state.temporal_client = client
     return ChartService(TemporalChartRunGateway(client), settings)
+
+
+def current_user(request: Request, settings: Settings = Depends(get_settings)) -> CurrentUser:
+    if settings.auth_mode == "local":
+        return CurrentUser(email=DEV_USER_EMAIL)
+    email = request.headers.get(CF_EMAIL_HEADER, "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=401, detail="authentication required")
+    return CurrentUser(email=email)

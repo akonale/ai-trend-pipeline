@@ -228,3 +228,32 @@ async def test_chart_image_not_found_cases(tmp_path: Path) -> None:
         await service.start(StartChartRequest(wf_id="a"))
         with pytest.raises(ChartImageNotFound):
             await service.chart_image(ChartRunRef(wf_id="a"))
+
+
+@pytest.mark.asyncio
+async def test_start_puts_requested_by_into_input() -> None:
+    gw = FakeGateway()
+    await make_service(gw).start(StartChartRequest(wf_id="a", requested_by="a@example.com"))
+    assert gw.started[0][1].requested_by == "a@example.com"
+
+
+@pytest.mark.asyncio
+async def test_decisions_carry_decided_by() -> None:
+    gw = FakeGateway()
+    service = make_service(gw)
+    await service.start(StartChartRequest(wf_id="a"))
+    await service.submit_decision(
+        DecideChartRequest(wf_id="a", approved=True, decided_by="b@example.com")
+    )
+    await service.decide(DecideChartRequest(wf_id="a", approved=True, decided_by="c@example.com"))
+    assert [d.decided_by for d in gw.handles["a"].decisions] == ["b@example.com", "c@example.com"]
+
+
+@pytest.mark.asyncio
+async def test_requests_without_user_give_none() -> None:
+    gw = FakeGateway()
+    service = make_service(gw)
+    await service.start(StartChartRequest(wf_id="a"))
+    await service.submit_decision(DecideChartRequest(wf_id="a", approved=True))
+    assert gw.started[0][1].requested_by is None
+    assert gw.handles["a"].decisions[0].decided_by is None

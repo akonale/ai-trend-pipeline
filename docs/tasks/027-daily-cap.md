@@ -1,6 +1,6 @@
 # 027: Per-person daily cap
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -113,3 +113,10 @@ Next: orchestrator sets `approved` (task is `no`), then builder on `task/027-dai
 
 **builder**: Implemented cap (config, DailyCapReached in ChartService.start, gateway memo + visibility count, 429 route, compose, docs) tests-first; fakes updated.
 Live check against a throwaway dev server (port 17233, now killed): PASSED. 3 runs for a@ counted 3, 2 for b@ counted 2, unknown c@ 0, runs without memo ignored, a since boundary in the future gave 0. No bugs found.
+
+**verifier**: `just lint` passed (ruff check, ruff format --check, pyright 0 errors). `just test` passed (235 passed).
+No Temporal dev server process is running (`pgrep -x temporal` finds nothing). `git status` is clean apart from this spec status edit.
+Next: reviewer checks the diff against `main` (checklist).
+
+**reviewer**: Approved. Cap check is in ChartService.start (UTC midnight, injectable clock); route stays thin (429, topic kept). Workflow/activities/CLI untouched; email is never put in the query (memo compared client-side). Config parses int() then Field(ge=1), no ignore added.
+Note: count_started_since scans all of the UTC day runs, fine at this scale.

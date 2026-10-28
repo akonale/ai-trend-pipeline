@@ -1,6 +1,6 @@
 # 035: UI refresh
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -185,3 +185,6 @@ Next: reviewer.
 
 **reviewer**: Approved. Checked diff vs spec and checklist: test_web.py untouched; templates only use if/for/output; badge and chips come from view_models.py; home route only passes `topic` to build_home_view; no @import/url()/http in CSS; viewport meta present; hx-trigger only under view.polling; no type-ignore/Any; workflows, services, config and CLI untouched.
 Note: `badge_for` returns a plain tuple, fine as an internal helper (not an activity/workflow I/O).
+**scribe**: Added a README line on the example chips and `/?topic=` prefill; no other doc change needed. Pushed branch and opened PR https://github.com/akonale/ai-trend-pipeline/pull/33 (against main).
+Visual check (360/1280px, light/dark) was done by the orchestrator with screenshots; no horizontal overflow in 16 combinations.
+Next: human reviews and merges PR #33. After merge, run `just deploy` so prod shows the new look.

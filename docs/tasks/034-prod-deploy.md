@@ -1,6 +1,6 @@
 # 034: Production stack with docker-compose
 
-Status: verified
+Status: pr-open
 
 ## Goal
 
@@ -95,3 +95,5 @@ Notes: (1) docs/mvp-plan.md was edited (new Phase 7 row) though not in "Files to
 **builder (fix 1)**: Added explanatory comment for the pyright ignore in tests/test_compose_prod.py; aligned the 034 row in docs/mvp-plan.md with the spec (`just deploy`, `--env-file .env`).
 **verifier (re-run after fix 1)**: `just lint` passed (ruff check, ruff format --check on 78 files, pyright 0 errors). `just test` passed (176 tests).
 All checks pass.
+**scribe**: Docs already covered (README Production pointer, CLAUDE.md deploy row, runbook); no doc edits needed. Pushed branch, opened PR https://github.com/akonale/ai-trend-pipeline/pull/28 (not merged).
+Image tags (python 3.12.7-slim, uv 0.5.5, auto-setup 1.25.2, ui 2.31.2) were never pulled; first deploy must confirm them. Next: human reviews and merges PR #28.

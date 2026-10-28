@@ -1,5 +1,6 @@
 """Route tests for the web skeleton, using the FastAPI test client and no Temporal."""
 
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
@@ -79,6 +80,9 @@ def test_health_never_touches_chart_service() -> None:
 
 
 class FakeGateway:
+    async def count_started_since(self, requested_by: str, since: datetime) -> int:
+        return 0
+
     async def start(self, wf_id: str, data: DailyChartInput) -> None:
         return None
 
@@ -140,6 +144,12 @@ class RecGateway:
         self.exists = exists
         self.started: list[tuple[str, DailyChartInput]] = []
         self.decisions: list[ApprovalDecision] = []
+        self.count = 0
+        self.count_calls = 0
+
+    async def count_started_since(self, requested_by: str, since: datetime) -> int:
+        self.count_calls += 1
+        return self.count
 
     async def start(self, wf_id: str, data: DailyChartInput) -> None:
         if self.exists:
@@ -517,3 +527,23 @@ def test_build_run_view_copies_users_and_label() -> None:
     state = state.model_copy(update={"status": "rejected"})
     assert build_run_view("wf-1", state, "http://t").decided_label == "Rejected"
     assert view("expired").decided_label == ""
+
+
+def test_daily_cap_returns_429_and_keeps_topic() -> None:
+    gateway = RecGateway()
+    gateway.count = 10
+    res = client_for(gateway).post("/runs", data={"topic": "my topic"})
+    assert res.status_code == 429
+    assert "reached today&#39;s limit" in res.text or "reached today's limit" in res.text
+    assert "00:00 UTC" in res.text
+    assert 'role="alert"' in res.text
+    assert 'value="my topic"' in res.text or ">my topic<" in res.text
+    assert gateway.started == []
+
+
+def test_blank_topic_and_missing_header_do_not_count() -> None:
+    gateway = RecGateway()
+    assert client_for(gateway).post("/runs", data={"topic": " "}).status_code == 400
+    res = auth_client(gateway, "cloudflare").post("/runs", data={"topic": "abc"})
+    assert res.status_code == 401
+    assert gateway.count_calls == 0

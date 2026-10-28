@@ -13,6 +13,7 @@ Cloudflare Tunnel is covered in [cloudflare.md](cloudflare.md).
 - `POSTGRES_PASSWORD` (required; compose refuses to start without it)
 - `CLOUDFLARE_TUNNEL_TOKEN` (required; compose refuses to start without it)
 - `TEMPORAL_UI_URL` (optional; public Temporal UI URL, for example `https://temporal.example.com`)
+- `DAILY_CHART_CAP` (optional, default 10; charts each person can start from the web per UTC day, resets at 00:00 UTC, every started run counts, the CLI is not capped)
 - `ANTHROPIC_API_KEY`
 - `BLUESKY_HANDLE`
 - `BLUESKY_APP_PASSWORD`

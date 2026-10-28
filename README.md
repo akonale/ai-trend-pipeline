@@ -59,6 +59,9 @@ and approver of a run. `local` uses the fixed user `dev@localhost`. `cloudflare`
 it in `infra/compose.prod.yaml`; the header is trusted only because the web port is bound to
 `127.0.0.1` and reached only through the tunnel.
 
+`DAILY_CHART_CAP` (default 10, at least 1) limits how many charts each signed-in person can start from
+the web per UTC day; the count resets at 00:00 UTC and includes every started run. The CLI is not capped.
+
 ## Production
 
 `just deploy` runs the full stack with docker compose on the server. Production reads its settings

@@ -11,6 +11,7 @@ from ai_trend_pipeline.services.charts import (
     ChartImageNotFound,
     ChartRunRef,
     ChartService,
+    DailyCapReached,
     DecideChartRequest,
     NotAwaitingDecision,
     RunAlreadyExists,
@@ -47,6 +48,9 @@ async def create_run(
         result = await service.start(
             StartChartRequest(topic=topic, unique_id=True, requested_by=user.email)
         )
+    except DailyCapReached as exc:
+        view = HomeView(error=str(exc), topic=topic)
+        return templates.TemplateResponse(request, "home.html", {"view": view}, status_code=429)
     except RunAlreadyExists as exc:
         view = HomeView(error=f"Error: {exc}", topic=topic)
         return templates.TemplateResponse(request, "home.html", {"view": view}, status_code=409)

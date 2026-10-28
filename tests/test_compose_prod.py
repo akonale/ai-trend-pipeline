@@ -168,3 +168,7 @@ def test_no_real_domain() -> None:
 
 def test_web_auth_mode_is_literal_cloudflare() -> None:
     assert _env(_load()["web"])["AUTH_MODE"] == "cloudflare"
+
+
+def test_web_daily_chart_cap_from_env() -> None:
+    assert _env(_load()["web"])["DAILY_CHART_CAP"] == "${DAILY_CHART_CAP:-10}"

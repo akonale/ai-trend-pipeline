@@ -4,7 +4,7 @@ import os
 from collections.abc import Mapping
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 DEFAULT_BLUESKY_SERVICE = "https://bsky.social"
 DEFAULT_TEMPORAL_ADDRESS = "localhost:7233"
@@ -24,6 +24,7 @@ class Settings(BaseModel):
     bluesky_app_password: SecretStr | None = None
     bluesky_service: str = DEFAULT_BLUESKY_SERVICE
     auth_mode: Literal["local", "cloudflare"] = "local"
+    daily_chart_cap: int = Field(default=10, ge=1)
 
 
 def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
@@ -40,4 +41,5 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         bluesky_app_password=SecretStr(password) if password else None,
         bluesky_service=env.get("BLUESKY_SERVICE") or DEFAULT_BLUESKY_SERVICE,
         auth_mode=env.get("AUTH_MODE") or "local",  # pyright: ignore[reportArgumentType]  # validated by Pydantic
+        daily_chart_cap=int(env.get("DAILY_CHART_CAP") or 10),
     )

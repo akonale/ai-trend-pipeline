@@ -75,3 +75,13 @@ def test_auth_mode() -> None:
     assert load_settings({"AUTH_MODE": "cloudflare"}).auth_mode == "cloudflare"
     with pytest.raises(ValueError):
         load_settings({"AUTH_MODE": "bogus"})
+
+
+def test_daily_chart_cap() -> None:
+    assert Settings().daily_chart_cap == 10
+    assert load_settings({}).daily_chart_cap == 10
+    assert load_settings({"DAILY_CHART_CAP": ""}).daily_chart_cap == 10
+    assert load_settings({"DAILY_CHART_CAP": "3"}).daily_chart_cap == 3
+    for bad in ("0", "-1", "abc", "2.5"):
+        with pytest.raises(ValueError):
+            load_settings({"DAILY_CHART_CAP": bad})

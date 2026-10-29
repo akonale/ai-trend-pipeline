@@ -39,6 +39,7 @@ Contents: [1 Temporal](#1-temporal) | [2 Web app](#2-web-app) | [3 Infra](#3-inf
 | Activity | Class / function | Input -> output |
 | --- | --- | --- |
 | `fetch_hn_top_stories` | `HNActivities` | `HNTopStoriesInput` -> `HNTopStoriesOutput` |
+| `poll_hn_source` | `HNSourceActivities` | `SourcePollInput` -> `SourcePollOutput` |
 | `pick_topic` | `TopicActivities` | `PickTopicInput` -> `PickTopicOutput` |
 | `fetch_owid_dataset` | `OwidActivities` | `FetchOwidInput` -> `OwidTable` |
 | `write_chart_spec` | `ChartSpecActivities` | `WriteChartSpecInput` -> `ChartSpec` |
@@ -48,6 +49,19 @@ Contents: [1 Temporal](#1-temporal) | [2 Web app](#2-web-app) | [3 Infra](#3-inf
 
 Activity classes take their clients in `__init__` (httpx / Anthropic), so tests pass fakes with
 `MockTransport`.
+
+### Sources (`sources/`)
+
+`sources/models.py` holds the frozen, `extra="forbid"` boundary models (`SourceName`,
+`SourceEvent`, `SourcePollInput`, `SourcePollOutput`) and the `SourceConnector` protocol. Fields are
+bounded (IDs 1-128, titles 1-200, URLs at most 1024 and only `http`/`https`, at most 4 metrics and
+100 events), timestamps are timezone-aware UTC, and one output holds one source with unique
+`external_id` values. `sources/normalize.py` is the single normalization path both connectors use.
+The static registry (`sources/registry.py`) maps registered names to labels and poll activity names
+and imports only the models, so workflow code can import it without I/O. `sources/hn.py` wraps
+`HNActivities.fetch_hn_top_stories` in `HNSourceConnector` and `HNSourceActivities.poll_hn_source`;
+`sources/fake.py` is a deterministic, unregistered test connector. There is no worker registration,
+workflow, task queue, table or UI in 042.
 
 ### Determinism, idempotency, replay
 
@@ -267,6 +281,9 @@ environment variables.
 | `AUTH_MODE` | `auth_mode` | `local` or `cloudflare` | `local` |
 | `DAILY_CHART_CAP` | `daily_chart_cap` | runs per person per UTC day, at least 1 | `10` |
 | `DATABASE_URL` | `database_url` | Postgres for style profiles | local dev Postgres URL |
+| `SOURCE_ENABLED` | `source_enabled` | comma-separated registered sources; `none` disables all | `hn` |
+| `SOURCE_POLL_LIMIT` | `source_poll_limit` | raw items requested and events returned per poll, 1-100 | `30` |
+| `SOURCE_POLL_TIMEOUT_S` | `source_poll_timeout_s` | HN source poll HTTP timeout, over 0 and at most 60 | `15.0` |
 
 Secrets use `SecretStr`. Compose-only keys (`POSTGRES_PASSWORD`, `CLOUDFLARE_TUNNEL_TOKEN`,
 `APP_URL` documentation only) are not read by the app.

@@ -1,6 +1,6 @@
 # 028: Style profiles
 
-Status: needs-fix
+Status: reviewed
 
 ## Goal
 
@@ -148,7 +148,7 @@ signature). Two people get visibly different charts for the same topic.
 - `src/ai_trend_pipeline/config.py`
 - `src/ai_trend_pipeline/services/styles.py` (new), `src/ai_trend_pipeline/services/postgres_style_store.py` (new)
 - `src/ai_trend_pipeline/services/charts.py`
-- `src/ai_trend_pipeline/web/app.py` (router, lock), `web/dependencies.py` (`get_style_store`, `get_style_service`, and `get_chart_service` passes the store)
+- `src/ai_trend_pipeline/web/app.py` (router), `web/dependencies.py` (`get_style_store`, `get_style_service`, and `get_chart_service` passes the store)
 - `src/ai_trend_pipeline/web/routes/settings.py` (new), `web/view_models.py`
 - `src/ai_trend_pipeline/web/templates/settings.html` (new), `web/templates/base.html`, `web/static/app.css`
 - `infra/compose.prod.yaml` (`web` env plus `depends_on` only)
@@ -255,3 +255,11 @@ Everything else checked OK (layering, SQL parameterised, escaping, per-user scop
 
 **builder (fix 2)**: Store is now lazy (`PostgresStyleStore` ensures schema on first get/save, retries after failure, raises `StyleStoreUnavailable`); `get_style_store` does no I/O. POST /runs and /settings give a friendly 503; signature uses `isprintable`.
 Tests added: broken-store read routes stay 200, schema retry, 503 paths, control-char signature. No list/refine routes exist yet. Removed the lock pyright ignore with the lock.
+
+**verifier (re-check after fix 2)**: `just lint` passes (ruff check and format, pyright 0 errors). `just test` passes (281 passed).
+No ai-trend-scratch containers or ai-trend-scratch-app images left. ai-trend-prod (6 containers) still up, untouched.
+`git status` clean apart from this status change.
+All checks pass.
+
+Reviewer (re-review after fix 2): Approved. Outage bug fixed: get_style_store/get_chart_service do no I/O, store connects lazily under its own lock, failed schema retried (tested), only psycopg.Error/OSError converted, 503 paths and printable signature check present; lint and 281 tests pass.
+Note: spec line 151 still says "(router, lock)" for web/app.py; the lock is gone, so that wording is stale.

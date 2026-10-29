@@ -11,6 +11,7 @@ from ai_trend_pipeline.services.charts import ChartService
 from ai_trend_pipeline.services.postgres_style_store import PostgresStyleStore
 from ai_trend_pipeline.services.styles import StyleService, StyleStore
 from ai_trend_pipeline.services.temporal_gateway import TemporalChartRunGateway
+from ai_trend_pipeline.web.view_models import ShellView, build_shell
 
 DEV_USER_EMAIL = "dev@localhost"
 CF_EMAIL_HEADER = "Cf-Access-Authenticated-User-Email"
@@ -61,10 +62,25 @@ async def get_chart_service(
     return ChartService(TemporalChartRunGateway(client), settings, styles=styles)
 
 
-def current_user(request: Request, settings: Settings = Depends(get_settings)) -> CurrentUser:
+def optional_user(
+    request: Request, settings: Settings = Depends(get_settings)
+) -> CurrentUser | None:
+    """The signed-in user, or None when Cloudflare sent no (or a blank) email header."""
     if settings.auth_mode == "local":
         return CurrentUser(email=DEV_USER_EMAIL)
     email = request.headers.get(CF_EMAIL_HEADER, "").strip().lower()
-    if not email:
+    return CurrentUser(email=email) if email else None
+
+
+def current_user(user: CurrentUser | None = Depends(optional_user)) -> CurrentUser:
+    if user is None:
         raise HTTPException(status_code=401, detail="authentication required")
-    return CurrentUser(email=email)
+    return user
+
+
+def shell_context(request: Request) -> dict[str, ShellView]:
+    """Template context processor: the shell (nav, chip, footer) for every page. No I/O."""
+    settings = get_settings(request)
+    user = optional_user(request, settings)
+    shell = build_shell(request.url.path, user.email if user else None, settings.auth_mode)
+    return {"shell": shell}

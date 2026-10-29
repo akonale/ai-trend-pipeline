@@ -34,6 +34,32 @@ Contents: [1 Temporal](#1-temporal) | [2 Web app](#2-web-app) | [3 Infra](#3-inf
 - Requester and approver: `requested_by` is in `DailyChartInput` (also stored as workflow memo
   `requested_by` for the cap); `decided_by` is in the signal. Both are copied into `ReviewState`.
 
+### Story candidate workflow (`story_candidate.py`)
+
+`StoryCandidateWorkflow.run(StoryCandidateInput) -> StoryCandidateResult`, task queue
+`CANDIDATE_TASK_QUEUE = "story-candidate-task-queue"`. It runs no activities.
+
+```
+ awaiting_review ─┬─ approve(CandidateDecision) ─▶ approved
+                  ├─ reject(CandidateDecision)  ─▶ rejected
+                  └─ review_timeout_seconds     ─▶ expired
+```
+
+- Signals `approve` and `reject` take a `CandidateDecision` (`note`, `decided_by`); the first
+  terminal decision wins and later ones are logged and ignored. Query
+  `review_state() -> CandidateReviewState` (status, candidate, note, `decided_by`, `decided_at`);
+  `decided_at` comes from `workflow.now()`.
+- Workflow id: `candidate_id_for(source, external_id)` = `candidate-v1-` + the first 16 hex chars
+  of SHA-256 over `"<source.value>\x1f<external_id>"`. The gateway starts with
+  `id_conflict_policy=USE_EXISTING` and `id_reuse_policy=REJECT_DUPLICATE`, and treats
+  `WorkflowAlreadyStartedError` as success, so one source/external id always has one run.
+- Search attributes: keyword `CandidateStatus` and `CandidateSource`, both set at start
+  (`awaiting_review`, `source.value`); the terminal transition upserts the final status. Pending
+  candidates are a visibility query (`WorkflowType = 'StoryCandidateWorkflow' AND CandidateStatus =
+  'awaiting_review'`); list rows read title, proposed angle and observed time from workflow memo.
+- `temporal_client.ensure_candidate_search_attributes(client)` registers both attributes and
+  ignores `ALREADY_EXISTS`; the worker calls it once after connecting.
+
 ### Activities and models
 
 | Activity | Class / function | Input -> output |
@@ -79,11 +105,13 @@ workflow, task queue, table or UI in 042.
 
 ### Worker (`worker.py`)
 
-`main()` loads settings, connects with retry (30 s), builds the Anthropic, HN, OWID and Bluesky
-clients and runs two workers: `hello-task-queue` (`HelloWorkflow`, `say_hello`) and the daily chart
-queue (`DailyChartWorkflow` and the seven activities from `daily_chart_activities`). It exits at
-startup if `ANTHROPIC_API_KEY`, `BLUESKY_HANDLE` or `BLUESKY_APP_PASSWORD` is missing.
-`DraftChartWorkflow` (in `chart_loop.py`) is not registered.
+`main()` loads settings, connects with retry (30 s), registers the candidate search attributes,
+builds the Anthropic, HN, OWID and Bluesky clients and runs three workers: `hello-task-queue`
+(`HelloWorkflow`, `say_hello`), the daily chart queue (`DailyChartWorkflow` and the seven
+activities from `daily_chart_activities`), and `story-candidate-task-queue` (`CANDIDATE_WORKFLOWS =
+[StoryCandidateWorkflow]`, no activities). It exits at startup if `ANTHROPIC_API_KEY`,
+`BLUESKY_HANDLE` or `BLUESKY_APP_PASSWORD` is missing. `DraftChartWorkflow` (in `chart_loop.py`) is
+not registered.
 
 ## 2. Web app
 
@@ -152,6 +180,17 @@ while Postgres is down.
   and memo `requested_by`; maps gRPC NOT_FOUND to `RunNotFound`. The daily cap runs
   `list_workflows("WorkflowType = 'DailyChartWorkflow' AND StartTime >= '<00:00 UTC>'")` and counts
   matching memos. Runs without the memo are not counted.
+- `CandidateService` (`services/candidates.py`): `start`, `list_pending`, `show`, `decide` over a
+  `CandidateGateway` protocol (`start`, `list_pending`, `handle`). Errors: `CandidateNotFound`,
+  `CandidateClosed`, `InvalidPageToken`. `start` derives the candidate id and defaults the timeout
+  from `Settings.candidate_review_timeout_s`; `show` and `decide` query `review_state` first and
+  map a missing candidate to `CandidateNotFound` and a non-`awaiting_review` state to
+  `CandidateClosed`.
+- `TemporalCandidateGateway` / `TemporalCandidateHandle` (`services/temporal_gateway.py`): start
+  with `id_conflict_policy=USE_EXISTING` and `id_reuse_policy=REJECT_DUPLICATE`, set both search
+  attributes and the memo keys `candidate_title`, `candidate_proposed_angle`,
+  `candidate_observed_at`; `list_pending` runs the visibility query with opaque URL-safe base64 page
+  tokens (default size 20, max 100).
 - `StyleService` / `StyleStore` protocol (`services/styles.py`); `PostgresStyleStore`
   (`services/postgres_style_store.py`): psycopg 3, one short connection per call, schema and table
   created on first use and retried if setup fails; `psycopg.Error` or `OSError` become
@@ -284,6 +323,7 @@ environment variables.
 | `SOURCE_ENABLED` | `source_enabled` | comma-separated registered sources; `none` disables all | `hn` |
 | `SOURCE_POLL_LIMIT` | `source_poll_limit` | raw items requested and events returned per poll, 1-100 | `30` |
 | `SOURCE_POLL_TIMEOUT_S` | `source_poll_timeout_s` | HN source poll HTTP timeout, over 0 and at most 60 | `15.0` |
+| `CANDIDATE_REVIEW_TIMEOUT_S` | `candidate_review_timeout_s` | story candidate review timeout, 1-604800 seconds | `172800` |
 
 Secrets use `SecretStr`. Compose-only keys (`POSTGRES_PASSWORD`, `CLOUDFLARE_TUNNEL_TOKEN`,
 `APP_URL` documentation only) are not read by the app.
@@ -296,8 +336,10 @@ Secrets use `SecretStr`. Compose-only keys (`POSTGRES_PASSWORD`, `CLOUDFLARE_TUN
 - Tests (`tests/`): TDD, no live calls. Activities use `httpx.MockTransport` and recorded
   fixtures; web routes use `app.dependency_overrides` with fake services (`tests/style_fakes.py`
   has `InMemoryStyleStore`); workflows use `WorkflowEnvironment.start_time_skipping()`
-  (`test_daily_chart.py`, `test_chart_loop.py`, `test_hello.py`). Guard tests check `CLAUDE.md`
-  structure, compose files and CI.
+  (`test_daily_chart.py`, `test_chart_loop.py`, `test_hello.py`). Candidate visibility and gateway
+  tests use `WorkflowEnvironment.start_local` with the candidate search attributes pre-registered,
+  because the time-skipping server has no list-workflows; expiry is tested with a 1 s timeout.
+  Guard tests check `CLAUDE.md` structure, compose files and CI.
 - Lint: Ruff (line length 100) and Pyright strict; no `# type: ignore` or `Any` without a comment.
 - Agent relay: planner, builder, verifier, reviewer, scribe with human checkpoints; see
   `docs/mvp-plan.md` and `CLAUDE.md` (do not copy them).

@@ -105,7 +105,8 @@ Environment variables are read only in `ai_trend_pipeline.config` (`load_setting
 `Settings` model that is passed to the code that needs it). Source polling adds three of them:
 `SOURCE_ENABLED` (comma-separated registered source names, default `hn`; `none` disables all),
 `SOURCE_POLL_LIMIT` (1-100, default 30) and `SOURCE_POLL_TIMEOUT_S` (over 0 and at most 60, default
-15.0).
+15.0). `CANDIDATE_REVIEW_TIMEOUT_S` (1-604800 seconds, default 172800) sets how long a story
+candidate waits for an Approve/Reject decision before it expires.
 
 ## Hacker News
 
@@ -115,6 +116,14 @@ current HN top stories as typed models.
 `ai_trend_pipeline.sources` turns source items into normalized, bounded source events through the
 `poll_hn_source` activity (`HNSourceActivities`), reusing the existing HN fetch; the registry lists
 `hn` only, and a fake connector exists for tests but is not registered or wired into the worker yet.
+
+## Story candidates
+
+`ai_trend_pipeline.story_candidate` provides `StoryCandidateWorkflow`, one durable review per
+selected story candidate (task queue `story-candidate-task-queue`), with a `review_state` query and
+Approve/Reject signals. `services/candidates.py` and the Temporal candidate gateway start
+candidates idempotently, list pending ones with pagination and send decisions. Nothing polls sources
+or shows a UI for candidates yet.
 
 ## Topic picking
 

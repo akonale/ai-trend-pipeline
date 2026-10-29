@@ -2,7 +2,6 @@
 {% block title %}Run {{ view.wf_id }}{% endblock %}
 {% block content %}
 {% with stepper = view.stepper %}{% include "partials/stepper.html" %}{% endwith %}
-<h1>Chart run</h1>
 {% include "partials/run_status.html" %}
 <p class="back"><a href="/">&larr; New topic</a></p>
 {% endblock %}

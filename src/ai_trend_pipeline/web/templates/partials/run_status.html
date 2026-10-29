@@ -1,24 +1,56 @@
 <div id="run-status" class="run-status"{% if view.polling %} hx-get="/runs/{{ view.wf_id }}/status{% if view.sent %}?sent=1{% endif %}" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
   {% if view.error %}<p class="error" role="alert">{{ view.error }}</p>{% endif %}
-  <section class="card">
-    <p><span class="badge {{ view.badge_class }}">{{ view.badge_label }}</span></p>
+  <div class="run-head">
+    <span class="badge {{ view.badge_class }}">{{ view.badge_label }}</span>
+    <h1>{{ view.heading }}</h1>
+  </div>
+  <div class="run-meta">
     <p class="status-line">Status: {{ view.status_label }}</p>
     <p class="wf-id">{{ view.wf_id }}</p>
     {% if view.requested_by %}<p class="meta">Requested by: {{ view.requested_by }}</p>{% endif %}
     {% if view.decided_by and view.decided_label %}<p class="meta">{{ view.decided_label }} by: {{ view.decided_by }}</p>{% endif %}
-    {% if view.polling %}
-    <div class="run-progress" role="status" aria-live="polite">
-      <div class="bar"></div>
-      <p>Working on it, checking every 2 seconds</p>
+    {% if view.note %}<p class="meta">Note: {{ view.note }}</p>{% endif %}
+  </div>
+  {% if view.polling %}
+  <div class="run-progress" role="status" aria-live="polite">
+    <div class="bar"></div>
+    <p class="run-progress__stage">{{ view.progress_message }}</p>
+    <p>Working on it, checking every 2 seconds</p>
+  </div>
+  {% endif %}
+  {% if view.is_end %}
+  <section class="card outcome outcome--{{ view.outcome_tone }}">
+    <p class="outcome__message">{{ view.end_message }}</p>
+    {% if view.post_link_note %}<p class="meta">{{ view.post_link_note }}</p>{% endif %}
+    <div class="step-actions">
+      {% if view.post_url %}
+      <a class="btn btn--primary" href="{{ view.post_url }}" target="_blank" rel="noopener noreferrer">View the post<span class="visually-hidden"> (opens in a new tab)</span></a>
+      <a class="btn btn--secondary" href="{{ view.another_href }}">Make another chart</a>
+      {% else %}
+      <a class="btn btn--primary" href="{{ view.another_href }}">Make another chart</a>
+      {% endif %}
     </div>
-    {% endif %}
-    {% if view.topic %}
+  </section>
+  {% endif %}
+  {% if view.image_url %}
+  <section class="card card--chart">
+    <figure class="chart-frame">
+      <img class="preview" src="{{ view.image_url }}" alt="Chart preview">
+      {% if view.caption %}<figcaption>{{ view.caption }}</figcaption>{% endif %}
+    </figure>
+  </section>
+  {% endif %}
+  {% if view.topic %}
+  <section class="card run-details">
     <h2>{{ view.topic }}</h2>
     <p class="meta">Why: {{ view.topic_reason }}</p>
+    {% if view.critique_summary %}
+    <h3>Critique</h3>
+    <p>{{ view.critique_summary }}</p>
+    {% if view.critique_reasons %}<ul>{% for reason in view.critique_reasons %}<li>{{ reason }}</li>{% endfor %}</ul>{% endif %}
     {% endif %}
-    {% if view.note %}<p class="meta">Note: {{ view.note }}</p>{% endif %}
     {% if view.options %}
-    <h2>Options</h2>
+    <h3>Options used</h3>
     <dl class="options-list">
       {% for o in view.options %}<dt>{{ o.label }}</dt>
       <dd>{{ o.value }}</dd>
@@ -28,28 +60,15 @@
     {% for n in view.option_notes %}<p class="meta">{{ n }}</p>
     {% endfor %}
   </section>
-  {% if view.image_url %}
-  <section class="card card--chart">
-    <figure class="chart-frame">
-      <img class="preview" src="{{ view.image_url }}" alt="Chart preview">
-      {% if view.caption %}<figcaption>{{ view.caption }}</figcaption>{% endif %}
-    </figure>
-  </section>
-  {% endif %}
-  {% if view.attempts %}
-  <section class="card">
-    <h2>Critique</h2>
-    <p>{% if view.critique_passed %}Passed{% else %}Failed{% endif %} after {{ view.attempts }} attempt(s)</p>
-    <ul>{% for reason in view.critique_reasons %}<li>{{ reason }}</li>{% endfor %}</ul>
-  </section>
   {% endif %}
   {% if view.can_decide %}
   <section class="card decision-card">
     <h2>Your decision</h2>
+    <p class="meta">Approving posts this chart and caption to Bluesky.</p>
     <div class="decisions">
       <form method="post" action="/runs/{{ view.wf_id }}/decision" class="decision">
         <input type="hidden" name="approved" value="true">
-        <button type="submit" class="btn btn--primary">Approve</button>
+        <button type="submit" class="btn btn--primary">Approve and post</button>
       </form>
       <form method="post" action="/runs/{{ view.wf_id }}/decision" class="decision">
         <input type="hidden" name="approved" value="false">

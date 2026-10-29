@@ -53,7 +53,8 @@ Open `/`, type a topic (or click an example chip, which fills the box) and click
 (`/new/style`) sets the per-post options and shows your saved style; Generate starts the run.
 `/?topic=<text>` prefills the topic. This needs `just dev` running. The run
 page at `/runs/<id>` updates live (htmx polling) and, once the chart is ready, shows the preview,
-caption and critique with Approve and Reject buttons; approving posts to Bluesky. It also links to
+caption and critique with Approve and Reject buttons; approving posts to Bluesky, and the
+approved run then links to the post on bsky.app. It also links to
 the run in the Temporal UI, at `TEMPORAL_UI_URL` (default `http://localhost:8233`).
 
 `AUTH_MODE` (`local` by default, or `cloudflare`) decides who the web app records as the requester

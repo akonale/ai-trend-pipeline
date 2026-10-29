@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}{{ view.page_title }} - {{ shell.brand }}{% endblock %}
+{% block content %}
+<article class="candidate-detail">
+  <h1 class="candidate-detail__title">{{ view.title }}</h1>
+  <p class="candidate-source">
+    <span class="badge badge--muted"><span class="visually-hidden">Source: </span>{{ view.source_label }}</span>
+    {% if view.observed_iso %}<time datetime="{{ view.observed_iso }}">{{ view.observed_text }}</time>{% endif %}
+  </p>
+  {% if view.source_url %}
+  <p class="candidate-source__link"><a href="{{ view.source_url }}" target="_blank" rel="noopener noreferrer">{{ view.source_link_label }}<span class="visually-hidden"> {{ view.source_link_hint }}</span></a></p>
+  {% else %}
+  <p class="candidate-source__link">{{ view.source_missing_label }}</p>
+  {% endif %}
+  {% if view.error %}<p class="error" role="alert">{{ view.error }}</p>{% endif %}
+  <div class="candidate-detail__layout">
+    <div class="candidate-detail__reading">
+      <section class="candidate-section">
+        <h2>{{ view.summary_label }}</h2>
+        <p>{{ view.summary }}</p>
+      </section>
+      <section class="candidate-section">
+        <h2>{{ view.angle_label }}</h2>
+        <p>{{ view.angle }}</p>
+      </section>
+      <section class="candidate-section">
+        <h2>{{ view.reason_label }}</h2>
+        <p>{{ view.selection_reason }}</p>
+      </section>
+      <section class="candidate-section">
+        <h2>{{ view.metrics_label }}</h2>
+        {% if view.metrics %}
+        <ul class="candidate-metrics">
+          {% for chip in view.metrics %}
+          <li class="metric-chip"><span class="metric-chip__label">{{ chip.label }}</span><span class="metric-chip__value">{{ chip.value }}</span></li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p>{{ view.metrics_note }}</p>
+        {% endif %}
+      </section>
+    </div>
+    <aside class="card candidate-actions">
+      <h2>{{ view.decision_heading }}</h2>
+      <p class="meta">{{ view.decision_note }}</p>
+      <div class="decisions">
+        <form class="decision" method="post" action="{{ view.decision_action }}">
+          <input type="hidden" name="decision" value="approve">
+          <button class="btn btn--primary" type="submit">{{ view.approve_label }}</button>
+        </form>
+        <form class="decision" method="post" action="{{ view.decision_action }}">
+          <input type="hidden" name="decision" value="reject">
+          <button class="btn btn--danger-outline" type="submit">{{ view.reject_label }}</button>
+        </form>
+      </div>
+      <p class="back"><a href="{{ view.back_href }}">{{ view.back_label }}</a></p>
+    </aside>
+  </div>
+</article>
+{% endblock %}

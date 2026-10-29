@@ -33,10 +33,16 @@ from ai_trend_pipeline.style import (
 SHELL_TAGLINE = "Charts from Our World in Data, posted to Bluesky once you approve them."
 
 
+class NavBadge(BaseModel):
+    text: str
+    label: str
+
+
 class NavItem(BaseModel):
     label: str
     href: str
     current: bool = False
+    badge: NavBadge | None = None
 
 
 class ShellView(BaseModel):
@@ -49,17 +55,44 @@ class ShellView(BaseModel):
 
 
 def build_shell(
-    path: str, user_email: str | None, auth_mode: Literal["local", "cloudflare"]
+    path: str,
+    user_email: str | None,
+    auth_mode: Literal["local", "cloudflare"],
+    *,
+    pending: NavBadge | None = None,
 ) -> ShellView:
     """Header, nav, chip and footer data for one page. Pure: no I/O."""
+    on_candidates = path == "/candidates" or path.startswith("/candidates/")
     on_new = path in ("/", "/runs") or path.startswith(("/runs/", "/new/"))
     return ShellView(
         nav=[
+            NavItem(
+                label="Candidates",
+                href="/candidates",
+                current=on_candidates,
+                badge=pending,
+            ),
             NavItem(label="New chart", href="/", current=on_new),
             NavItem(label="Your style", href="/settings", current=path == "/settings"),
         ],
         user_email=user_email,
         env_tag="dev" if auth_mode == "local" else "",
+    )
+
+
+def pending_nav_badge(page: CandidatePage, *, first_page: bool) -> NavBadge | None:
+    """Badge from the page already fetched; None off the first page or when empty."""
+    count = len(page.candidates)
+    if count == 0 or not first_page:
+        return None
+    if page.next_token is not None:
+        return NavBadge(
+            text=f"{count}+",
+            label=f"{count} or more stories waiting for review",
+        )
+    return NavBadge(
+        text=str(count),
+        label=f"{count} {'story' if count == 1 else 'stories'} waiting for review",
     )
 
 
@@ -675,6 +708,7 @@ class CandidateRow(BaseModel):
 
 
 class CandidateInboxView(BaseModel):
+    page_title: str = INBOX_HEADING
     heading: str
     count_text: str
     rows: list[CandidateRow]
@@ -721,6 +755,7 @@ def build_candidate_inbox_view(
         f"{count} {'story' if count == 1 else 'stories'} waiting for review." if count else ""
     )
     return CandidateInboxView(
+        page_title=INBOX_HEADING,
         heading=INBOX_HEADING,
         count_text=count_text,
         rows=rows,
@@ -748,6 +783,7 @@ def build_candidate_inbox_view(
 
 def build_candidate_unavailable_view(now: datetime) -> CandidateInboxView:
     return CandidateInboxView(
+        page_title=INBOX_HEADING,
         heading=INBOX_HEADING,
         count_text="",
         rows=[],

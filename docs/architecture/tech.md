@@ -127,7 +127,7 @@ not registered.
 | --- | --- | --- |
 | `src/ai_trend_pipeline/services/` | Use cases: start a chart, get its state, decide, style profiles. Plain async classes taking Pydantic models | Read HTTP requests, render HTML, print |
 | `src/ai_trend_pipeline/web/app.py` | `create_app(settings)` factory: wires routes, templates, static files | Business logic |
-| `src/ai_trend_pipeline/web/routes/` | One module per page (`home.py`, `runs.py`, `settings.py`, `health.py`). Parse input, call one service, render a template | Call Temporal or the LLM directly |
+| `src/ai_trend_pipeline/web/routes/` | One module per page (`home.py`, `runs.py`, `candidates.py`, `settings.py`, `health.py`). Parse input, call one service, render a template | Call Temporal or the LLM directly |
 | `src/ai_trend_pipeline/web/templates/` | Jinja templates; `partials/` for htmx fragments | Logic beyond loops and ifs |
 | `src/ai_trend_pipeline/web/view_models.py` | Pydantic models shaped for templates (`HomeView`, `RunView`, `SettingsView`, `CandidateDetailView`, `MetricChip`, `build_*_view`) | I/O |
 | `src/ai_trend_pipeline/config.py` | One `Settings` model read from env vars, passed in, not imported as a global | Read env vars anywhere else |
@@ -143,13 +143,16 @@ not registered.
 `get_settings`, `get_templates` (read `app.state`), `get_style_store` (builds one
 `PostgresStyleStore` per process, no I/O), `get_style_service`, `get_chart_service` (connects to
 Temporal once, caches the client on `app.state`, returns `ChartService(TemporalChartRunGateway,
-settings, styles=...)`), `optional_user`, `current_user`, `shell_context`.
+settings, styles=...)`), `optional_user`, `current_user`, `build_request_shell`, `shell_context`.
 
 `optional_user` returns `CurrentUser(email=DEV_USER_EMAIL)` in local mode and, in cloudflare mode, the
-lower-cased header email or `None` when it is missing or blank. `shell_context(request)` is the
-Starlette context processor passed to `Jinja2Templates` in `create_app`: it builds a `ShellView`
-(`build_shell(path, email, auth_mode)`) and returns `{"shell": ...}`, so every `TemplateResponse`,
-including error re-renders, gets the shell with no route code. It does no I/O.
+lower-cased header email or `None` when it is missing or blank. `build_request_shell(request, *,
+pending=None)` builds the `ShellView` (`build_shell(path, email, auth_mode, pending=...)`); it also
+reads a badge a route stored on `request.state` because this Starlette version runs context
+processors after the route context. `shell_context(request)` is the context processor passed to
+`Jinja2Templates` in `create_app`: it delegates to `build_request_shell` and returns `{"shell": ...}`,
+so every `TemplateResponse`, including error re-renders, gets the shell with no route code. Neither
+helper does I/O, and the badge is built only from an already-fetched `CandidatePage`.
 
 ### Routes
 
@@ -163,7 +166,7 @@ including error re-renders, gets the shell with no route code. It does no I/O.
 | GET | `/runs/{id}/status` | htmx fragment, polled every 2 s while `polling` | |
 | GET | `/runs/{id}/chart.png` | The PNG | 404 unless the file is inside `CHART_OUTPUT_DIR` |
 | POST | `/runs/{id}/decision` | Send approve/reject, 303 to `?sent=1` | uses `current_user`; 400 bad value, 409 not awaiting, 404 unknown |
-| GET | `/candidates` | Story candidate inbox | `?page=` is an opaque forward cursor; `?notice=` accepts only `approved`, `rejected` or `closed`; 400 with a friendly notice when the token is invalid, 503 full-shell unavailable page |
+| GET | `/candidates` | Story candidate inbox | `?page=` is an opaque forward cursor; `?notice=` accepts only `approved`, `rejected` or `closed`; 400 with a friendly notice when the token is invalid, 503 full-shell unavailable page; the header badge shows `N` (or `N+` with a next page) only on a successful first page |
 | GET | `/candidates/{id}` | Candidate detail and decision form | 404 not-available page for a missing candidate, 410 status-specific page for approved/rejected/expired; renders only an `http`/`https` source link |
 | POST | `/candidates/{id}/decide` | Approve or reject, 303 to the inbox | uses `current_user`; 400 invalid decision re-renders the detail with an error; repeated/raced decisions 303 with `notice=closed`; 404 unknown |
 | GET, POST | `/settings` | Style profile form | uses `current_user`; 400 invalid, 503 store down |
@@ -195,15 +198,18 @@ while Postgres is down.
   `candidate_observed_at`; `list_pending` runs the visibility query with opaque URL-safe base64 page
   tokens (default size 20, max 100). Any `RPCError` from visibility becomes `CandidateUnavailable`.
 - `candidates.html` backed by `build_candidate_inbox_view` / `build_candidate_unavailable_view`
-  (`web/view_models.py`): one ledger of whole-row links with source badge, relative detection time
-  and a one-line angle; server-side forward paging plus "Back to newest", no JavaScript. A redirect
-  from a decision lands on `#candidate-notice`, which carries `tabindex="-1"` so the notice gets
-  focus without a script.
+  (`web/view_models.py`): one ledger of whole-row links with a `.source-badge` pill, relative
+  detection time and a one-line angle; server-side forward paging plus "Back to newest", no
+  JavaScript. `page_title` (default `Story candidates`) sets the `<title>`. Empty and unavailable
+  cards share `.candidate-state` (`.candidate-state--empty|unavailable` add the top edge). A redirect
+  from a decision lands on `#candidate-notice`, which carries `tabindex="-1"` and
+  `.candidate-flash` so the notice gets focus without a script.
 - `candidate_detail.html` / `candidate_not_available.html` backed by
-  `build_candidate_detail_view` / `build_candidate_not_available_view`: title, source badge and safe
-  source link first, then summary, angle, reason and metric chips, with a two-form decision rail.
-  Copy, metric labels, the safe URL check, the notice allow-list and the 404/410 copy all live in
-  `web/view_models.py`; the decision route calls only `CandidateService.decide`.
+  `build_candidate_detail_view` / `build_candidate_not_available_view`: one `.candidate-back` link
+  above the heading, title, `.source-badge` and safe source link first, then summary, angle, reason
+  and metric chips, with a two-form `.candidate-decisions` rail. Copy, metric labels, the safe URL
+  check, the notice allow-list and the 404/410 copy all live in `web/view_models.py`; the decision
+  route calls only `CandidateService.decide`.
 - `StyleService` / `StyleStore` protocol (`services/styles.py`); `PostgresStyleStore`
   (`services/postgres_style_store.py`): psycopg 3, one short connection per call, schema and table
   created on first use and retried if setup fails; `psycopg.Error` or `OSError` become
@@ -226,13 +232,16 @@ header. Do not expose the web port publicly.
 Templates (`base.html`, `home.html`, `new_style.html`, `run.html`, `settings.html`, `health.html`,
 `run_not_found.html`, `partials/` incl. `stepper.html`) hold only loops and ifs; labels, badges, option lines and error
 text are computed in `view_models.py` (`STATUS_LABELS`, `badge_for`, `option_lines`,
-`options_error_message`, `style_error_message`). `ShellView` (brand, `NavItem`s with a `current` flag, `user_email`, `env_tag` "dev" in local mode,
-`SHELL_TAGLINE`) feeds `base.html`: a skip link, `<header class="site-header">` with brand, `<nav
-aria-label="Main">` ("New chart", "Your style", `aria-current="page"` on the current one) and the
+`options_error_message`, `style_error_message`). `ShellView` (brand, `NavItem`s with a `current` flag
+and optional `badge`, `user_email`, `env_tag` "dev" in local mode, `SHELL_TAGLINE`) feeds
+`base.html`: a skip link, `<header class="site-header">` with brand, `<nav aria-label="Main">`
+("Candidates", "New chart", "Your style", `aria-current="page"` on the current one) and the
 `.user-chip` (only when an email is known), `<main id="main">`, and `<footer class="site-footer">` with
-the tagline and the `.dev-tag`. The body is a flex column so the footer sticks to the bottom; no
-JavaScript, the nav wraps on phones. Static assets in `web/static/`: `app.css` and
-vendored `htmx.min.js` (2.0.4).
+the tagline and the `.dev-tag`. The brand always links to `/`. A `NavBadge` (`text`, `label`) renders
+as an `aria-hidden` `.nav-badge` count plus a visually hidden sentence; `pending_nav_badge` derives it
+only from the fetched first inbox page (`N`, or `N+` with a next page). The body is a flex column so
+the footer sticks to the bottom; no JavaScript, the nav wraps on phones. Static assets in
+`web/static/`: `app.css` and vendored `htmx.min.js` (2.0.4).
 
 `app.css` is a neo-brutalist "graph paper and ink" system: 3px ink borders, hard offset shadows
 (no blur), flat fills, a faint 24px grid on the page, and the chart frame (ruler ticks, marigold
@@ -244,7 +253,11 @@ WCAG AA (4.5 for text, 3 for borders and focus). Text on a fill token uses `--co
 `--color-text`. Element defaults sit in `:where(...)` so component classes win without fights.
 Fonts are system stacks (no web fonts). The stepper (`.stepper`, `.step`, `.step--done|current|upcoming`;
 labels never break mid-word) and `.btn--secondary` (the Back button) are used by the flow; `.check`
-is still reserved. Reduced motion turns off transitions and the progress animation.
+is still reserved. All candidate rules live in one labelled section at the end of `app.css` and use
+tokens only: `.nav-badge`, `.source-badge` (a pill built on the `.badge` stamp),
+`.candidate-state`, `.candidate-flash`, `.candidate-back`, the inbox row hover/active pair inside one
+`@media (hover: hover)` block, and `.candidate-decisions`. Reduced motion turns off transitions and
+the progress animation, plus the candidate row transition.
 
 Flow: `StepperView` / `build_stepper(current, topic_href)` (view_models) shape the four steps
 (Topic, Style, Review, Done); shown on step 1, step 2 and the run page (`RUN_STEP` maps status to

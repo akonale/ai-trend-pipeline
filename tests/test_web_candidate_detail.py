@@ -151,7 +151,11 @@ def test_detail_page_shows_story_and_source() -> None:
 
     assert "<h1" in text
     assert text.index(CANDIDATE.title) < text.index("Hacker News")
-    assert 'class="badge badge--muted"' in text
+    assert 'class="badge source-badge"' in text
+    assert text.count('class="candidate-back"') == 1
+    assert text.index('class="candidate-back"') < text.index("<h1")
+    assert 'class="candidate-back"><a href="/candidates">Back to candidates</a>' in text
+    assert "Back to candidates" not in text.split("<aside")[1]
     assert '<span class="visually-hidden">Source: </span>' in text
     assert "Detected 2 hours ago" in text
     assert "<time datetime=" in text
@@ -391,7 +395,7 @@ def test_invalid_decision_renders_error_without_signal() -> None:
     assert res.status_code == 400
     assert INVALID_DECISION_ERROR == "Choose Approve or Reject."
     assert INVALID_DECISION_ERROR in text
-    assert 'class="error"' in text
+    assert 'class="error candidate-flash"' in text
     assert "Summary" in text
     assert 'name="decision" value="approve"' in text
     assert handle.received == []

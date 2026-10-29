@@ -2,9 +2,10 @@
 {% block title %}{{ view.page_title }} - {{ shell.brand }}{% endblock %}
 {% block content %}
 <article class="candidate-detail">
+  <p class="candidate-back"><a href="{{ view.back_href }}">{{ view.back_label }}</a></p>
   <h1 class="candidate-detail__title">{{ view.title }}</h1>
   <p class="candidate-source">
-    <span class="badge badge--muted"><span class="visually-hidden">Source: </span>{{ view.source_label }}</span>
+    <span class="badge source-badge"><span class="visually-hidden">Source: </span>{{ view.source_label }}</span>
     {% if view.observed_iso %}<time datetime="{{ view.observed_iso }}">{{ view.observed_text }}</time>{% endif %}
   </p>
   {% if view.source_url %}
@@ -12,7 +13,7 @@
   {% else %}
   <p class="candidate-source__link">{{ view.source_missing_label }}</p>
   {% endif %}
-  {% if view.error %}<p class="error" role="alert">{{ view.error }}</p>{% endif %}
+  {% if view.error %}<p class="error candidate-flash" role="alert">{{ view.error }}</p>{% endif %}
   <div class="candidate-detail__layout">
     <div class="candidate-detail__reading">
       <section class="candidate-section">
@@ -43,7 +44,7 @@
     <aside class="card candidate-actions">
       <h2>{{ view.decision_heading }}</h2>
       <p class="meta">{{ view.decision_note }}</p>
-      <div class="decisions">
+      <div class="candidate-decisions">
         <form class="decision" method="post" action="{{ view.decision_action }}">
           <input type="hidden" name="decision" value="approve">
           <button class="btn btn--primary" type="submit">{{ view.approve_label }}</button>
@@ -53,7 +54,6 @@
           <button class="btn btn--danger-outline" type="submit">{{ view.reject_label }}</button>
         </form>
       </div>
-      <p class="back"><a href="{{ view.back_href }}">{{ view.back_label }}</a></p>
     </aside>
   </div>
 </article>

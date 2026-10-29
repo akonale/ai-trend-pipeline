@@ -16,7 +16,7 @@ from ai_trend_pipeline.services.temporal_gateway import (
     TemporalCandidateGateway,
     TemporalChartRunGateway,
 )
-from ai_trend_pipeline.web.view_models import ShellView, build_shell
+from ai_trend_pipeline.web.view_models import NavBadge, ShellView, build_shell
 
 DEV_USER_EMAIL = "dev@localhost"
 CF_EMAIL_HEADER = "Cf-Access-Authenticated-User-Email"
@@ -96,9 +96,25 @@ def current_user(user: CurrentUser | None = Depends(optional_user)) -> CurrentUs
     return user
 
 
-def shell_context(request: Request) -> dict[str, ShellView]:
-    """Template context processor: the shell (nav, chip, footer) for every page. No I/O."""
+def _request_pending(request: Request) -> NavBadge | None:
+    """Pick up the badge a route stored on this request; anything else is ignored."""
+    pending: object = getattr(request.state, "candidate_pending", None)
+    return pending if isinstance(pending, NavBadge) else None
+
+
+def build_request_shell(request: Request, *, pending: NavBadge | None = None) -> ShellView:
+    """Shell for this request, optionally with the Candidates pending badge. No I/O."""
     settings = get_settings(request)
     user = optional_user(request, settings)
-    shell = build_shell(request.url.path, user.email if user else None, settings.auth_mode)
-    return {"shell": shell}
+    badge = pending if pending is not None else _request_pending(request)
+    return build_shell(
+        request.url.path,
+        user.email if user else None,
+        settings.auth_mode,
+        pending=badge,
+    )
+
+
+def shell_context(request: Request) -> dict[str, ShellView]:
+    """Template context processor: the shell (nav, chip, footer) for every page. No I/O."""
+    return {"shell": build_request_shell(request)}

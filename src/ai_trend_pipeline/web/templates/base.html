@@ -13,7 +13,7 @@
   <header class="site-header">
     <a class="brand" href="{{ shell.brand_href }}">{{ shell.brand }}</a>
     <nav class="site-nav" aria-label="Main">
-      {% for item in shell.nav %}<a href="{{ item.href }}"{% if item.current %} aria-current="page"{% endif %}>{{ item.label }}</a>{% endfor %}
+      {% for item in shell.nav %}<a href="{{ item.href }}"{% if item.current %} aria-current="page"{% endif %}>{{ item.label }}{% if item.badge %}<span class="nav-badge" aria-hidden="true">{{ item.badge.text }}</span><span class="visually-hidden">, {{ item.badge.label }}</span>{% endif %}</a>{% endfor %}
     </nav>
     {% if shell.user_email %}<span class="user-chip"><span class="visually-hidden">Signed in as </span>{{ shell.user_email }}</span>{% endif %}
   </header>

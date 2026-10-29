@@ -18,6 +18,7 @@ from ai_trend_pipeline.services.candidates import (
 )
 from ai_trend_pipeline.web.dependencies import (
     CurrentUser,
+    build_request_shell,
     current_user,
     get_candidate_service,
     get_templates,
@@ -29,6 +30,7 @@ from ai_trend_pipeline.web.view_models import (
     build_candidate_inbox_view,
     build_candidate_not_available_view,
     decision_notice,
+    pending_nav_badge,
 )
 
 router = APIRouter()
@@ -56,7 +58,15 @@ async def candidate_inbox(
     view = build_candidate_inbox_view(
         candidates, now=now, page_token=token, notice=decision_notice(notice)
     )
-    return templates.TemplateResponse(request, "candidates.html", {"view": view})
+    pending = pending_nav_badge(candidates, first_page=token is None)
+    # This Starlette applies context processors after the route context, so store the
+    # badge for the processor as well; `build_request_shell` reads it back.
+    request.state.candidate_pending = pending
+    return templates.TemplateResponse(
+        request,
+        "candidates.html",
+        {"view": view, "shell": build_request_shell(request, pending=pending)},
+    )
 
 
 async def _detail_or_not_available(

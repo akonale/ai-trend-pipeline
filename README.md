@@ -1,5 +1,7 @@
 # ai-trend-pipeline
 
+Architecture: start at [docs/architecture/README.md](docs/architecture/README.md) (what it does: `business.md`; how it is built: `tech.md`).
+
 Python 3.12 project managed with [uv](https://docs.astral.sh/uv/). Tasks run through a [just](https://just.systems/) justfile.
 
 ## Setup

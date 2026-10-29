@@ -1,6 +1,6 @@
 # 029: Per-post options
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -333,3 +333,6 @@ Visual check: 360px and 1280px, light and dark, home (More options open) and run
   Notes: (1) FilteredRows stays inside owid.py (results cross the activity boundary as OwidTable), so the dataclass is fine.
   (2) test_daily_chart's module-level TABLE swap is hacky but restored in `finally`; a fake with a settable table would be cleaner later.
   (3) The critique prompt still requires year/value for non-bar charts, but it cannot tell a requested bar from a bad one, so a bar chart on a line request would pass; acceptable.
+
+**scribe**: README already had the "Per-post options" section (checked, not duplicated). Pushed branch and opened PR #36 against main: https://github.com/akonale/ai-trend-pipeline/pull/36
+Next: human reviews and merges PR #36 (not merged by the agent). After merge, prod needs `just deploy`.

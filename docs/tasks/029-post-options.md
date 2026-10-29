@@ -1,6 +1,6 @@
 # 029: Per-post options
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -326,3 +326,10 @@ Next: orchestrator sets `approved` (task is `no`), then builder on `task/029-pos
 
 **builder**: Built per spec on `task/029-post-options`; `just lint` and `just test` pass (339 tests). Deviations: `FilteredRows` is a frozen generic dataclass (pydantic cannot schema the row Protocol; it never crosses an activity boundary), `filter_table_rows` takes an extra `title=""` arg for the unmatched-name note, bar y axis has `title: null`, and tests live in new `tests/test_post_options.py` and `tests/test_web_options.py` plus additions to `test_chart_loop.py` and `test_daily_chart.py`.
 Visual check: 360px and 1280px, light and dark, home (More options open) and run page (Options list, notes): no horizontal overflow; bar and area charts render correctly through the real path. Screenshots in the scratchpad `shots29/`. Unsure: area x axis extends to 2030 (Vega nice domain), cosmetic.
+
+**verifier**: `just lint` and `just test` pass (339 tests). No leftover serve.py processes or ai-trend-scratch containers; ai-trend-prod containers all up. Worktree clean apart from the status line. Existing tests only got additions (602 insertions, 0 deletions). All checks pass.
+
+- reviewer: Approved. All checklist items and the nine requested checks hold; no real problems found.
+  Notes: (1) FilteredRows stays inside owid.py (results cross the activity boundary as OwidTable), so the dataclass is fine.
+  (2) test_daily_chart's module-level TABLE swap is hacky but restored in `finally`; a fake with a settable table would be cleaner later.
+  (3) The critique prompt still requires year/value for non-bar charts, but it cannot tell a requested bar from a bad one, so a bar chart on a line request would pass; acceptable.

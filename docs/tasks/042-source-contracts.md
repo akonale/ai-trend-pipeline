@@ -1,6 +1,6 @@
 # 042: Source contracts and HN polling adapter
 
-Status: built
+Status: pr-open
 
 ## Goal
 
@@ -291,3 +291,8 @@ activity, unregistered fake connector, and the three `SOURCE_*` settings; tests 
 `hn.py`, `worker.py`, chart code and `tests/test_hn.py` are unchanged. `just lint` is clean and the
 suite passes (530) with the harness `ANTHROPIC_*` base-url vars unset; with them set, pre-existing
 LLM tests fail on connection. Next: verifier runs `just lint` and `just test`.
+**verifier**: `just lint` clean; `just test` 530 passed with harness `ANTHROPIC_*` base-url/token vars unset. With them set, only 43 pre-existing LLM tests fail on `anthropic.APIConnectionError`, unrelated to 042; all `tests/test_sources_*` pass.
+Next: reviewer checks the diff against the checklist.
+**reviewer**: Approved. Verified contracts are frozen/bounded, URLs restricted to http/https, duplicates collapse, dead/deleted/title-less items are excluded, `hn.py`/`worker.py`/chart code/`tests/test_hn.py` untouched, settings only in `config.py`, and no table or scope creep. `just lint` clean; `just test` 530 passed.
+Next: scribe updates docs and opens the PR.
+**scribe**: Docs were already updated in the build commit: `tech.md` (activity, sources section, settings), `architecture/README.md` (module row), `README.md` (settings and HN note); verified accurate, no further edits needed. Pushed and opened the PR. Next: human merges.

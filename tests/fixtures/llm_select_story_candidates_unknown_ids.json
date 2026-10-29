@@ -1,0 +1,45 @@
+{
+  "id": "msg_01StorySelectionUnknownIds",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-5-5",
+  "content": [
+    {"type": "text", "text": "Reporting two known stories and some noise."},
+    {
+      "type": "tool_use",
+      "id": "toolu_01StorySelectionUnknownIds",
+      "name": "select_story_candidates",
+      "input": {
+        "selections": [
+          {
+            "external_id": " 101 ",
+            "summary": "A major AI lab released a new model with stronger reasoning.",
+            "proposed_angle": "What the new model changes for everyday knowledge work.",
+            "selection_reason": "Significant release."
+          },
+          {
+            "external_id": "999",
+            "summary": "An event that was never in the batch.",
+            "proposed_angle": "Unknown identifier.",
+            "selection_reason": "Should be dropped."
+          },
+          {
+            "external_id": "101",
+            "summary": "A duplicate of the first selection.",
+            "proposed_angle": "Duplicate identifier.",
+            "selection_reason": "Should be dropped."
+          },
+          {
+            "external_id": "102",
+            "summary": "A grid-storage startup raised a Series B to build more batteries.",
+            "proposed_angle": "Why investors are betting on storage rather than generation.",
+            "selection_reason": "Clear funding story."
+          }
+        ]
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {"input_tokens": 500, "output_tokens": 200}
+}

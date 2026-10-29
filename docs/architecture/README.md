@@ -47,6 +47,7 @@ approval posts it to Bluesky. Everything is orchestrated by one Temporal workflo
 | `config.py` | `Settings` and `load_settings()`; the only place env vars are read |
 | `hn.py` | Activity `fetch_hn_top_stories` (Hacker News API) |
 | `sources/` | Frozen bounded source contracts, static registry, shared normalization, HN and fake connectors (`poll_hn_source`); no worker wiring yet |
+| `story_selection.py` | Pure `prefilter_events` and activity `select_story_candidates` (batch LLM editorial selection); no worker wiring yet |
 | `topic.py` | Activity `pick_topic` (LLM picks an OWID catalog title); `make_anthropic_client` |
 | `owid.py` | `CATALOG`, `match_dataset`, activity `fetch_owid_dataset`, `OwidTable` |
 | `post_options.py` | `PostOptions`, row filtering, chart-type rewrite, options prompt, `merge_style` (pure) |

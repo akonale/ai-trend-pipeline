@@ -1,0 +1,18 @@
+{
+  "id": "msg_01StorySelectionZero",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-5-5",
+  "content": [
+    {"type": "text", "text": "Nothing in this batch is worth putting in the inbox."},
+    {
+      "type": "tool_use",
+      "id": "toolu_01StorySelectionZero",
+      "name": "select_story_candidates",
+      "input": {"selections": []}
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {"input_tokens": 380, "output_tokens": 20}
+}

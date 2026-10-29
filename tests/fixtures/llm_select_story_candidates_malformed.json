@@ -1,0 +1,25 @@
+{
+  "id": "msg_01StorySelectionMalformed",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-5-5",
+  "content": [
+    {"type": "text", "text": "Here is one candidate, but fields are missing."},
+    {
+      "type": "tool_use",
+      "id": "toolu_01StorySelectionMalformed",
+      "name": "select_story_candidates",
+      "input": {
+        "selections": [
+          {
+            "external_id": "101",
+            "summary": "A major AI lab released a new model with stronger reasoning."
+          }
+        ]
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {"input_tokens": 460, "output_tokens": 40}
+}

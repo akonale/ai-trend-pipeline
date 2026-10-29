@@ -1,6 +1,6 @@
 # 046: Candidate detail and decision page
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -315,3 +315,7 @@ views/templates and CSS; tests first (19 in `tests/test_web_candidate_detail.py`
 only `CandidateService.decide`; nothing charts or publishes. `just lint`/`just test` pass with the
 harness `ANTHROPIC_*` base-url vars unset. Screenshots (360/1280, light/dark) in
 `/tmp/candidate-046-shots`: no overflow/clipping, focus and notice focus verified. Next: verifier.
+
+**verifier**: `just lint` passes; `just test` passes (608) with harness `ANTHROPIC_*` base-url vars unset. With them set, 54 pre-existing LLM tests fail on `anthropic.APIConnectionError` only. Next: reviewer.
+
+**reviewer**: Approved. Checked every criterion, the 360/1280 light and dark screenshots, escaping, http/https-only source link, 404/410 and the PRG closed notice; routes stay thin and decisions reach only `CandidateService.decide`. No service, gateway or workflow changes; no live calls; `just lint` and the candidate/web tests pass. Next: scribe.

@@ -59,7 +59,11 @@ the run in the Temporal UI, at `TEMPORAL_UI_URL` (default `http://localhost:8233
 
 `/candidates` is the story candidate inbox: a plain server-rendered list of pending candidates
 (no JavaScript needed), paged with `?page=` and showing a full-shell notice if the candidate
-service is unreachable. Detail and Approve/Reject pages come later.
+service is unreachable. Each row opens `/candidates/<id>`, a proof sheet with the title, source
+link (only `http`/`https`), summary, proposed angle, selection reason and source metrics, plus
+Approve and Reject buttons that 303 back to the inbox with a notice. Approving only records the
+story; nothing is published. Missing candidates get a 404 not-available page and already-decided
+or expired ones get a 410 page with status-specific copy.
 
 `AUTH_MODE` (`local` by default, or `cloudflare`) decides who the web app records as the requester
 and approver of a run. `local` uses the fixed user `dev@localhost`. `cloudflare` reads the
@@ -127,7 +131,8 @@ current HN top stories as typed models.
 selected story candidate (task queue `story-candidate-task-queue`), with a `review_state` query and
 Approve/Reject signals. `services/candidates.py` and the Temporal candidate gateway start
 candidates idempotently, list pending ones with pagination and send decisions. The web app lists
-pending candidates at `/candidates`; nothing polls sources into candidates automatically yet.
+pending candidates at `/candidates` and shows and decides one at `/candidates/<id>`; nothing polls
+sources into candidates automatically yet.
 
 ## Topic picking
 

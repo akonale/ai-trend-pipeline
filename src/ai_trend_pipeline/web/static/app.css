@@ -167,7 +167,6 @@ main {
   color: var(--color-muted);
   font-size: var(--text-sm);
 }
-
 .brand {
   display: inline-flex;
   align-items: flex-end;
@@ -224,6 +223,18 @@ main {
   color: var(--color-on-fill);
   border: var(--border-thin) solid var(--color-border);
   font-weight: 800;
+}
+
+/* Three nav items and the chip share one row from tablet up. */
+@media (min-width: 48rem) {
+  .site-header,
+  .site-footer {
+    padding-inline: max(var(--space-4), calc((100% - 50rem) / 2 + var(--space-4)));
+  }
+}
+@media (min-width: 48rem) and (max-width: 59.99rem) {
+  .site-nav { gap: var(--space-1); }
+  .site-nav a { padding-inline: var(--space-2); }
 }
 
 /* Stepper (defined in 036, used from 038) */
@@ -357,11 +368,6 @@ main {
   .chip:hover { background: var(--color-highlight); color: var(--color-on-fill); }
   :where(a:not([class])):hover { background: var(--color-highlight); color: var(--color-on-fill); }
   .site-nav a:hover { border-color: var(--color-border); }
-  .candidate-row:hover { transform: translate(-2px, -2px); box-shadow: var(--shadow-lift); }
-  .candidate-row:hover .candidate-row__title {
-    text-decoration: underline;
-    text-decoration-thickness: 2px;
-  }
 }
 .btn:active { transform: translate(4px, 4px); box-shadow: var(--shadow-none); }
 .btn:disabled,
@@ -559,7 +565,7 @@ main {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .btn, .chip, .candidate-row, .candidate-inbox .candidate-row { transition: none; }
+  .btn, .chip { transition: none; }
   .run-progress .bar::after {
     animation: none;
     width: 100%;
@@ -616,6 +622,39 @@ main {
 }
 .decision-card .meta { margin-bottom: var(--space-3); }
 
+/* Candidate pages: one shared language for inbox, proof sheet and end states */
+.nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  margin-left: var(--space-2);
+  padding: 0 var(--space-1);
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+  border: var(--border-thin) solid var(--color-border);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-sm);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.source-badge { border-radius: var(--radius-pill); }
+
+.candidate-back { margin: 0 0 var(--space-3); font-size: var(--text-sm); font-weight: 700; }
+:where(.candidate-back a) { color: var(--color-muted); }
+
+.candidate-flash { margin: 0 0 var(--space-5); }
+.candidate-flash:focus {
+  outline: var(--border-width) solid var(--color-focus);
+  outline-offset: 4px;
+}
+
+.candidate-state { border-top-width: 0.75rem; }
+.candidate-state--empty { border-top-color: var(--color-info); }
+.candidate-state--unavailable { border-top-color: var(--color-neutral); }
+
 /* Candidate inbox: one ledger of whole-row links */
 .candidate-inbox {
   list-style: none;
@@ -640,7 +679,6 @@ main {
   min-width: 0;
   transition: transform var(--duration-press) ease-out, box-shadow var(--duration-press) ease-out;
 }
-.candidate-row:active { transform: translate(4px, 4px); box-shadow: var(--shadow-none); }
 .candidate-row__title {
   font-family: var(--font-display);
   font-size: var(--text-lg);
@@ -669,6 +707,17 @@ main {
   flex-wrap: wrap;
   gap: var(--space-3);
   margin-top: var(--space-5);
+}
+@media (hover: hover) {
+  .candidate-row:hover { transform: translate(-2px, -2px); box-shadow: var(--shadow-lift); }
+  .candidate-row:hover .candidate-row__title {
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+  }
+  .candidate-row:active { transform: translate(4px, 4px); box-shadow: var(--shadow-none); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .candidate-row { transition: none; }
 }
 
 /* Candidate detail: a flat proof sheet with one stamped decision rail */
@@ -719,9 +768,9 @@ main {
 .metric-chip__value { font-weight: 800; }
 .candidate-actions { margin-bottom: 0; }
 .candidate-actions h2 { font-size: var(--text-lg); margin-bottom: var(--space-2); }
-.candidate-actions .decisions { flex-direction: column; gap: var(--space-3); }
-.candidate-actions .decision .btn { width: 100%; }
-.candidate-actions .back { margin-top: var(--space-4); }
+.candidate-decisions { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+.candidate-actions .candidate-decisions { flex-direction: column; gap: var(--space-3); }
+.candidate-actions .candidate-decisions .btn { width: 100%; }
 @media (min-width: 48rem) {
   .candidate-detail__layout {
     display: grid;
@@ -730,4 +779,3 @@ main {
     align-items: start;
   }
 }
-.notice[tabindex="-1"]:focus { outline: var(--border-width) solid var(--color-focus); outline-offset: 4px; }

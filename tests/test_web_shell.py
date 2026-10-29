@@ -9,6 +9,18 @@ from ai_trend_pipeline.web.dependencies import CF_EMAIL_HEADER
 from ai_trend_pipeline.web.view_models import SHELL_TAGLINE, ShellView, build_shell
 from tests.style_fakes import InMemoryStyleStore
 from tests.test_web import REVIEW, RecGateway, auth_client, client_for
+from tests.test_web_candidates import (
+    FakeGateway as InboxGateway,
+)
+from tests.test_web_candidates import (
+    client_for as inbox_client,
+)
+from tests.test_web_candidates import (
+    page as inbox_page,
+)
+from tests.test_web_candidates import (
+    summary as inbox_summary,
+)
 from tests.test_web_settings import FORM, make_client
 
 CSS = (
@@ -28,6 +40,10 @@ def test_build_shell_current_flags() -> None:
         assert current_labels(build_shell(path, None, "local")) == ["New chart"], path
     assert current_labels(build_shell("/settings", None, "local")) == ["Your style"]
     assert current_labels(build_shell("/health", None, "local")) == []
+    assert current_labels(build_shell("/candidates", None, "local")) == ["Candidates"]
+    assert current_labels(build_shell("/candidates/candidate-v1-abc", None, "local")) == [
+        "Candidates"
+    ]
 
 
 def test_build_shell_fields() -> None:
@@ -36,8 +52,9 @@ def test_build_shell_fields() -> None:
     assert local.user_email == "a@b.co"
     assert build_shell("/", None, CF).env_tag == ""
     assert build_shell("/", None, CF).user_email is None
-    assert [item.href for item in local.nav] == ["/", "/settings"]
-    assert [item.label for item in local.nav] == ["New chart", "Your style"]
+    assert [item.href for item in local.nav] == ["/candidates", "/", "/settings"]
+    assert [item.label for item in local.nav] == ["Candidates", "New chart", "Your style"]
+    assert all(item.badge is None for item in local.nav)
     assert local.tagline == SHELL_TAGLINE
 
 
@@ -146,6 +163,9 @@ def test_aria_current_on_the_right_link() -> None:
     assert settings.get("/settings").text.count('aria-current="page"') == 1
     assert aria_current_links(settings, "/settings") == ["Your style"]
     assert client.get("/health").text.count('aria-current="page"') == 0
+    inbox = inbox_client(InboxGateway(inbox_page(inbox_summary())))
+    assert inbox.get("/candidates").text.count('aria-current="page"') == 1
+    assert aria_current_links(inbox, "/candidates") == ["Candidates"]
 
 
 def test_css_has_skip_link_and_no_tagline() -> None:

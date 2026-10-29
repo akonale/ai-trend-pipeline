@@ -141,12 +141,15 @@ def test_inbox_rows() -> None:
     assert "What the pause means for savers" in text
     assert 'href="/candidates/cand%2F1%20%26x"' in text
     assert 'href="/candidates/candidate-v1-two"' in text
-    assert 'class="badge badge--muted"' in text
+    assert 'class="badge source-badge"' in text
     assert "Hacker News" in text
     assert "Test source" in text
     assert '<span class="visually-hidden">Source: </span>' in text
     assert '<time datetime="' in text
     assert "2 hours ago" in text
+    assert 'aria-current="page">Candidates' in text
+    assert 'class="nav-badge" aria-hidden="true">2</span>' in text
+    assert "2 stories waiting for review" in text
 
 
 def test_untrusted_text_is_escaped() -> None:

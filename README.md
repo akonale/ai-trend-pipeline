@@ -57,13 +57,19 @@ caption and critique with Approve and Reject buttons; approving posts to Bluesky
 approved run then links to the post on bsky.app. It also links to
 the run in the Temporal UI, at `TEMPORAL_UI_URL` (default `http://localhost:8233`).
 
+The header lists Candidates first, then New chart and Your style, with the brand still opening `/`.
+Candidates is marked current on the inbox and every candidate page. On a successful first inbox
+page it also shows a count badge (`N`, or `N+` when there is another page); older pages and
+non-inbox pages show no badge.
+
 `/candidates` is the story candidate inbox: a plain server-rendered list of pending candidates
 (no JavaScript needed), paged with `?page=` and showing a full-shell notice if the candidate
-service is unreachable. Each row opens `/candidates/<id>`, a proof sheet with the title, source
-link (only `http`/`https`), summary, proposed angle, selection reason and source metrics, plus
-Approve and Reject buttons that 303 back to the inbox with a notice. Approving only records the
-story; nothing is published. Missing candidates get a 404 not-available page and already-decided
-or expired ones get a 410 page with status-specific copy.
+service is unreachable. Each row opens `/candidates/<id>`, a proof sheet with a single Back to
+candidates link, the title, source link (only `http`/`https`), summary, proposed angle, selection
+reason and source metrics, plus Approve and Reject buttons that 303 back to the inbox with a notice.
+Approving only records the story; nothing is published. Missing candidates get a 404 not-available
+page and already-decided or expired ones get a 410 page with status-specific copy; both use the same
+back link and page title.
 
 `AUTH_MODE` (`local` by default, or `cloudflare`) decides who the web app records as the requester
 and approver of a run. `local` uses the fixed user `dev@localhost`. `cloudflare` reads the

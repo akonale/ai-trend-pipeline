@@ -111,7 +111,8 @@ including error re-renders, gets the shell with no route code. It does no I/O.
 | Method | Path | Purpose | Notes |
 | --- | --- | --- | --- |
 | GET | `/health` | Health page | no Temporal call |
-| GET | `/` | Home: topic box, options, chips | `?topic=` prefills |
+| GET | `/` | Step 1: topic box and chips (GET form to `/new/style`) | `?topic=` and the seven option params prefill; options come back as hidden carry fields; never validates |
+| GET | `/new/style` | Step 2: per-chart options plus the saved style, read-only | uses `optional_user`; 303 to `/` without a topic, 400 (step 1 with an error) over 200 characters; never fails on the style read |
 | POST | `/runs` | Validate form, start a run, 303 to `/runs/{id}` | uses `current_user`; 400 bad options, or empty topic or over `MAX_TOPIC_LENGTH` (200 characters), 429 cap, 409 id exists, 503 style store down |
 | GET | `/runs/{id}` | Run page | 404 page if unknown |
 | GET | `/runs/{id}/status` | htmx fragment, polled every 2 s while `polling` | |
@@ -119,8 +120,9 @@ including error re-renders, gets the shell with no route code. It does no I/O.
 | POST | `/runs/{id}/decision` | Send approve/reject, 303 to `?sent=1` | uses `current_user`; 400 bad value, 409 not awaiting, 404 unknown |
 | GET, POST | `/settings` | Style profile form | uses `current_user`; 400 invalid, 503 store down |
 
-Which routes touch Postgres: only `POST /runs` (style lookup via `StyleStore.get`) and `/settings`.
-Other routes work while Postgres is down.
+Which routes touch Postgres: `POST /runs` (style lookup), `/settings`, and `GET /new/style`
+(read-only; if the store is down the page still renders 200 with a notice). Other routes work
+while Postgres is down.
 
 ### Services
 
@@ -152,8 +154,8 @@ header. Do not expose the web port publicly.
 
 ### Templates, view models, design
 
-Templates (`base.html`, `home.html`, `run.html`, `settings.html`, `health.html`,
-`run_not_found.html`, `partials/`) hold only loops and ifs; labels, badges, option lines and error
+Templates (`base.html`, `home.html`, `new_style.html`, `run.html`, `settings.html`, `health.html`,
+`run_not_found.html`, `partials/` incl. `stepper.html`) hold only loops and ifs; labels, badges, option lines and error
 text are computed in `view_models.py` (`STATUS_LABELS`, `badge_for`, `option_lines`,
 `options_error_message`, `style_error_message`). `ShellView` (brand, `NavItem`s with a `current` flag, `user_email`, `env_tag` "dev" in local mode,
 `SHELL_TAGLINE`) feeds `base.html`: a skip link, `<header class="site-header">` with brand, `<nav
@@ -171,10 +173,15 @@ shadow) as the one bold element. Tokens are CSS custom properties on `:root` (`-
 so `tests/test_design_tokens.py` can parse `app.css` and check each text/background pair against
 WCAG AA (4.5 for text, 3 for borders and focus). Text on a fill token uses `--color-on-fill`, never
 `--color-text`. Element defaults sit in `:where(...)` so component classes win without fights.
-Fonts are system stacks (no web fonts). Reserved for task 038 and not used yet: `.stepper`,
-`.step`, `.step__num`, `.step--done|current|upcoming` (labels never break mid-word); `.btn--secondary`
-and `.check` are also reserved. Reduced motion turns off
-transitions and the progress animation.
+Fonts are system stacks (no web fonts). The stepper (`.stepper`, `.step`, `.step--done|current|upcoming`;
+labels never break mid-word) and `.btn--secondary` (the Back button) are used by the flow; `.check`
+is still reserved. Reduced motion turns off transitions and the progress animation.
+
+Flow: `StepperView` / `build_stepper(current, topic_href)` (view_models) shape the four steps
+(Topic, Style, Review, Done); shown on step 1, step 2 and the run page (`RUN_STEP` maps status to
+step 3 or 4). On the run page the stepper sits outside `#run-status`; the `/runs/{id}/status`
+fragment re-emits it with `hx-swap-oob="true"` so it moves from 3 to 4 when polling ends. All flow
+state travels in the query string or form fields (`flow_query`); no session.
 
 ## 3. Infra and deployment
 

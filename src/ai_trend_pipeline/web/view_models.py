@@ -1,7 +1,7 @@
 """Pydantic models shaped for templates."""
 
 from typing import Literal
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -47,7 +47,7 @@ def build_shell(
     path: str, user_email: str | None, auth_mode: Literal["local", "cloudflare"]
 ) -> ShellView:
     """Header, nav, chip and footer data for one page. Pure: no I/O."""
-    on_new = path in ("/", "/runs") or path.startswith("/runs/")
+    on_new = path in ("/", "/runs") or path.startswith(("/runs/", "/new/"))
     return ShellView(
         nav=[
             NavItem(label="New chart", href="/", current=on_new),
@@ -56,6 +56,49 @@ def build_shell(
         user_email=user_email,
         env_tag="dev" if auth_mode == "local" else "",
     )
+
+
+class StepView(BaseModel):
+    number: int
+    label: str
+    state: Literal["done", "current", "upcoming"]
+    href: str | None = None
+    aria_current: bool = False
+
+
+class StepperView(BaseModel):
+    steps: list[StepView]
+    oob: bool = False
+
+
+STEP_LABELS = ["Topic", "Style", "Review", "Done"]
+RUN_STEP = {
+    "drafting": 3,
+    "awaiting_decision": 3,
+    "posting": 3,
+    "approved": 4,
+    "rejected": 4,
+    "expired": 4,
+}
+
+
+def build_stepper(current: int, topic_href: str | None = None, oob: bool = False) -> StepperView:
+    """Four-step progress. Only a done step 1 can link (back to the topic box)."""
+    steps: list[StepView] = []
+    for number, label in enumerate(STEP_LABELS, start=1):
+        state: Literal["done", "current", "upcoming"] = (
+            "done" if number < current else "current" if number == current else "upcoming"
+        )
+        steps.append(
+            StepView(
+                number=number,
+                label=label,
+                state=state,
+                href=topic_href if number == 1 and state == "done" else None,
+                aria_current=state == "current",
+            )
+        )
+    return StepperView(steps=steps, oob=oob)
 
 
 class HealthView(BaseModel):
@@ -110,35 +153,102 @@ def _choices(
     return items
 
 
+class OptionLine(BaseModel):
+    label: str
+    value: str
+    colors: list[str] = []
+
+
+class HiddenField(BaseModel):
+    name: str
+    value: str
+
+
+def _carry(options: OptionsFormValues) -> list[HiddenField]:
+    return [HiddenField(name=k, value=v) for k, v in options.model_dump().items() if v.strip()]
+
+
+def flow_query(topic: str, options: OptionsFormValues) -> str:
+    """Query string that carries the topic and any typed options between steps."""
+    pairs = [("topic", topic)] + [(f.name, f.value) for f in _carry(options)]
+    return urlencode(pairs, quote_via=quote)
+
+
 class HomeView(BaseModel):
     error: str = ""
     topic: str = ""
     examples: list[TopicChip] = Field(default_factory=_chips)
-    options: OptionsFormValues = Field(default_factory=OptionsFormValues)
-    chart_types: list[ChoiceOption] = []
-    time_presets: list[ChoiceOption] = []
-    tones: list[ChoiceOption] = []
-    options_open: bool = False
-    min_year: int = MIN_YEAR
-    max_year: int = MAX_YEAR
-    max_countries: int = MAX_COUNTRIES
-    max_country_chars: int = MAX_COUNTRY_CHARS
-    max_countries_text: int = MAX_COUNTRIES * (MAX_COUNTRY_CHARS + 2)
-    max_instructions: int = MAX_INSTRUCTIONS_CHARS
+    carry: list[HiddenField] = []
+    stepper: StepperView = Field(default_factory=lambda: build_stepper(1))
+    max_topic: int = MAX_TOPIC_LENGTH
 
 
 def build_home_view(
     topic: str = "", options: OptionsFormValues | None = None, error: str = ""
 ) -> HomeView:
-    values = options or OptionsFormValues()
     return HomeView(
         topic=topic.strip()[:MAX_TOPIC_LENGTH],
         error=error,
-        options=values,
-        chart_types=_choices(CHART_TYPES, values.chart_type, "Default"),
-        time_presets=_choices(TIME_PRESETS, values.time_preset, "Default"),
-        tones=_choices({k: k for k in TONES}, values.tone, "Your style", capitalise=True),
-        options_open=values.any_set(),
+        carry=_carry(options or OptionsFormValues()),
+    )
+
+
+STYLE_NOTICE_UNAVAILABLE = "Your saved style could not be loaded right now. Generate still works."
+STYLE_NOTICE_SIGN_IN = "Sign in to see your saved style."
+STYLE_NOTICE_APPLIED = "Your saved style is applied when you generate."
+TOPIC_TOO_LONG_ERROR = f"Your topic is too long. Use {MAX_TOPIC_LENGTH} characters or fewer."
+
+
+class StyleStepView(BaseModel):
+    error: str = ""
+    topic: str
+    change_href: str
+    stepper: StepperView
+    options: OptionsFormValues
+    chart_types: list[ChoiceOption]
+    time_presets: list[ChoiceOption]
+    tones: list[ChoiceOption]
+    summary: list[OptionLine] = []
+    notice: str = ""
+    min_year: int = MIN_YEAR
+    max_year: int = MAX_YEAR
+    max_countries: int = MAX_COUNTRIES
+    max_countries_text: int = MAX_COUNTRIES * (MAX_COUNTRY_CHARS + 2)
+    max_instructions: int = MAX_INSTRUCTIONS_CHARS
+
+
+def style_summary_lines(style: ChartStyle) -> list[OptionLine]:
+    return [
+        OptionLine(
+            label="Palette", value=style.palette.capitalize(), colors=list(PALETTES[style.palette])
+        ),
+        OptionLine(label="Font", value=style.font.capitalize()),
+        OptionLine(label="Caption tone", value=style.tone.capitalize()),
+        OptionLine(label="Hashtags", value=" ".join(f"#{t}" for t in style.hashtags) or "None"),
+        OptionLine(label="Signature", value=style.signature or "None"),
+    ]
+
+
+def build_style_step_view(
+    topic: str,
+    options: OptionsFormValues,
+    style: ChartStyle | None = None,
+    notice: str = "",
+    error: str = "",
+) -> StyleStepView:
+    topic = topic.strip()
+    change_href = f"/?{flow_query(topic, options)}"
+    return StyleStepView(
+        error=error,
+        topic=topic,
+        change_href=change_href,
+        stepper=build_stepper(2, change_href),
+        options=options,
+        chart_types=_choices(CHART_TYPES, options.chart_type, "Default"),
+        time_presets=_choices(TIME_PRESETS, options.time_preset, "Default"),
+        tones=_choices({k: k for k in TONES}, options.tone, "Your style", capitalise=True),
+        summary=style_summary_lines(style) if style is not None else [],
+        notice=notice,
     )
 
 
@@ -196,11 +306,6 @@ BADGES = {
 }
 
 
-class OptionLine(BaseModel):
-    label: str
-    value: str
-
-
 def _time_text(options: PostOptions) -> str:
     if options.time_preset is not None:
         return TIME_PRESETS[options.time_preset]
@@ -256,10 +361,16 @@ class RunView(BaseModel):
     decided_label: str = ""
     options: list[OptionLine] = []
     option_notes: list[str] = []
+    stepper: StepperView
 
 
 def build_run_view(
-    wf_id: str, state: ReviewState, temporal_ui_url: str, sent: bool = False, error: str = ""
+    wf_id: str,
+    state: ReviewState,
+    temporal_ui_url: str,
+    sent: bool = False,
+    error: str = "",
+    fragment: bool = False,
 ) -> RunView:
     review = state.review
     awaiting = state.status == "awaiting_decision"
@@ -288,6 +399,7 @@ def build_run_view(
         decided_label=DECIDED_LABELS.get(state.status, ""),
         options=option_lines(state.options),
         option_notes=list(state.option_notes),
+        stepper=build_stepper(RUN_STEP[state.status], oob=fragment),
     )
 
 

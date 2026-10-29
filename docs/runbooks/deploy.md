@@ -58,6 +58,14 @@ Then open http://localhost:18000 and http://localhost:18233.
 just deploy   # git pull --ff-only, then compose up -d --build
 ```
 
+After a deploy, ensure the configured source ingestion workflows exist (idempotent, safe to re-run;
+worker startup does not start them):
+
+```sh
+env -i PATH="$PATH" HOME="$HOME" docker compose -f infra/compose.prod.yaml --env-file .env.prod \
+  exec worker python -m ai_trend_pipeline.ingestion_starter
+```
+
 ## Logs
 
 ```sh

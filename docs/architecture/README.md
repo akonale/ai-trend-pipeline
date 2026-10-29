@@ -40,14 +40,26 @@ approval posts it to Bluesky. Everything is orchestrated by one Temporal workflo
    `GET /runs/{id}/chart.png`. Approve/Reject posts `/runs/{id}/decision`, which signals `decide`.
 7. On approval the workflow runs `post_chart_to_bluesky` (idempotent) and finishes `approved`.
 
+## Continuous source ingestion
+
+`SourceIngestionWorkflow` (one per enabled source, id `source-ingestion-v1-<source>`, task queue
+`source-ingestion-task-queue`) polls the source activity on a Temporal timer, drops stories already
+in its bounded processed-id set, prefilters the rest, calls `select_story_candidates`, and starts
+one `StoryCandidateWorkflow` per selected story. Cursor and processed ids live only in workflow
+state and are carried through continue-as-new. Workers never start it on boot: run `just ingest`
+(or the production `docker compose exec worker python -m ai_trend_pipeline.ingestion_starter`
+command) to ensure the workflows exist; repeated runs are idempotent.
+
 ## Module map (`src/ai_trend_pipeline/`)
 
 | Module | Purpose |
 | --- | --- |
 | `config.py` | `Settings` and `load_settings()`; the only place env vars are read |
 | `hn.py` | Activity `fetch_hn_top_stories` (Hacker News API) |
-| `sources/` | Frozen bounded source contracts, static registry, shared normalization, HN and fake connectors (`poll_hn_source`); no worker wiring yet |
-| `story_selection.py` | Pure `prefilter_events` and activity `select_story_candidates` (batch LLM editorial selection); no worker wiring yet |
+| `sources/` | Frozen bounded source contracts, static registry, shared normalization, HN and fake connectors (`poll_hn_source`) |
+| `story_selection.py` | Pure `prefilter_events` and activity `select_story_candidates` (batch LLM editorial selection) |
+| `source_ingestion.py` | `SourceIngestionWorkflow`: one long-running poll/select/start loop per enabled source, bounded cursor and processed ids |
+| `ingestion_starter.py` | Operator entry point (`just ingest`) that ensures source ingestion workflows exist |
 | `story_candidate.py` | `StoryCandidateWorkflow` (one review per candidate), candidate models, `candidate_id_for`, candidate search-attribute keys |
 | `topic.py` | Activity `pick_topic` (LLM picks an OWID catalog title); `make_anthropic_client` |
 | `owid.py` | `CATALOG`, `match_dataset`, activity `fetch_owid_dataset`, `OwidTable` |
@@ -72,6 +84,7 @@ approval posts it to Bluesky. Everything is orchestrated by one Temporal workflo
 | --- | --- | --- |
 | Run status, review, requester, approver, options | Temporal workflow history | Read by query `review_state`; no app database for runs |
 | Candidate review status, decision | Temporal workflow history (`StoryCandidateWorkflow`) | Read by query `review_state`; pending list from visibility (`CandidateStatus`, `CandidateSource`) |
+| Source cursor, processed ids, poll counters | Temporal workflow history (`SourceIngestionWorkflow`) | Bounded (1000 processed ids) and carried through continue-as-new; no Postgres table |
 | Per-person style profile | Postgres `topic_studio.style_profiles` (default `postgres` db) | Created lazily on first use |
 | Chart PNGs | Directory `CHART_OUTPUT_DIR` (prod volume `charts`, mounted in worker and web) | File name `chart-<spec hash>.png` |
 | Daily cap count | Derived from Temporal visibility (memo `requested_by`) | Not stored separately |

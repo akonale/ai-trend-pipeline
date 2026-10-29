@@ -150,3 +150,15 @@ def test_candidate_review_timeout_default_and_bounds() -> None:
     for bad in ("0", "604801", "-1", "abc", "1.5"):
         with pytest.raises(ValueError):
             load_settings({"CANDIDATE_REVIEW_TIMEOUT_S": bad})
+
+
+def test_source_poll_interval_default_and_bounds() -> None:
+    assert Settings().source_poll_interval_s == 300
+    assert load_settings({}).source_poll_interval_s == 300
+    assert load_settings({"SOURCE_POLL_INTERVAL_S": ""}).source_poll_interval_s == 300
+    assert load_settings({"SOURCE_POLL_INTERVAL_S": "30"}).source_poll_interval_s == 30
+    assert load_settings({"SOURCE_POLL_INTERVAL_S": "3600"}).source_poll_interval_s == 3600
+    for bad in ("29", "3601", "abc", "2.5", "-1", "0"):
+        with pytest.raises(ValueError):
+            load_settings({"SOURCE_POLL_INTERVAL_S": bad})
+    assert Settings() == load_settings({})

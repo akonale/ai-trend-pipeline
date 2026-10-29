@@ -19,6 +19,7 @@ just          # list recipes
 just lint     # ruff check, ruff format --check, pyright (strict)
 just fmt      # ruff format and ruff check --fix
 just test     # pytest
+just ingest   # ensure one ingestion workflow per enabled source (idempotent)
 ```
 
 If `just` is not installed, run the same commands with `uv run`, for example `uv run pytest`.
@@ -116,11 +117,12 @@ Every pull request and every push to `main` runs `just lint` and `just test` thr
 ## Configuration
 
 Environment variables are read only in `ai_trend_pipeline.config` (`load_settings()` returns a
-`Settings` model that is passed to the code that needs it). Source polling adds three of them:
+`Settings` model that is passed to the code that needs it). Source polling adds four of them:
 `SOURCE_ENABLED` (comma-separated registered source names, default `hn`; `none` disables all),
-`SOURCE_POLL_LIMIT` (1-100, default 30) and `SOURCE_POLL_TIMEOUT_S` (over 0 and at most 60, default
-15.0). `CANDIDATE_REVIEW_TIMEOUT_S` (1-604800 seconds, default 172800) sets how long a story
-candidate waits for an Approve/Reject decision before it expires.
+`SOURCE_POLL_LIMIT` (1-100, default 30), `SOURCE_POLL_INTERVAL_S` (30-3600 seconds, default 300) and
+`SOURCE_POLL_TIMEOUT_S` (over 0 and at most 60, default 15.0). `CANDIDATE_REVIEW_TIMEOUT_S`
+(1-604800 seconds, default 172800) sets how long a story candidate waits for an Approve/Reject
+decision before it expires.
 
 ## Hacker News
 
@@ -137,8 +139,29 @@ current HN top stories as typed models.
 selected story candidate (task queue `story-candidate-task-queue`), with a `review_state` query and
 Approve/Reject signals. `services/candidates.py` and the Temporal candidate gateway start
 candidates idempotently, list pending ones with pagination and send decisions. The web app lists
-pending candidates at `/candidates` and shows and decides one at `/candidates/<id>`; nothing polls
-sources into candidates automatically yet.
+pending candidates at `/candidates` and shows and decides one at `/candidates/<id>`.
+
+`ai_trend_pipeline.source_ingestion` provides `SourceIngestionWorkflow`: one long-running workflow
+per enabled source on `source-ingestion-task-queue` that polls through the source activity,
+prefilters new events, asks `select_story_candidates` for a bounded batch, and starts one candidate
+workflow per selection. Cursor and processed-story state live in the workflow (continue-as-new keeps
+both bounded), never in Postgres.
+
+Ingestion is not started by worker startup. Run the idempotent operator command once after the
+worker is up (and after each production deploy):
+
+```sh
+just ingest   # dev: loads settings, connects, ensures one workflow per enabled source
+```
+
+In production the worker container runs the same entry point:
+
+```sh
+env -i PATH="$PATH" HOME="$HOME" docker compose -f infra/compose.prod.yaml --env-file .env.prod \
+  exec worker python -m ai_trend_pipeline.ingestion_starter
+```
+
+Re-running it is safe (`USE_EXISTING`); `SOURCE_ENABLED=none` ensures nothing and exits 0.
 
 ## Topic picking
 

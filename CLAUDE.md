@@ -26,6 +26,7 @@ will touch. `docs/history.md` explains why things are the way they are.
 | `just hello`| `uv run python -m ai_trend_pipeline.start_hello`                            |
 | `just chart`| `uv run python -m ai_trend_pipeline.cli start` (accepts `--topic`, `--id`; also `just show/approve/reject <id>`) |
 | `just web`  | `uv run python -m ai_trend_pipeline.web` (serves on `127.0.0.1:8000`)       |
+| `just ingest`| `uv run python -m ai_trend_pipeline.ingestion_starter` (idempotently ensures enabled source ingestion workflows; not run at worker start) |
 | `just deploy`| `git pull --ff-only`, then `env -i PATH="$PATH" HOME="$HOME" docker compose -f infra/compose.prod.yaml --env-file .env.prod up -d --build` |
 | `just down` | `docker compose -f infra/compose.dev.yaml down`                             |
 

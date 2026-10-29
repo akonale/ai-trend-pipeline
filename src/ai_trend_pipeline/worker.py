@@ -24,13 +24,20 @@ from ai_trend_pipeline.hello import TASK_QUEUE, HelloWorkflow, say_hello
 from ai_trend_pipeline.hn import HNActivities, make_hn_client
 from ai_trend_pipeline.owid import OwidActivities, make_owid_client
 from ai_trend_pipeline.render import render_chart_png
+from ai_trend_pipeline.source_ingestion import (
+    SOURCE_INGESTION_TASK_QUEUE,
+    SourceIngestionWorkflow,
+)
+from ai_trend_pipeline.sources.hn import HNSourceActivities, make_source_hn_client
 from ai_trend_pipeline.story_candidate import CANDIDATE_TASK_QUEUE, StoryCandidateWorkflow
+from ai_trend_pipeline.story_selection import StorySelectionActivities
 from ai_trend_pipeline.temporal_client import connect, ensure_candidate_search_attributes
 from ai_trend_pipeline.topic import TopicActivities, make_anthropic_client
 
 CONNECT_TIMEOUT_S = 30.0
 RETRY_DELAY_S = 1.0
 CANDIDATE_WORKFLOWS = [StoryCandidateWorkflow]
+INGESTION_WORKFLOWS = [SourceIngestionWorkflow]
 
 
 async def connect_with_retry(settings: Settings) -> Client:
@@ -69,6 +76,16 @@ def daily_chart_activities(
     ]
 
 
+# Any matches the type of Temporal's `Worker(activities=...)` parameter.
+def ingestion_activities(
+    anthropic_client: anthropic.AsyncAnthropic,
+    source_hn_client: httpx.AsyncClient,
+) -> list[Callable[..., Any]]:
+    source_hn = HNSourceActivities(source_hn_client)
+    selection = StorySelectionActivities(anthropic_client)
+    return [source_hn.poll_hn_source, selection.select_story_candidates]
+
+
 async def main() -> None:
     settings = load_settings()
     client = await connect_with_retry(settings)
@@ -79,6 +96,7 @@ async def main() -> None:
         make_hn_client() as hn_client,
         make_owid_client() as owid_client,
         make_bluesky_client(credentials.service) as bluesky_client,
+        make_source_hn_client(settings) as source_hn_client,
     ):
         hello_worker = Worker(
             client, task_queue=TASK_QUEUE, workflows=[HelloWorkflow], activities=[say_hello]
@@ -96,7 +114,18 @@ async def main() -> None:
             task_queue=CANDIDATE_TASK_QUEUE,
             workflows=CANDIDATE_WORKFLOWS,
         )
-        await asyncio.gather(hello_worker.run(), chart_worker.run(), candidate_worker.run())
+        ingestion_worker = Worker(
+            client,
+            task_queue=SOURCE_INGESTION_TASK_QUEUE,
+            workflows=INGESTION_WORKFLOWS,
+            activities=ingestion_activities(anthropic_client, source_hn_client),
+        )
+        await asyncio.gather(
+            hello_worker.run(),
+            chart_worker.run(),
+            candidate_worker.run(),
+            ingestion_worker.run(),
+        )
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 # 048: Continuous HN ingestion
 
-Status: built
+Status: pr-open
 
 ## Goal
 
@@ -372,3 +372,6 @@ routes.
   `ABANDON`/`REJECT_DUPLICATE` children and the 1000-ID state bound are covered. `wait_condition` raises
   `TimeoutError` on timeout (caught); time-skipping tests step timers with `env.sleep(...)`.
   `just lint` and `just test` pass (654 tests; Anthropic base-url vars unset). Next: verifier.
+- **verifier**: `just lint` clean (ruff, format, pyright 0 errors). `just test` 654 passed with harness `ANTHROPIC_*` vars unset; with them set, only fixture LLM tests fail on `anthropic.APIConnectionError` (no branch regression). All checks pass. Next: reviewer.
+- **reviewer**: Approved. Diff matches spec and 042-049 rules: deterministic workflow (Temporal timers, `workflow.now()`, activity results only), bounded cursor + 1000-ID state preserved across continue-as-new, non-fatal poll/selector failures with failed batches marked processed, `ABANDON`/`REJECT_DUPLICATE` children, idempotent `just ingest` not run at worker start.
+  Notes: the `_wait` after `continue_as_new` is unreachable by the spec's loop order (one immediate poll per run); `last_selected_count` counts started candidates, not selector output. `just lint` clean and 654 tests pass. Next: scribe.

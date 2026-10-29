@@ -1,6 +1,6 @@
 # 040: Review and Done steps (run page as steps 3 and 4)
 
-Status: built
+Status: pr-open
 
 ## Goal
 
@@ -275,3 +275,10 @@ No existing test assertion changes; h1 moves into the polled fragment. Next: orc
 **builder**: Built per spec; tests first (test_web_run_states.py, 4 workflow tests); lint and full suite pass, no existing assertion changed. Skill frontend-design was in context. Added one small rule `.decision-card .meta` margin (hint touched buttons in screenshots).
 Replay claim held: a fresh worker (empty cache) queried the closed approved run and got `post_uri` (test_closed_approved_run_replays_with_post_uri); this replays with current code, it cannot test a truly older history.
 Browser checks at 360/1280, light/dark: no overflow, no mid-word breaks, one stepper/h1, polling stops at end, Approve POST redirects to ?sent=1, bsky link has rel noopener noreferrer. Next: verifier.
+
+**verifier**: `just lint` passed (ruff check, ruff format, pyright 0 errors); `just test` passed (493 passed). No existing test line removed (`git diff origin/main -- tests/` shows only additions and new tests/test_web_run_states.py). No stray servers on 8760-8769, no scratch containers, prod containers untouched, no external assets in app.css or templates. Next: reviewer.
+
+**reviewer**: Approved. Diff vs spec and the 12-point checklist: every acceptance criterion and listed test present; no existing test assertion changed; `post_uri` set only in the final post-decision update, no new commands/I/O; `bluesky_post_url` fullmatch accepts only the activity's URI shape; anchor has `target="_blank" rel="noopener noreferrer"`; no files outside "Files to touch" (one extra `.decision-card .meta` CSS rule and one replay test, both disclosed); no secrets or external assets.
+`just lint` clean (pyright 0). The 040 test files pass; the 43 full-suite failures here are pre-existing `anthropic.APIConnectionError` (no network), reproduced on main. Next: scribe.
+
+**scribe**: Docs checked: `tech.md`, `business.md` and `README.md` already cover `post_uri`, the run page states and the Bluesky link; no doc edit needed. Pushed `task/040-review-done`, PR opened. Next: orchestrator merges (CI green).

@@ -111,16 +111,16 @@ including error re-renders, gets the shell with no route code. It does no I/O.
 | Method | Path | Purpose | Notes |
 | --- | --- | --- | --- |
 | GET | `/health` | Health page | no Temporal call |
-| GET | `/` | Step 1: topic box and chips (GET form to `/new/style`) | `?topic=` and the seven option params prefill; options come back as hidden carry fields; never validates |
-| GET | `/new/style` | Step 2: per-chart options plus the saved style, read-only | uses `optional_user`; 303 to `/` without a topic, 400 (step 1 with an error) over 200 characters; never fails on the style read |
-| POST | `/runs` | Validate form, start a run, 303 to `/runs/{id}` | uses `current_user`; 400 bad options, or empty topic or over `MAX_TOPIC_LENGTH` (200 characters), 429 cap, 409 id exists, 503 style store down |
+| GET | `/` | Step 1: topic box and chips (GET form to `/new/style`) | `?topic=` and the fourteen option and style params prefill; options come back as hidden carry fields; never validates |
+| GET | `/new/style` | Step 2: per-chart options plus an editable style panel prefilled from the saved style | uses `optional_user`; 303 to `/` without a topic, 400 (step 1 with an error) over 200 characters; never fails on the style read; without a user or when the store is down the page shows a note instead of the "Save as my default" checkbox |
+| POST | `/runs` | Validate form, start a run, 303 to `/runs/{id}` | uses `current_user`; 400 bad options, or empty topic or over `MAX_TOPIC_LENGTH` (200 characters), 429 cap, 409 id exists, 503 style store down (read or "Save as my default" write); style overrides and `save_default` are form fields |
 | GET | `/runs/{id}` | Run page | 404 page if unknown |
 | GET | `/runs/{id}/status` | htmx fragment, polled every 2 s while `polling` | |
 | GET | `/runs/{id}/chart.png` | The PNG | 404 unless the file is inside `CHART_OUTPUT_DIR` |
 | POST | `/runs/{id}/decision` | Send approve/reject, 303 to `?sent=1` | uses `current_user`; 400 bad value, 409 not awaiting, 404 unknown |
 | GET, POST | `/settings` | Style profile form | uses `current_user`; 400 invalid, 503 store down |
 
-Which routes touch Postgres: `POST /runs` (style lookup), `/settings`, and `GET /new/style`
+Which routes touch Postgres: `POST /runs` (style lookup, and the "Save as my default" write), `/settings`, and `GET /new/style`
 (read-only; if the store is down the page still renders 200 with a notice). Other routes work
 while Postgres is down.
 

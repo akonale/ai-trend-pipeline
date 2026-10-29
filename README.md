@@ -76,10 +76,12 @@ schema and its table are created at first use. The CLI needs no database.
 
 ### Per-post options
 
-Step 2 of the flow has a "This chart" section with five fields: chart type (line, bar for the
+Step 2 of the flow has a "This chart" section with four fields: chart type (line, bar for the
 latest value, or area), time range (a preset or From/To years), countries (up to 8, comma separated;
-names or 3-letter codes), caption tone and free-text instructions. Blank options fall back to your
-saved style and then to the defaults. Time range presets are relative to the dataset's latest year, not
+names or 3-letter codes) and free-text instructions. A "Style for this chart" panel below it sets
+palette, font, caption tone, hashtags and signature for that chart only. Blank fields fall back to
+your saved style and then to the defaults; "Save as my default" also saves the chart's effective
+style as yours. Time range presets are relative to the dataset's latest year, not
 today's date. Countries that do not match are listed as notes on the run page and never fail the run.
 Instructions only steer the caption wording; chart data, colours and years are set in code, and a person
 still approves every post.

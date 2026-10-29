@@ -79,6 +79,42 @@ TONES: dict[str, str] = {
 }
 
 
+def check_palette(value: str) -> str:
+    if value not in PALETTES:
+        raise ValueError(f"unknown palette {value!r}; choose one of {', '.join(PALETTES)}")
+    return value
+
+
+def check_font(value: str) -> str:
+    if value not in FONTS:
+        raise ValueError(f"unknown font {value!r}; choose one of {', '.join(FONTS)}")
+    return value
+
+
+def check_tone(value: str) -> str:
+    if value not in TONES:
+        raise ValueError(f"unknown tone {value!r}; choose one of {', '.join(TONES)}")
+    return value
+
+
+def check_hashtags(value: list[str]) -> list[str]:
+    if len(value) > MAX_HASHTAGS:
+        raise ValueError(f"use at most {MAX_HASHTAGS} hashtags")
+    for tag in value:
+        if not HASHTAG_PATTERN.fullmatch(tag):
+            raise ValueError(f"hashtag {tag!r} must be 1 to 24 letters, digits or underscores")
+    return value
+
+
+def check_signature(value: str) -> str:
+    value = value.strip()
+    if not value.isprintable():
+        raise ValueError("signature must be one line of printable characters")
+    if len(value) > MAX_SIGNATURE_CHARS:
+        raise ValueError(f"signature must be at most {MAX_SIGNATURE_CHARS} characters")
+    return value
+
+
 class ChartStyle(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -91,43 +127,27 @@ class ChartStyle(BaseModel):
     @field_validator("palette")
     @classmethod
     def _palette(cls, value: str) -> str:
-        if value not in PALETTES:
-            raise ValueError(f"unknown palette {value!r}; choose one of {', '.join(PALETTES)}")
-        return value
+        return check_palette(value)
 
     @field_validator("font")
     @classmethod
     def _font(cls, value: str) -> str:
-        if value not in FONTS:
-            raise ValueError(f"unknown font {value!r}; choose one of {', '.join(FONTS)}")
-        return value
+        return check_font(value)
 
     @field_validator("tone")
     @classmethod
     def _tone(cls, value: str) -> str:
-        if value not in TONES:
-            raise ValueError(f"unknown tone {value!r}; choose one of {', '.join(TONES)}")
-        return value
+        return check_tone(value)
 
     @field_validator("hashtags")
     @classmethod
     def _hashtags(cls, value: list[str]) -> list[str]:
-        if len(value) > MAX_HASHTAGS:
-            raise ValueError(f"use at most {MAX_HASHTAGS} hashtags")
-        for tag in value:
-            if not HASHTAG_PATTERN.fullmatch(tag):
-                raise ValueError(f"hashtag {tag!r} must be 1 to 24 letters, digits or underscores")
-        return value
+        return check_hashtags(value)
 
     @field_validator("signature")
     @classmethod
     def _signature(cls, value: str) -> str:
-        value = value.strip()
-        if not value.isprintable():
-            raise ValueError("signature must be one line of printable characters")
-        if len(value) > MAX_SIGNATURE_CHARS:
-            raise ValueError(f"signature must be at most {MAX_SIGNATURE_CHARS} characters")
-        return value
+        return check_signature(value)
 
 
 def parse_hashtags(text: str) -> list[str]:

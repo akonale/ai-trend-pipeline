@@ -7,7 +7,7 @@ Contents: [1 Data](#1-data) | [2 Charts](#2-charts) | [3 Approval and posting](#
 
 ## 1. Data
 
-All external data enters through activities (see [workflow.md](workflow.md)). Each activity input
+All external data enters through activities (see [tech.md](tech.md#1-temporal)). Each activity input
 and output is a Pydantic model so it survives the Temporal data converter.
 
 ### Pipeline of data
@@ -203,7 +203,7 @@ Rules:
   post whose text is the caption (hashtags and signature included) and whose alt text is
   `Chart: <topic>. <caption>` cut to 1000 characters. Posting is idempotent (see tech.md).
 - Requester is recorded as `requested_by` (the signed-in email; `dev@localhost` in local mode; the
-  CLI records none). Approver is `decided_by` in the decision.
+  CLI records none, so CLI runs get no stored style profile). Approver is `decided_by` in the decision.
 - Daily cap: each signed-in person may start `DAILY_CHART_CAP` runs per UTC day (default 10). Every
   started run counts, whatever its outcome. The count resets at 00:00 UTC. CLI runs are never
   capped and not counted. Over the cap the web answers 429 with "You've reached today's limit".

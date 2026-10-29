@@ -29,7 +29,7 @@ approval posts it to Bluesky. Everything is orchestrated by one Temporal workflo
 1. `POST /runs` (`web/routes/runs.py`) or `cli.py start` builds a `StartChartRequest` and calls
    `ChartService.start` (`services/charts.py`).
 2. The service checks the daily cap (web only), loads the person's style profile
-   (`StyleStore.get`), merges per-post options (`merge_style`), and builds `DailyChartInput`.
+   (`StyleStore.get`, web only), merges per-post options (`merge_style`), and builds `DailyChartInput`.
 3. `TemporalChartRunGateway.start` starts `DailyChartWorkflow` (`daily_chart.py`) with the
    workflow id and a `requested_by` memo.
 4. The worker runs activities in order: `fetch_hn_top_stories`, `pick_topic` (skipped when a topic

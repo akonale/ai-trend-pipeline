@@ -106,7 +106,7 @@ settings, styles=...)`), `current_user`.
 | --- | --- | --- | --- |
 | GET | `/health` | Health page | no Temporal call |
 | GET | `/` | Home: topic box, options, chips | `?topic=` prefills |
-| POST | `/runs` | Validate form, start a run, 303 to `/runs/{id}` | uses `current_user`; 400 bad input, 429 cap, 409 id exists, 503 style store down |
+| POST | `/runs` | Validate form, start a run, 303 to `/runs/{id}` | uses `current_user`; 400 bad options, or empty topic or over `MAX_TOPIC_LENGTH` (200 characters), 429 cap, 409 id exists, 503 style store down |
 | GET | `/runs/{id}` | Run page | 404 page if unknown |
 | GET | `/runs/{id}/status` | htmx fragment, polled every 2 s while `polling` | |
 | GET | `/runs/{id}/chart.png` | The PNG | 404 unless the file is inside `CHART_OUTPUT_DIR` |

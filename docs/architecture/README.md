@@ -48,6 +48,7 @@ approval posts it to Bluesky. Everything is orchestrated by one Temporal workflo
 | `hn.py` | Activity `fetch_hn_top_stories` (Hacker News API) |
 | `sources/` | Frozen bounded source contracts, static registry, shared normalization, HN and fake connectors (`poll_hn_source`); no worker wiring yet |
 | `story_selection.py` | Pure `prefilter_events` and activity `select_story_candidates` (batch LLM editorial selection); no worker wiring yet |
+| `story_candidate.py` | `StoryCandidateWorkflow` (one review per candidate), candidate models, `candidate_id_for`, candidate search-attribute keys |
 | `topic.py` | Activity `pick_topic` (LLM picks an OWID catalog title); `make_anthropic_client` |
 | `owid.py` | `CATALOG`, `match_dataset`, activity `fetch_owid_dataset`, `OwidTable` |
 | `post_options.py` | `PostOptions`, row filtering, chart-type rewrite, options prompt, `merge_style` (pure) |
@@ -58,10 +59,10 @@ approval posts it to Bluesky. Everything is orchestrated by one Temporal workflo
 | `render.py` | Activity `render_chart_png` (vl-convert) |
 | `bluesky.py` | Activity `post_chart_to_bluesky`, credentials, TID record key |
 | `daily_chart.py` | `DailyChartWorkflow`, `DailyChartInput`, `ReviewState`, `ApprovalDecision` |
-| `worker.py` | Runs the hello and daily-chart workers; wires activity classes |
-| `temporal_client.py` | `connect(settings)` with the Pydantic data converter |
+| `worker.py` | Runs the hello, daily-chart and story-candidate workers; wires activity classes |
+| `temporal_client.py` | `connect(settings)` with the Pydantic data converter; `ensure_candidate_search_attributes` |
 | `cli.py` | argparse front end over `ChartService` |
-| `services/` | `charts.py`, `styles.py`, `postgres_style_store.py`, `temporal_gateway.py` |
+| `services/` | `charts.py`, `candidates.py`, `styles.py`, `postgres_style_store.py`, `temporal_gateway.py` |
 | `web/` | `app.py`, `dependencies.py`, `routes/`, `view_models.py`, `templates/`, `static/` |
 | `hello.py`, `start_hello.py` | Smoke-test workflow (`just hello`) |
 
@@ -70,6 +71,7 @@ approval posts it to Bluesky. Everything is orchestrated by one Temporal workflo
 | State | Where | Notes |
 | --- | --- | --- |
 | Run status, review, requester, approver, options | Temporal workflow history | Read by query `review_state`; no app database for runs |
+| Candidate review status, decision | Temporal workflow history (`StoryCandidateWorkflow`) | Read by query `review_state`; pending list from visibility (`CandidateStatus`, `CandidateSource`) |
 | Per-person style profile | Postgres `topic_studio.style_profiles` (default `postgres` db) | Created lazily on first use |
 | Chart PNGs | Directory `CHART_OUTPUT_DIR` (prod volume `charts`, mounted in worker and web) | File name `chart-<spec hash>.png` |
 | Daily cap count | Derived from Temporal visibility (memo `requested_by`) | Not stored separately |
@@ -91,10 +93,13 @@ code may import them. Full rules: `CLAUDE.md`.
 - **OWID**: Our World in Data; the source of chart data (CSV from its grapher URLs).
 - **Catalog**: the six OWID datasets in `owid.CATALOG` that topics can map to.
 - **Run**: one `DailyChartWorkflow` execution; its workflow id is the run id.
+- **Candidate**: one selected source story awaiting review, one `StoryCandidateWorkflow` per
+  source/external id; its id is `candidate-v1-<16 hex chars>`.
 - **Review**: the drafted chart, caption and critique awaiting a decision (`ReviewRequest`).
 - **Style profile**: per-person palette, font, tone, hashtags, signature (`ChartStyle`).
 - **Post options**: per-run chart type, time range, countries, tone, instructions (`PostOptions`).
-- **Gateway**: `ChartRunGateway` protocol; `TemporalChartRunGateway` is the real adapter.
+- **Gateway**: the protocol a service talks to instead of Temporal; `TemporalChartRunGateway` and
+  `TemporalCandidateGateway` are the real adapters.
 - **Task / relay**: the planner-builder-verifier-reviewer-scribe workflow (see `docs/mvp-plan.md`).
 
 ## Which doc to read for what

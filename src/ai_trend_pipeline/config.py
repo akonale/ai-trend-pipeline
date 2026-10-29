@@ -12,6 +12,7 @@ from ai_trend_pipeline.sources.registry import (
     UnknownSourceError,
     enabled_sources,
 )
+from ai_trend_pipeline.story_candidate import DEFAULT_CANDIDATE_REVIEW_TIMEOUT_S
 
 DEFAULT_BLUESKY_SERVICE = "https://bsky.social"
 DEFAULT_TEMPORAL_ADDRESS = "localhost:7233"
@@ -37,6 +38,9 @@ class Settings(BaseModel):
     source_enabled: frozenset[SourceName] = frozenset({SourceName.HN})
     source_poll_limit: int = Field(default=30, ge=1, le=100)
     source_poll_timeout_s: float = Field(default=15.0, gt=0, le=60)
+    candidate_review_timeout_s: int = Field(
+        default=DEFAULT_CANDIDATE_REVIEW_TIMEOUT_S, ge=1, le=604800
+    )
 
     @field_validator("source_enabled")
     @classmethod
@@ -94,4 +98,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         source_enabled=_parse_source_enabled(env.get("SOURCE_ENABLED")),
         source_poll_limit=int(env.get("SOURCE_POLL_LIMIT") or 30),
         source_poll_timeout_s=float(env.get("SOURCE_POLL_TIMEOUT_S") or 15.0),
+        candidate_review_timeout_s=int(
+            env.get("CANDIDATE_REVIEW_TIMEOUT_S") or DEFAULT_CANDIDATE_REVIEW_TIMEOUT_S
+        ),
     )

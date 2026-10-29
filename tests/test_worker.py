@@ -4,7 +4,8 @@ import anthropic
 import httpx
 
 from ai_trend_pipeline.bluesky import BlueskyCredentials
-from ai_trend_pipeline.worker import daily_chart_activities
+from ai_trend_pipeline.story_candidate import CANDIDATE_TASK_QUEUE, StoryCandidateWorkflow
+from ai_trend_pipeline.worker import CANDIDATE_WORKFLOWS, daily_chart_activities
 
 
 def test_daily_chart_activities_names() -> None:
@@ -28,3 +29,8 @@ def test_daily_chart_activities_names() -> None:
             "post_chart_to_bluesky",
         ]
     )
+
+
+def test_candidate_workflow_registered_on_candidate_queue() -> None:
+    assert CANDIDATE_WORKFLOWS == [StoryCandidateWorkflow]
+    assert CANDIDATE_TASK_QUEUE == "story-candidate-task-queue"

@@ -1,6 +1,6 @@
 # 040: Review and Done steps (run page as steps 3 and 4)
 
-Status: pr-open
+Status: merged
 
 ## Goal
 
@@ -282,3 +282,5 @@ Browser checks at 360/1280, light/dark: no overflow, no mid-word breaks, one ste
 `just lint` clean (pyright 0). The 040 test files pass; the 43 full-suite failures here are pre-existing `anthropic.APIConnectionError` (no network), reproduced on main. Next: scribe.
 
 **scribe**: Docs checked: `tech.md`, `business.md` and `README.md` already cover `post_uri`, the run page states and the Bluesky link; no doc edit needed. Pushed `task/040-review-done`, PR opened: https://github.com/akonale/ai-trend-pipeline/pull/44. Next: orchestrator merges (CI green).
+
+**orchestrator**: CI green on PR #44 (lint + tests); merged as `ae4e76a`, branch deleted. Status set to merged.

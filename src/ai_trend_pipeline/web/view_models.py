@@ -5,6 +5,16 @@ from urllib.parse import quote
 from pydantic import BaseModel, Field, ValidationError
 
 from ai_trend_pipeline.daily_chart import ReviewState
+from ai_trend_pipeline.post_options import (
+    CHART_TYPES,
+    MAX_COUNTRIES,
+    MAX_COUNTRY_CHARS,
+    MAX_INSTRUCTIONS_CHARS,
+    MAX_YEAR,
+    MIN_YEAR,
+    TIME_PRESETS,
+    PostOptions,
+)
 from ai_trend_pipeline.style import (
     FONTS,
     MAX_HASHTAGS,
@@ -37,14 +47,90 @@ def _chips() -> list[TopicChip]:
     return [TopicChip(label=t, href=f"/?topic={quote(t)}") for t in EXAMPLE_TOPICS]
 
 
+class ChoiceOption(BaseModel):
+    key: str
+    label: str
+    selected: bool
+
+
+class OptionsFormValues(BaseModel):
+    chart_type: str = ""
+    time_preset: str = ""
+    from_year: str = ""
+    to_year: str = ""
+    countries: str = ""
+    tone: str = ""
+    instructions: str = ""
+
+    def any_set(self) -> bool:
+        return any(v.strip() for v in self.model_dump().values())
+
+
+def _choices(
+    table: dict[str, str], selected: str, default_label: str, capitalise: bool = False
+) -> list[ChoiceOption]:
+    items = [ChoiceOption(key="", label=default_label, selected=selected == "")]
+    items += [
+        ChoiceOption(key=k, label=v.capitalize() if capitalise else v, selected=k == selected)
+        for k, v in table.items()
+    ]
+    return items
+
+
 class HomeView(BaseModel):
     error: str = ""
     topic: str = ""
     examples: list[TopicChip] = Field(default_factory=_chips)
+    options: OptionsFormValues = Field(default_factory=OptionsFormValues)
+    chart_types: list[ChoiceOption] = []
+    time_presets: list[ChoiceOption] = []
+    tones: list[ChoiceOption] = []
+    options_open: bool = False
+    min_year: int = MIN_YEAR
+    max_year: int = MAX_YEAR
+    max_countries: int = MAX_COUNTRIES
+    max_country_chars: int = MAX_COUNTRY_CHARS
+    max_countries_text: int = MAX_COUNTRIES * (MAX_COUNTRY_CHARS + 2)
+    max_instructions: int = MAX_INSTRUCTIONS_CHARS
 
 
-def build_home_view(topic: str = "") -> HomeView:
-    return HomeView(topic=topic.strip()[:MAX_TOPIC_LENGTH])
+def build_home_view(
+    topic: str = "", options: OptionsFormValues | None = None, error: str = ""
+) -> HomeView:
+    values = options or OptionsFormValues()
+    return HomeView(
+        topic=topic.strip()[:MAX_TOPIC_LENGTH],
+        error=error,
+        options=values,
+        chart_types=_choices(CHART_TYPES, values.chart_type, "Default"),
+        time_presets=_choices(TIME_PRESETS, values.time_preset, "Default"),
+        tones=_choices({k: k for k in TONES}, values.tone, "Your style", capitalise=True),
+        options_open=values.any_set(),
+    )
+
+
+OPTIONS_ERRORS = {
+    "chart_type": "Chart type: pick line, bar or area.",
+    "time_preset": (
+        f"Time range: pick a preset or From/To years ({MIN_YEAR} to {MAX_YEAR}, "
+        "From not after To), not both."
+    ),
+    "countries": (
+        f"Countries: up to {MAX_COUNTRIES} names, each at most {MAX_COUNTRY_CHARS} characters, "
+        "separated by commas."
+    ),
+    "tone": "Caption tone: pick one of the listed tones.",
+    "instructions": f"Instructions: at most {MAX_INSTRUCTIONS_CHARS} characters.",
+}
+
+
+def options_error_message(exc: ValidationError) -> str:
+    fields: set[str] = set()
+    for e in exc.errors():
+        loc = str(e["loc"][0]) if e["loc"] else "time_preset"
+        fields.add("time_preset" if loc in ("from_year", "to_year") else loc)
+    parts = [msg for key, msg in OPTIONS_ERRORS.items() if key in fields]
+    return " ".join(parts) or "Check your options and try again."
 
 
 STATUS_LABELS = {
@@ -77,6 +163,42 @@ BADGES = {
 }
 
 
+class OptionLine(BaseModel):
+    label: str
+    value: str
+
+
+def _time_text(options: PostOptions) -> str:
+    if options.time_preset is not None:
+        return TIME_PRESETS[options.time_preset]
+    if options.from_year is not None and options.to_year is not None:
+        return f"{options.from_year} to {options.to_year}"
+    if options.from_year is not None:
+        return f"From {options.from_year}"
+    return f"Up to {options.to_year}"
+
+
+def option_lines(options: PostOptions | None) -> list[OptionLine]:
+    if options is None:
+        return []
+    lines: list[OptionLine] = []
+    if options.chart_type is not None:
+        lines.append(OptionLine(label="Chart type", value=CHART_TYPES[options.chart_type]))
+    if (
+        options.time_preset is not None
+        or options.from_year is not None
+        or options.to_year is not None
+    ):
+        lines.append(OptionLine(label="Time range", value=_time_text(options)))
+    if options.countries:
+        lines.append(OptionLine(label="Countries", value=", ".join(options.countries)))
+    if options.tone is not None:
+        lines.append(OptionLine(label="Caption tone", value=options.tone.capitalize()))
+    if options.instructions:
+        lines.append(OptionLine(label="Instructions", value=options.instructions))
+    return lines
+
+
 class RunView(BaseModel):
     wf_id: str
     status: str
@@ -99,6 +221,8 @@ class RunView(BaseModel):
     requested_by: str | None = None
     decided_by: str | None = None
     decided_label: str = ""
+    options: list[OptionLine] = []
+    option_notes: list[str] = []
 
 
 def build_run_view(
@@ -129,6 +253,8 @@ def build_run_view(
         requested_by=state.requested_by,
         decided_by=state.decided_by,
         decided_label=DECIDED_LABELS.get(state.status, ""),
+        options=option_lines(state.options),
+        option_notes=list(state.option_notes),
     )
 
 
@@ -136,12 +262,6 @@ class SwatchOption(BaseModel):
     key: str
     colors: list[str]
     checked: bool
-
-
-class ChoiceOption(BaseModel):
-    key: str
-    label: str
-    selected: bool
 
 
 class SettingsView(BaseModel):

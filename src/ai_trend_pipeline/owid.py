@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
+from ai_trend_pipeline.post_options import PostOptions, filter_table_rows
+
 OWID_BASE_URL = "https://ourworldindata.org/grapher/"
 NO_MATCH_ERROR_TYPE = "NoMatchingDataset"
 
@@ -21,6 +23,7 @@ class OwidDataset(BaseModel):
 class FetchOwidInput(BaseModel):
     topic: str = Field(min_length=1)
     since_year: int = Field(default=2000, ge=1800, le=2100)
+    options: PostOptions | None = None
 
 
 class OwidRow(BaseModel):
@@ -35,6 +38,8 @@ class OwidTable(BaseModel):
     title: str
     value_column: str
     rows: list[OwidRow]
+    matched_countries: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
 
 
 CATALOG: tuple[OwidDataset, ...] = (
@@ -124,8 +129,6 @@ class OwidActivities:
             if len(record) < 4 or not record[3].strip():
                 continue
             year = int(record[2])
-            if year < data.since_year:
-                continue
             rows.append(
                 OwidRow(
                     entity=record[0],
@@ -134,4 +137,12 @@ class OwidActivities:
                     value=float(record[3]),
                 )
             )
-        return OwidTable(slug=dataset.slug, title=dataset.title, value_column=header[3], rows=rows)
+        filtered = filter_table_rows(rows, data.options, data.since_year, dataset.title)
+        return OwidTable(
+            slug=dataset.slug,
+            title=dataset.title,
+            value_column=header[3],
+            rows=filtered.rows,
+            matched_countries=filtered.matched_countries,
+            notes=filtered.notes,
+        )

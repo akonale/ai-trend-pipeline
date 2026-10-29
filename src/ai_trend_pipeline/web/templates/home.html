@@ -14,6 +14,43 @@
       {% for chip in view.examples %}<li><a class="chip" href="{{ chip.href }}">{{ chip.label }}</a></li>
       {% endfor %}
     </ul>
+    <details class="more-options"{% if view.options_open %} open{% endif %}>
+      <summary>More options</summary>
+      <label for="chart_type">Chart type</label>
+      <select id="chart_type" name="chart_type" aria-describedby="chart_type-help">
+        {% for o in view.chart_types %}<option value="{{ o.key }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>
+        {% endfor %}
+      </select>
+      <p class="meta" id="chart_type-help">Default lets the chart pick a line chart.</p>
+      <label for="time_preset">Time range</label>
+      <select id="time_preset" name="time_preset" aria-describedby="time-help">
+        {% for o in view.time_presets %}<option value="{{ o.key }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>
+        {% endfor %}
+      </select>
+      <div class="year-row">
+        <div>
+          <label for="from_year">From year</label>
+          <input type="number" id="from_year" name="from_year" min="{{ view.min_year }}" max="{{ view.max_year }}" value="{{ view.options.from_year }}" aria-describedby="time-help">
+        </div>
+        <div>
+          <label for="to_year">To year</label>
+          <input type="number" id="to_year" name="to_year" min="{{ view.min_year }}" max="{{ view.max_year }}" value="{{ view.options.to_year }}" aria-describedby="time-help">
+        </div>
+      </div>
+      <p class="meta" id="time-help">Pick a preset or From/To years, not both. Presets count back from the data's latest year.</p>
+      <label for="countries">Countries</label>
+      <input type="text" id="countries" name="countries" maxlength="{{ view.max_countries_text }}" value="{{ view.options.countries }}" aria-describedby="countries-help">
+      <p class="meta" id="countries-help">Up to {{ view.max_countries }}, separated by commas, e.g. France, Japan</p>
+      <label for="tone">Caption tone</label>
+      <select id="tone" name="tone" aria-describedby="tone-help">
+        {% for o in view.tones %}<option value="{{ o.key }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>
+        {% endfor %}
+      </select>
+      <p class="meta" id="tone-help">Blank uses your saved style.</p>
+      <label for="instructions">Instructions</label>
+      <textarea id="instructions" name="instructions" rows="3" maxlength="{{ view.max_instructions }}" aria-describedby="instructions-help">{{ view.options.instructions }}</textarea>
+      <p class="meta" id="instructions-help">Up to {{ view.max_instructions }} characters. Steers the caption wording only.</p>
+    </details>
   </form>
 </section>
 {% endblock %}

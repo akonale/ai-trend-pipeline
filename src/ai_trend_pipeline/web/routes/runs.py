@@ -5,8 +5,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import ValidationError
 
 from ai_trend_pipeline.config import Settings
+from ai_trend_pipeline.post_options import options_from_form
 from ai_trend_pipeline.services.charts import (
     ChartImageNotFound,
     ChartRunRef,
@@ -29,8 +31,10 @@ from ai_trend_pipeline.web.dependencies import (
 from ai_trend_pipeline.web.view_models import (
     MAX_TOPIC_LENGTH,
     STYLE_UNAVAILABLE_ERROR,
-    HomeView,
+    OptionsFormValues,
+    build_home_view,
     build_run_view,
+    options_error_message,
 )
 
 router = APIRouter()
@@ -40,29 +44,52 @@ router = APIRouter()
 async def create_run(
     request: Request,
     topic: Annotated[str, Form()] = "",
+    chart_type: Annotated[str, Form()] = "",
+    time_preset: Annotated[str, Form()] = "",
+    from_year: Annotated[str, Form()] = "",
+    to_year: Annotated[str, Form()] = "",
+    countries: Annotated[str, Form()] = "",
+    tone: Annotated[str, Form()] = "",
+    instructions: Annotated[str, Form()] = "",
     user: CurrentUser = Depends(current_user),
     service: ChartService = Depends(get_chart_service),
     templates: Jinja2Templates = Depends(get_templates),
 ) -> RedirectResponse | HTMLResponse:
     topic = topic.strip()
-    if not topic or len(topic) > MAX_TOPIC_LENGTH:
-        view = HomeView(
-            error=f"Error: enter a topic of 1 to {MAX_TOPIC_LENGTH} characters.", topic=topic
+    typed = OptionsFormValues(
+        chart_type=chart_type,
+        time_preset=time_preset,
+        from_year=from_year,
+        to_year=to_year,
+        countries=countries,
+        tone=tone,
+        instructions=instructions,
+    )
+
+    def home(error: str, status_code: int) -> HTMLResponse:
+        view = build_home_view(topic, typed, error)
+        return templates.TemplateResponse(
+            request, "home.html", {"view": view}, status_code=status_code
         )
-        return templates.TemplateResponse(request, "home.html", {"view": view}, status_code=400)
+
+    if not topic or len(topic) > MAX_TOPIC_LENGTH:
+        return home(f"Error: enter a topic of 1 to {MAX_TOPIC_LENGTH} characters.", 400)
+    try:
+        options = options_from_form(
+            chart_type, time_preset, from_year, to_year, countries, tone, instructions
+        )
+    except ValidationError as exc:
+        return home(options_error_message(exc), 400)
     try:
         result = await service.start(
-            StartChartRequest(topic=topic, unique_id=True, requested_by=user.email)
+            StartChartRequest(topic=topic, unique_id=True, requested_by=user.email, options=options)
         )
     except DailyCapReached as exc:
-        view = HomeView(error=str(exc), topic=topic)
-        return templates.TemplateResponse(request, "home.html", {"view": view}, status_code=429)
+        return home(str(exc), 429)
     except RunAlreadyExists as exc:
-        view = HomeView(error=f"Error: {exc}", topic=topic)
-        return templates.TemplateResponse(request, "home.html", {"view": view}, status_code=409)
+        return home(f"Error: {exc}", 409)
     except StyleStoreUnavailable:
-        view = HomeView(error=STYLE_UNAVAILABLE_ERROR, topic=topic)
-        return templates.TemplateResponse(request, "home.html", {"view": view}, status_code=503)
+        return home(STYLE_UNAVAILABLE_ERROR, 503)
     return RedirectResponse(f"/runs/{result.wf_id}", status_code=303)
 
 

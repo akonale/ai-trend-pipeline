@@ -463,3 +463,27 @@ async def test_no_style_means_none() -> None:
 def test_old_payload_without_style_validates() -> None:
     data = DailyChartInput.model_validate({"topic": "x", "requested_by": "a@b.c"})
     assert data.style is None
+
+
+@pytest.mark.asyncio
+async def test_options_reach_activities_and_notes_in_query() -> None:
+    from ai_trend_pipeline.post_options import PostOptions
+
+    options = PostOptions(chart_type="area", countries=["France"])
+    fakes = FakeDailyActivities()
+    noted = TABLE.model_copy(update={"notes": ["No data for 'X' in Life expectancy."]})
+    # The fake fetch returns the module TABLE; patch via a subclass-free approach.
+    import tests.test_daily_chart as module
+
+    original = module.TABLE
+    module.TABLE = noted
+    try:
+        async with await start_env() as env, make_worker(env, fakes):
+            handle = await start_workflow(env, DailyChartInput(topic=TOPIC, options=options))
+            state = await wait_for_state(handle, "awaiting_decision")
+    finally:
+        module.TABLE = original
+    assert fakes.owid_inputs[0].options == options
+    assert [w.options for w in fakes.write_inputs] == [options]
+    assert state.options == options
+    assert state.option_notes == ["No data for 'X' in Life expectancy."]

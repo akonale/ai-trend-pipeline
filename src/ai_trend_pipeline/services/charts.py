@@ -15,6 +15,7 @@ from ai_trend_pipeline.daily_chart import (
     DailyChartResult,
     ReviewState,
 )
+from ai_trend_pipeline.post_options import PostOptions, merge_style
 from ai_trend_pipeline.services.styles import StyleStore
 
 
@@ -23,6 +24,7 @@ class StartChartRequest(BaseModel):
     topic: str | None = None
     unique_id: bool = False
     requested_by: str | None = None
+    options: PostOptions | None = None
 
 
 class StartChartResult(BaseModel):
@@ -134,13 +136,20 @@ class ChartService:
         style = None
         if req.requested_by and self._styles is not None:
             style = await self._styles.get(req.requested_by)
+        style = merge_style(style, req.options)
         output_dir = self._settings.chart_output_dir
         if output_dir:
             data = DailyChartInput(
-                output_dir=output_dir, topic=req.topic, requested_by=req.requested_by, style=style
+                output_dir=output_dir,
+                topic=req.topic,
+                requested_by=req.requested_by,
+                style=style,
+                options=req.options,
             )
         else:
-            data = DailyChartInput(topic=req.topic, requested_by=req.requested_by, style=style)
+            data = DailyChartInput(
+                topic=req.topic, requested_by=req.requested_by, style=style, options=req.options
+            )
         await self._gateway.start(wf_id, data)
         return StartChartResult(wf_id=wf_id)
 

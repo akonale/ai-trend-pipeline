@@ -1,6 +1,6 @@
 # 037: App shell (header, nav, user chip, footer)
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -213,3 +213,6 @@ FIXED: leftover-server check clean with precise patterns (`scratchpad/build03[0-
 
 **reviewer**: Approved. All criteria and listed tests present; routes untouched, shell_context wired once in create_app, current_user wraps optional_user with identical 401 behaviour, local mode ignores the header, email autoescaped (no |safe).
 No existing test lines edited; one <main>, skip target once; .tagline fully removed; no new colours so token contrast test still covers pairs; tech.md matches code.
+
+**scribe**: README needs no change (no header/footer description; "Your style" section still accurate); tech.md was already updated by the builder. Pushed branch and opened PR https://github.com/akonale/ai-trend-pipeline/pull/41 (not merged).
+Next: human merges PR #41; after merge `just deploy` is needed for prod to show the shell.

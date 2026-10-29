@@ -49,16 +49,12 @@ PRs are on GitHub. Merge dates are UTC, taken from the PR list.
 | 026 | `current_user`: requester and approver stored on each run and shown on the run page | #32 | 2026-10-28 |
 | 027 | Per-person daily cap (`DAILY_CHART_CAP`, default 10, UTC day) | #34 | 2026-10-28 |
 
-Not built: 024 (runs list).
-
 ## Phase 5: Your style
 
 | Task | What was done | PR | Merged |
 | --- | --- | --- | --- |
 | 028 | Style profiles: palette, font, tone, hashtags, signature; `/settings`; stored in Postgres | #35 | 2026-10-29 |
 | 029 | Per-post options: chart type, time range, countries, tone, instructions | #36 | 2026-10-29 |
-
-Not built: 030-033 (refine loop, refine box, topic matching, run timeline).
 
 ## Phase 7-8: Production and look
 
@@ -79,6 +75,16 @@ Not built: 030-033 (refine loop, refine box, topic matching, run timeline).
 | Ignore local Claude settings and worktrees | #27 | 2026-10-28 |
 | Bump pinned image tags (Dockerfile, prod and dev compose) | #30 | 2026-10-28 |
 | Deploy runbook: image tag upgrades and Postgres collation fix | #31 | 2026-10-28 |
+
+## Planned but not built
+
+Dropped when the MVP was closed. The descriptions are copied from `docs/mvp-plan.md` on main.
+
+- 024: Runs list on the home page: recent runs with topic, status, and link (service wraps the Temporal list API).
+- 030: Refine loop: a `refine` signal with an instruction ("make it a bar chart") regenerates spec and caption, re-runs critique, and waits for review again (max 5 rounds); `just refine ID "..."`.
+- 031: Refine box on the run page, with the history of versions.
+- 032: Topic matching: show the 5 closest OWID datasets for a typed topic and let you pick one.
+- 033: Friendly run timeline on the run page: plain-language steps with timings, read from the workflow history via the service.
 
 ## Decisions and gotchas worth remembering
 
@@ -131,5 +137,5 @@ Charts, LLM and limits
   `--topic` outside the catalog fails with `NoMatchingDataset`.
 - The critique cannot tell a requested bar chart from a bad one.
 - Per-post time presets are relative to the dataset's latest year, not to today.
-- Not built: 024 (runs list), 030-033, and 012-016 (not in the plan). Prod pins the Temporal
+- Numbers 012-016 are not in the plan. Prod pins the Temporal
   auto-setup image at 1.29.7; moving to the `temporalio/server` image is a possible follow-up.

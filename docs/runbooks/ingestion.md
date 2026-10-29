@@ -122,8 +122,8 @@ source text.
 
 Rules for changing the workflow:
 
-- Add input and state fields only with defaults; 049's `candidate_budget`, `budget_day` and
-  `candidates_started` all have defaults, so 048-era histories replay.
+- Add input and state fields only with defaults; 049's `candidate_budget`, `budget_day`,
+  `candidates_started` and `budget_exhausted_day` all have defaults, so 048-era histories replay.
 - Keep activity names and loop order unchanged.
 - Bump `SOURCE_INGESTION_WORKFLOW_ID_PREFIX` to `source-ingestion-v2-` for an incompatible loop
   change. That has not been done in 049.

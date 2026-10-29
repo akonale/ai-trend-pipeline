@@ -1,0 +1,6 @@
+<ol id="flow-stepper" class="stepper" aria-label="Progress"{% if stepper.oob %} hx-swap-oob="true"{% endif %}>
+  {% for step in stepper.steps %}<li class="step step--{{ step.state }}"{% if step.aria_current %} aria-current="step"{% endif %}>
+    {% if step.href %}<a href="{{ step.href }}">{% endif %}<span class="step__num">{{ step.number }}</span> <span class="step__label">{{ step.label }}</span>{% if step.state == "done" %}<span class="step__check" aria-hidden="true">&#10003;</span><span class="visually-hidden">, done</span>{% endif %}{% if step.href %}</a>{% endif %}
+  </li>
+  {% endfor %}
+</ol>

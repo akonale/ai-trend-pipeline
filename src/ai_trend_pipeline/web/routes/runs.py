@@ -30,10 +30,12 @@ from ai_trend_pipeline.web.dependencies import (
 )
 from ai_trend_pipeline.web.view_models import (
     MAX_TOPIC_LENGTH,
+    STYLE_NOTICE_APPLIED,
     STYLE_UNAVAILABLE_ERROR,
     OptionsFormValues,
     build_home_view,
     build_run_view,
+    build_style_step_view,
     options_error_message,
 )
 
@@ -66,30 +68,36 @@ async def create_run(
         instructions=instructions,
     )
 
-    def home(error: str, status_code: int) -> HTMLResponse:
+    def step_one(error: str, status_code: int) -> HTMLResponse:
         view = build_home_view(topic, typed, error)
         return templates.TemplateResponse(
             request, "home.html", {"view": view}, status_code=status_code
         )
 
+    def step_two(error: str, status_code: int) -> HTMLResponse:
+        view = build_style_step_view(topic, typed, notice=STYLE_NOTICE_APPLIED, error=error)
+        return templates.TemplateResponse(
+            request, "new_style.html", {"view": view}, status_code=status_code
+        )
+
     if not topic or len(topic) > MAX_TOPIC_LENGTH:
-        return home(f"Error: enter a topic of 1 to {MAX_TOPIC_LENGTH} characters.", 400)
+        return step_one(f"Error: enter a topic of 1 to {MAX_TOPIC_LENGTH} characters.", 400)
     try:
         options = options_from_form(
             chart_type, time_preset, from_year, to_year, countries, tone, instructions
         )
     except ValidationError as exc:
-        return home(options_error_message(exc), 400)
+        return step_two(options_error_message(exc), 400)
     try:
         result = await service.start(
             StartChartRequest(topic=topic, unique_id=True, requested_by=user.email, options=options)
         )
     except DailyCapReached as exc:
-        return home(str(exc), 429)
+        return step_two(str(exc), 429)
     except RunAlreadyExists as exc:
-        return home(f"Error: {exc}", 409)
+        return step_two(f"Error: {exc}", 409)
     except StyleStoreUnavailable:
-        return home(STYLE_UNAVAILABLE_ERROR, 503)
+        return step_two(STYLE_UNAVAILABLE_ERROR, 503)
     return RedirectResponse(f"/runs/{result.wf_id}", status_code=303)
 
 
@@ -103,12 +111,15 @@ async def _render_run(
     sent: bool = False,
     error: str = "",
     status_code: int = 200,
+    fragment: bool = False,
 ) -> HTMLResponse:
     try:
         state = await service.show(ChartRunRef(wf_id=wf_id))
     except RunNotFound:
         return templates.TemplateResponse(request, "run_not_found.html", {}, status_code=404)
-    view = build_run_view(wf_id, state, settings.temporal_ui_url, sent=sent, error=error)
+    view = build_run_view(
+        wf_id, state, settings.temporal_ui_url, sent=sent, error=error, fragment=fragment
+    )
     return templates.TemplateResponse(request, template, {"view": view}, status_code=status_code)
 
 
@@ -136,7 +147,14 @@ async def run_status(
     templates: Jinja2Templates = Depends(get_templates),
 ) -> HTMLResponse:
     return await _render_run(
-        request, wf_id, service, settings, templates, "partials/run_status.html", sent=sent == "1"
+        request,
+        wf_id,
+        service,
+        settings,
+        templates,
+        "partials/run_status.html",
+        sent=sent == "1",
+        fragment=True,
     )
 
 

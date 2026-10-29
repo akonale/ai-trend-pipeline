@@ -12,10 +12,9 @@ from tests.test_web import REVIEW, RecGateway, client_for
 FIELDS = ("chart_type", "time_preset", "from_year", "to_year", "countries", "tone", "instructions")
 
 
-def test_home_has_closed_details_with_labelled_fields() -> None:
-    text = client_for(RecGateway()).get("/").text
-    assert '<details class="more-options">' in text
-    assert "<summary>More options</summary>" in text
+def test_style_step_has_labelled_fields() -> None:
+    text = client_for(RecGateway()).get("/new/style?topic=Life%20expectancy").text
+    assert "<details" not in text
     for name in FIELDS:
         assert f'name="{name}"' in text
         assert f'<label for="{name}"' in text
@@ -71,7 +70,7 @@ def test_invalid_options_are_400_and_keep_values(data: dict[str, str], message: 
     res = client_for(gateway).post("/runs", data={"topic": "My topic", **data})
     assert res.status_code == 400
     assert re.search(r'role="alert">[^<]*' + re.escape(message), res.text)
-    assert '<details class="more-options" open>' in res.text
+    assert 'aria-current="step"' in res.text and "Set up this chart" in res.text
     assert 'value="My topic"' in res.text
     # Select values outside the list cannot be re-selected, so only typed fields are checked.
     for key in ("from_year", "countries", "instructions"):
@@ -86,7 +85,7 @@ def test_other_errors_keep_option_values() -> None:
     )
     assert res.status_code == 409
     assert 'value="France"' in res.text
-    assert "open>" in res.text
+    assert "Set up this chart" in res.text
 
 
 def test_run_page_lists_options_and_notes_escaped() -> None:

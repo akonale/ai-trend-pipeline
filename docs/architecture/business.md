@@ -182,6 +182,12 @@ same file, so reruns are safe. A spec that cannot render raises non-retryable `I
   register it.
 
 
+### Starting a run
+
+Step 1 asks for the topic (the example chips only fill the box). Step 2 shows the topic, the
+per-chart options and the saved style read-only, then Generate starts the run. The daily cap and
+option validation are unchanged.
+
 ## 3. Approval and posting
 
 What a person sees and decides on the run page (`web/templates/run.html`, built from `RunView`):

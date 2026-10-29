@@ -176,7 +176,7 @@ def client_for(gateway: RecGateway, output_dir: str | None = None) -> TestClient
 
 
 def test_home_page_has_form() -> None:
-    res = client_for(RecGateway()).get("/")
+    res = client_for(RecGateway()).get("/new/style?topic=abc")
     assert res.status_code == 200
     assert res.headers["content-type"].startswith("text/html")
     assert 'action="/runs"' in res.text

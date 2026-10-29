@@ -60,3 +60,4 @@
   {% endif %}
   <p class="footer-link"><a href="{{ view.temporal_url }}" target="_blank" rel="noopener">View in Temporal</a></p>
 </div>
+{% if view.stepper.oob %}{% with stepper = view.stepper %}{% include "partials/stepper.html" %}{% endwith %}{% endif %}

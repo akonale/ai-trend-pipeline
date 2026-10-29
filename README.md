@@ -102,12 +102,19 @@ Every pull request and every push to `main` runs `just lint` and `just test` thr
 ## Configuration
 
 Environment variables are read only in `ai_trend_pipeline.config` (`load_settings()` returns a
-`Settings` model that is passed to the code that needs it).
+`Settings` model that is passed to the code that needs it). Source polling adds three of them:
+`SOURCE_ENABLED` (comma-separated registered source names, default `hn`; `none` disables all),
+`SOURCE_POLL_LIMIT` (1-100, default 30) and `SOURCE_POLL_TIMEOUT_S` (over 0 and at most 60, default
+15.0).
 
 ## Hacker News
 
 `ai_trend_pipeline.hn` provides the `HNActivities.fetch_hn_top_stories` activity, which fetches
 current HN top stories as typed models.
+
+`ai_trend_pipeline.sources` turns source items into normalized, bounded source events through the
+`poll_hn_source` activity (`HNSourceActivities`), reusing the existing HN fetch; the registry lists
+`hn` only, and a fake connector exists for tests but is not registered or wired into the worker yet.
 
 ## Topic picking
 

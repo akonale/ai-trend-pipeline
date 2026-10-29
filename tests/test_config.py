@@ -3,6 +3,7 @@
 import pytest
 
 from ai_trend_pipeline.config import DEFAULT_BLUESKY_SERVICE, Settings, load_settings
+from ai_trend_pipeline.sources import SourceName
 
 
 def test_defaults() -> None:
@@ -94,3 +95,46 @@ def test_database_url() -> None:
     custom = load_settings({"DATABASE_URL": "host=h password=hunter2"})
     assert custom.database_url.get_secret_value() == "host=h password=hunter2"
     assert "hunter2" not in repr(custom)
+
+
+def test_source_settings_defaults() -> None:
+    s = load_settings({})
+    assert s.source_enabled == frozenset({SourceName.HN})
+    assert s.source_poll_limit == 30
+    assert s.source_poll_timeout_s == 15.0
+    empty = load_settings(
+        {"SOURCE_ENABLED": "", "SOURCE_POLL_LIMIT": "", "SOURCE_POLL_TIMEOUT_S": ""}
+    )
+    assert empty == Settings()
+
+
+def test_source_enabled_parsing() -> None:
+    assert load_settings({"SOURCE_ENABLED": "hn"}).source_enabled == frozenset({SourceName.HN})
+    assert load_settings({"SOURCE_ENABLED": " HN "}).source_enabled == frozenset({SourceName.HN})
+    assert load_settings({"SOURCE_ENABLED": "hn, hn"}).source_enabled == frozenset({SourceName.HN})
+    assert load_settings({"SOURCE_ENABLED": "none"}).source_enabled == frozenset()
+    assert load_settings({"SOURCE_ENABLED": " NONE "}).source_enabled == frozenset()
+
+
+def test_source_enabled_unknown_raises() -> None:
+    for bad in ("google-trends", "fake"):
+        with pytest.raises(ValueError, match="Registered sources: hn"):
+            load_settings({"SOURCE_ENABLED": bad})
+    with pytest.raises(ValueError, match="Registered sources: hn"):
+        Settings(source_enabled=frozenset({SourceName.FAKE}))
+
+
+def test_source_poll_limit_bounds() -> None:
+    assert load_settings({"SOURCE_POLL_LIMIT": "1"}).source_poll_limit == 1
+    assert load_settings({"SOURCE_POLL_LIMIT": "100"}).source_poll_limit == 100
+    for bad in ("0", "101", "-1", "abc", "2.5"):
+        with pytest.raises(ValueError):
+            load_settings({"SOURCE_POLL_LIMIT": bad})
+
+
+def test_source_poll_timeout_bounds() -> None:
+    assert load_settings({"SOURCE_POLL_TIMEOUT_S": "0.5"}).source_poll_timeout_s == 0.5
+    assert load_settings({"SOURCE_POLL_TIMEOUT_S": "60"}).source_poll_timeout_s == 60.0
+    for bad in ("0", "-1", "61", "abc"):
+        with pytest.raises(ValueError):
+            load_settings({"SOURCE_POLL_TIMEOUT_S": bad})

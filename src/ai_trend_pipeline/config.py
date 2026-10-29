@@ -4,7 +4,14 @@ import os
 from collections.abc import Mapping
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+
+from ai_trend_pipeline.sources import SourceName
+from ai_trend_pipeline.sources.registry import (
+    REGISTRY,
+    UnknownSourceError,
+    enabled_sources,
+)
 
 DEFAULT_BLUESKY_SERVICE = "https://bsky.social"
 DEFAULT_TEMPORAL_ADDRESS = "localhost:7233"
@@ -27,6 +34,45 @@ class Settings(BaseModel):
     auth_mode: Literal["local", "cloudflare"] = "local"
     daily_chart_cap: int = Field(default=10, ge=1)
     database_url: SecretStr = SecretStr(DEFAULT_DATABASE_URL)
+    source_enabled: frozenset[SourceName] = frozenset({SourceName.HN})
+    source_poll_limit: int = Field(default=30, ge=1, le=100)
+    source_poll_timeout_s: float = Field(default=15.0, gt=0, le=60)
+
+    @field_validator("source_enabled")
+    @classmethod
+    def _validate_sources(cls, value: frozenset[SourceName]) -> frozenset[SourceName]:
+        try:
+            enabled_sources(value)
+        except UnknownSourceError as exc:
+            raise ValueError(str(exc)) from exc
+        return value
+
+
+def _registered_names() -> str:
+    return ", ".join(name.value for name in REGISTRY)
+
+
+def _parse_source_enabled(raw: str | None) -> frozenset[SourceName]:
+    if raw is None or not raw.strip():
+        return frozenset({SourceName.HN})
+    if raw.strip().lower() == "none":
+        return frozenset()
+    names: set[SourceName] = set()
+    for part in raw.split(","):
+        token = part.strip()
+        if not token:
+            continue
+        try:
+            names.add(SourceName(token.lower()))
+        except ValueError:
+            raise ValueError(
+                f"Unknown source {token!r}. Registered sources: {_registered_names()}"
+            ) from None
+    try:
+        enabled_sources(names)
+    except UnknownSourceError as exc:
+        raise ValueError(str(exc)) from exc
+    return frozenset(names)
 
 
 def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
@@ -45,4 +91,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         auth_mode=env.get("AUTH_MODE") or "local",  # pyright: ignore[reportArgumentType]  # validated by Pydantic
         daily_chart_cap=int(env.get("DAILY_CHART_CAP") or 10),
         database_url=SecretStr(env.get("DATABASE_URL") or DEFAULT_DATABASE_URL),
+        source_enabled=_parse_source_enabled(env.get("SOURCE_ENABLED")),
+        source_poll_limit=int(env.get("SOURCE_POLL_LIMIT") or 30),
+        source_poll_timeout_s=float(env.get("SOURCE_POLL_TIMEOUT_S") or 15.0),
     )

@@ -1,6 +1,6 @@
 # 039: Per-chart style overrides
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -331,3 +331,9 @@ Copy is chosen so that no existing test assertion changes. frontend-design skill
 Next: approval (orchestrator, row is `no`), then the builder on `task/039-style-overrides`.
 **builder**: Built per spec (check_* in style.py, new PostOptions fields, field-by-field merge_style, save-before-start in ChartService, editable step 2 panel, tests/test_web_style_overrides.py incl. pre-039 replay); no existing assertion changed; tech.md and business.md updated, architecture/README.md wording still right.
 Visual check done at 360/1280 light+dark (all states, click-through, focus ring, two palette renders): no overflow, no mid-word breaks. frontend-design skill was loaded. Next: verifier.
+**verifier**: `just lint` passed (ruff check, ruff format --check, pyright 0 errors). `just test` passed (435 passed).
+No existing test line removed (`git diff origin/main -- tests/` shows only additions plus new tests/test_web_style_overrides.py).
+No leftover throwaway servers or listeners on 876x, no scratch containers or images. ai-trend-prod containers untouched (listed, all up).
+No external URLs or @import in app.css or templates. git status clean apart from this file and the untracked .claude/settings.json. Next: reviewer.
+**reviewer**: Approved. Checked diff vs spec and checklist: cap check, read, merge, save, start order; replay test uses a raw pre-039 payload; no existing assertions changed; lint, pyright, 435 tests pass.
+Note: a 400 re-render with an invalid palette leaves no radio checked (browser then sends blank = saved); harmless.

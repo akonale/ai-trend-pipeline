@@ -122,6 +122,9 @@ a { color: var(--color-accent); text-underline-offset: 0.2em; }
   font-family: var(--font-display);
 }
 
+.site-nav { margin-top: var(--space-2); font-size: var(--text-sm); }
+.site-nav a { color: var(--color-muted); }
+
 /* Cards */
 .card {
   background: var(--color-surface);
@@ -278,8 +281,58 @@ input::placeholder { color: var(--color-muted); opacity: 1; }
   padding: var(--space-3) var(--space-4);
 }
 
+.notice {
+  background: var(--color-surface);
+  color: var(--color-success);
+  border: 1px solid var(--color-success);
+  border-left-width: 6px;
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+}
+
+/* Settings form */
+.settings-form label, .settings-form legend {
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  margin: var(--space-4) 0 var(--space-2);
+}
+.settings-form > label:first-child { margin-top: 0; }
+.settings-form fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.settings-form legend { padding: 0; margin-top: 0; }
+.settings-form select {
+  width: 100%;
+  font: inherit;
+  padding: var(--space-3) var(--space-4);
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-field-border);
+  border-radius: var(--radius-sm);
+}
+.settings-form .btn { margin-top: var(--space-4); }
+.settings-form .meta { margin-top: var(--space-1); }
+.swatches { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); }
+.settings-form .swatch {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  border: 1px solid var(--color-field-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  position: relative;
+}
+.swatch:has(input:checked) { border-color: var(--color-accent); box-shadow: 0 0 0 2px var(--color-accent); }
+.swatch:has(input:focus-visible) { outline: 3px solid var(--color-focus); outline-offset: 2px; }
+.swatch input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.swatch-colors { display: flex; height: 1.25rem; border-radius: var(--radius-sm); overflow: hidden; }
+.swatch-colors i { flex: 1; }
+
 /* Focus */
-a:focus-visible, button:focus-visible, input:focus-visible, .chip:focus-visible {
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, .chip:focus-visible {
   outline: 3px solid var(--color-focus);
   outline-offset: 2px;
 }

@@ -10,6 +10,7 @@ DEFAULT_BLUESKY_SERVICE = "https://bsky.social"
 DEFAULT_TEMPORAL_ADDRESS = "localhost:7233"
 DEFAULT_TEMPORAL_UI_URL = "http://localhost:8233"
 DEFAULT_WEB_HOST = "127.0.0.1"
+DEFAULT_DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/postgres"
 
 
 class Settings(BaseModel):
@@ -25,6 +26,7 @@ class Settings(BaseModel):
     bluesky_service: str = DEFAULT_BLUESKY_SERVICE
     auth_mode: Literal["local", "cloudflare"] = "local"
     daily_chart_cap: int = Field(default=10, ge=1)
+    database_url: SecretStr = SecretStr(DEFAULT_DATABASE_URL)
 
 
 def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
@@ -42,4 +44,5 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         bluesky_service=env.get("BLUESKY_SERVICE") or DEFAULT_BLUESKY_SERVICE,
         auth_mode=env.get("AUTH_MODE") or "local",  # pyright: ignore[reportArgumentType]  # validated by Pydantic
         daily_chart_cap=int(env.get("DAILY_CHART_CAP") or 10),
+        database_url=SecretStr(env.get("DATABASE_URL") or DEFAULT_DATABASE_URL),
     )

@@ -23,6 +23,7 @@ from ai_trend_pipeline.chart_spec import (
     WriteChartSpecInput,
 )
 from ai_trend_pipeline.critique import ChartCritique, CritiqueActivities, CritiqueChartInput
+from ai_trend_pipeline.style import ChartStyle
 
 # Private test helper shared across test modules; move to tests/helpers.py later.
 from tests.test_chart_spec import (
@@ -65,7 +66,9 @@ def _invalid(message: str = "bad draft") -> ApplicationError:
     return ApplicationError(message, type=INVALID_DRAFT_ERROR_TYPE, non_retryable=True)
 
 
-async def _execute(activities: Sequence[Callable[..., object]]) -> CritiquedChart:
+async def _execute(
+    activities: Sequence[Callable[..., object]], style: ChartStyle | None = None
+) -> CritiquedChart:
     task_queue = f"test-{uuid.uuid4()}"
     async with await WorkflowEnvironment.start_time_skipping(
         data_converter=pydantic_data_converter
@@ -78,14 +81,14 @@ async def _execute(activities: Sequence[Callable[..., object]]) -> CritiquedChar
         ):
             return await env.client.execute_workflow(
                 DraftChartWorkflow.run,
-                WriteChartSpecInput(topic=TOPIC, table=make_table()),
+                WriteChartSpecInput(topic=TOPIC, table=make_table(), style=style),
                 id=f"test-{uuid.uuid4()}",
                 task_queue=task_queue,
             )
 
 
-async def _run_fake(fake: FakeActivities) -> CritiquedChart:
-    return await _execute([fake.write_chart_spec, fake.critique_chart])
+async def _run_fake(fake: FakeActivities, style: ChartStyle | None = None) -> CritiquedChart:
+    return await _execute([fake.write_chart_spec, fake.critique_chart], style)
 
 
 @pytest.mark.asyncio
@@ -169,3 +172,12 @@ async def test_fixture_bad_critique_triggers_one_retry_end_to_end() -> None:
     assert reason in cast(str, messages[0]["content"])
     assert result.attempts == 2
     assert result.critique.passed is True
+
+
+@pytest.mark.asyncio
+async def test_regenerate_keeps_style() -> None:
+    style = ChartStyle(palette="ocean", hashtags=["ai"])
+    fake = FakeActivities([_chart("one"), _chart("two")], [FAIL, PASS])
+    await _run_fake(fake, style)
+    assert [w.style for w in fake.write_inputs] == [style, style]
+    assert fake.write_inputs[1].feedback == FAIL.reasons

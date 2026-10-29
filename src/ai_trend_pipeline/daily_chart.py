@@ -20,6 +20,7 @@ with workflow.unsafe.imports_passed_through():
     from ai_trend_pipeline.hn import HNActivities, HNTopStoriesInput
     from ai_trend_pipeline.owid import FetchOwidInput, OwidActivities
     from ai_trend_pipeline.render import RenderChartInput, render_chart_png
+    from ai_trend_pipeline.style import ChartStyle
     from ai_trend_pipeline.topic import PickTopicInput, TopicActivities
 
 DAILY_CHART_TASK_QUEUE = "daily-chart-task-queue"
@@ -35,6 +36,7 @@ class DailyChartInput(BaseModel):
     output_dir: str = Field(default="charts", min_length=1)
     topic: str | None = Field(default=None, min_length=1)
     requested_by: str | None = None
+    style: ChartStyle | None = None
 
 
 class ReviewRequest(BaseModel):
@@ -100,7 +102,9 @@ class DailyChartWorkflow:
             start_to_close_timeout=IO_ACTIVITY_TIMEOUT,
             retry_policy=IO_RETRY_POLICY,
         )
-        chart = await draft_chart_with_critique(WriteChartSpecInput(topic=topic, table=table))
+        chart = await draft_chart_with_critique(
+            WriteChartSpecInput(topic=topic, table=table, style=data.style)
+        )
         rendered = await workflow.execute_activity(
             render_chart_png,
             RenderChartInput(vega_lite_spec=chart.chart.vega_lite_spec, output_dir=data.output_dir),

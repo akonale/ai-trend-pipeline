@@ -2,9 +2,17 @@
 
 from urllib.parse import quote
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from ai_trend_pipeline.daily_chart import ReviewState
+from ai_trend_pipeline.style import (
+    FONTS,
+    MAX_HASHTAGS,
+    MAX_SIGNATURE_CHARS,
+    PALETTES,
+    TONES,
+    ChartStyle,
+)
 
 
 class HealthView(BaseModel):
@@ -13,6 +21,9 @@ class HealthView(BaseModel):
 
 
 MAX_TOPIC_LENGTH = 200
+STYLE_UNAVAILABLE_ERROR = (
+    "We couldn't load your style settings right now. Please try again in a moment."
+)
 
 EXAMPLE_TOPICS = ["Life expectancy", "CO2 emissions", "Internet users", "Renewable energy"]
 
@@ -119,3 +130,71 @@ def build_run_view(
         decided_by=state.decided_by,
         decided_label=DECIDED_LABELS.get(state.status, ""),
     )
+
+
+class SwatchOption(BaseModel):
+    key: str
+    colors: list[str]
+    checked: bool
+
+
+class ChoiceOption(BaseModel):
+    key: str
+    label: str
+    selected: bool
+
+
+class SettingsView(BaseModel):
+    email: str
+    palettes: list[SwatchOption]
+    fonts: list[ChoiceOption]
+    tones: list[ChoiceOption]
+    hashtags: str
+    signature: str
+    max_signature: int = MAX_SIGNATURE_CHARS
+    saved: bool = False
+    error: str = ""
+
+
+def build_settings_view(
+    email: str,
+    style: ChartStyle,
+    saved: bool = False,
+    error: str = "",
+    hashtags_text: str | None = None,
+) -> SettingsView:
+    return SettingsView(
+        email=email,
+        palettes=[
+            SwatchOption(key=k, colors=list(v), checked=k == style.palette)
+            for k, v in PALETTES.items()
+        ],
+        fonts=[ChoiceOption(key=k, label=k.capitalize(), selected=k == style.font) for k in FONTS],
+        tones=[ChoiceOption(key=k, label=k.capitalize(), selected=k == style.tone) for k in TONES],
+        hashtags=hashtags_text
+        if hashtags_text is not None
+        else " ".join(f"#{t}" for t in style.hashtags),
+        signature=style.signature,
+        saved=saved,
+        error=error,
+    )
+
+
+def style_error_message(exc: ValidationError) -> str:
+    fields = {str(e["loc"][0]) for e in exc.errors() if e["loc"]}
+    parts: list[str] = []
+    if "palette" in fields:
+        parts.append("Palette: pick one of the listed palettes.")
+    if "font" in fields:
+        parts.append("Font: pick one of the listed fonts.")
+    if "tone" in fields:
+        parts.append("Tone: pick one of the listed tones.")
+    if "hashtags" in fields:
+        parts.append(
+            f"Hashtags: use at most {MAX_HASHTAGS}, each 1 to 24 letters, digits or underscores."
+        )
+    if "signature" in fields:
+        parts.append(
+            f"Signature: use at most {MAX_SIGNATURE_CHARS} printable characters on a single line."
+        )
+    return " ".join(parts) or "Check your style and try again."

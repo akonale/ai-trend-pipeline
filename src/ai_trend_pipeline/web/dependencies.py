@@ -8,6 +8,8 @@ from temporalio.client import Client
 from ai_trend_pipeline import temporal_client
 from ai_trend_pipeline.config import Settings
 from ai_trend_pipeline.services.charts import ChartService
+from ai_trend_pipeline.services.postgres_style_store import PostgresStyleStore
+from ai_trend_pipeline.services.styles import StyleService, StyleStore
 from ai_trend_pipeline.services.temporal_gateway import TemporalChartRunGateway
 
 DEV_USER_EMAIL = "dev@localhost"
@@ -32,14 +34,31 @@ def get_templates(request: Request) -> Jinja2Templates:
     return templates
 
 
-async def get_chart_service(
+async def get_style_store(
     request: Request, settings: Settings = Depends(get_settings)
+) -> StyleStore:
+    """Build the store once per process. It connects lazily, so this does no I/O."""
+    cached = getattr(request.app.state, "style_store", None)
+    if not isinstance(cached, PostgresStyleStore):
+        cached = PostgresStyleStore(settings.database_url.get_secret_value())
+        request.app.state.style_store = cached
+    return cached
+
+
+async def get_style_service(store: StyleStore = Depends(get_style_store)) -> StyleService:
+    return StyleService(store)
+
+
+async def get_chart_service(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    styles: StyleStore = Depends(get_style_store),
 ) -> ChartService:
     client = getattr(request.app.state, "temporal_client", None)
     if not isinstance(client, Client):
         client = await temporal_client.connect(settings)
         request.app.state.temporal_client = client
-    return ChartService(TemporalChartRunGateway(client), settings)
+    return ChartService(TemporalChartRunGateway(client), settings, styles=styles)
 
 
 def current_user(request: Request, settings: Settings = Depends(get_settings)) -> CurrentUser:

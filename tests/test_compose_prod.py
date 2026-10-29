@@ -172,3 +172,17 @@ def test_web_auth_mode_is_literal_cloudflare() -> None:
 
 def test_web_daily_chart_cap_from_env() -> None:
     assert _env(_load()["web"])["DAILY_CHART_CAP"] == "${DAILY_CHART_CAP:-10}"
+
+
+def test_web_database_url_and_dependencies() -> None:
+    services = _load()
+    url = _env(services["web"])["DATABASE_URL"]
+    assert re.fullmatch(
+        r"host=postgres port=5432 dbname=postgres user=postgres "
+        r"password=\$\{POSTGRES_PASSWORD:\?[^}]+\}",
+        url,
+    )
+    deps = cast(dict[str, dict[str, str]], services["web"]["depends_on"])
+    assert deps["postgres"]["condition"] == "service_healthy"
+    assert "temporal" in deps
+    assert "DATABASE_URL" not in _env(services["worker"])

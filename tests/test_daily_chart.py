@@ -28,6 +28,7 @@ from ai_trend_pipeline.daily_chart import (
 from ai_trend_pipeline.hn import HNStory, HNTopStoriesInput, HNTopStoriesOutput
 from ai_trend_pipeline.owid import NO_MATCH_ERROR_TYPE, FetchOwidInput, OwidRow, OwidTable
 from ai_trend_pipeline.render import RenderChartInput, RenderChartOutput
+from ai_trend_pipeline.style import ChartStyle
 from ai_trend_pipeline.topic import PickTopicInput, PickTopicOutput
 
 PNG_PATH = "/tmp/fake/chart.png"
@@ -438,3 +439,27 @@ async def test_expired_run_keeps_requested_by_without_decider() -> None:
     assert result.decided_by is None
     assert final.decided_by is None
     assert final.requested_by == "a@example.com"
+
+
+@pytest.mark.asyncio
+async def test_style_reaches_write_chart_spec() -> None:
+    style = ChartStyle(palette="sunset", font="mono", hashtags=["ai"], signature="Me")
+    fakes = FakeDailyActivities()
+    async with await start_env() as env, make_worker(env, fakes):
+        handle = await start_workflow(env, DailyChartInput(topic=TOPIC, style=style))
+        await wait_for_state(handle, "awaiting_decision")
+    assert [w.style for w in fakes.write_inputs] == [style]
+
+
+@pytest.mark.asyncio
+async def test_no_style_means_none() -> None:
+    fakes = FakeDailyActivities()
+    async with await start_env() as env, make_worker(env, fakes):
+        handle = await start_workflow(env, DailyChartInput(topic=TOPIC))
+        await wait_for_state(handle, "awaiting_decision")
+    assert fakes.write_inputs[0].style is None
+
+
+def test_old_payload_without_style_validates() -> None:
+    data = DailyChartInput.model_validate({"topic": "x", "requested_by": "a@b.c"})
+    assert data.style is None

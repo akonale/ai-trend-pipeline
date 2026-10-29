@@ -26,6 +26,8 @@ from ai_trend_pipeline.services.charts import (
     RunNotFound,
     StartChartRequest,
 )
+from ai_trend_pipeline.style import ChartStyle
+from tests.style_fakes import InMemoryStyleStore
 
 Status = Literal["drafting", "awaiting_decision", "posting", "approved", "rejected", "expired"]
 NOW = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
@@ -348,3 +350,39 @@ async def test_no_requested_by_is_never_counted() -> None:
     await cap_service(gw, cap=1).start(StartChartRequest())
     assert gw.count_calls == []
     assert len(gw.started) == 1
+
+
+def _styled_service(gw: FakeGateway, store: InMemoryStyleStore | None) -> ChartService:
+    return ChartService(gw, Settings(daily_chart_cap=2), now=lambda: NOW, styles=store)
+
+
+@pytest.mark.asyncio
+async def test_start_uses_requesters_saved_style() -> None:
+    style = ChartStyle(palette="ocean", hashtags=["ai"])
+    store = InMemoryStyleStore({"a@x.com": style})
+    gw = FakeGateway()
+    service = _styled_service(gw, store)
+    await service.start(StartChartRequest(topic="t", unique_id=True, requested_by="a@x.com"))
+    await service.start(StartChartRequest(topic="t", unique_id=True, requested_by="b@x.com"))
+    assert gw.started[0][1].style == style
+    assert gw.started[1][1].style is None
+
+
+@pytest.mark.asyncio
+async def test_store_not_called_without_requester_or_store() -> None:
+    store = InMemoryStyleStore({"a@x.com": ChartStyle()})
+    gw = FakeGateway()
+    await _styled_service(gw, store).start(StartChartRequest(topic="t"))
+    assert store.get_calls == []
+    await _styled_service(gw, None).start(StartChartRequest(topic="t", requested_by="a@x.com"))
+    assert gw.started[1][1].style is None
+
+
+@pytest.mark.asyncio
+async def test_store_not_called_when_cap_reached() -> None:
+    store = InMemoryStyleStore({"a@x.com": ChartStyle()})
+    gw = FakeGateway()
+    gw.counts["a@x.com"] = 2
+    with pytest.raises(DailyCapReached):
+        await _styled_service(gw, store).start(StartChartRequest(topic="t", requested_by="a@x.com"))
+    assert store.get_calls == []

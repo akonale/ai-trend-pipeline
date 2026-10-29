@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 
 from ai_trend_pipeline.config import Settings
 from ai_trend_pipeline.web.routes import health, home, runs
+from ai_trend_pipeline.web.routes import settings as settings_routes
 
 WEB_DIR = Path(__file__).parent
 
@@ -20,4 +21,5 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(health.router)
     app.include_router(home.router)
     app.include_router(runs.router)
+    app.include_router(settings_routes.router)
     return app

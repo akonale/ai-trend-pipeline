@@ -62,6 +62,15 @@ it in `infra/compose.prod.yaml`; the header is trusted only because the web port
 `DAILY_CHART_CAP` (default 10, at least 1) limits how many charts each signed-in person can start from
 the web per UTC day; the count resets at 00:00 UTC and includes every started run. The CLI is not capped.
 
+### Your style
+
+`/settings` ("Your style" in the header) lets each signed-in person save a palette, font, caption tone,
+up to 3 hashtags and a short signature. Charts they start from the web use it: the tone goes into the
+chart prompt, and the palette, font, hashtags and signature are applied in code, so two people get
+visibly different charts. People who never saved a style get the same charts as before. Styles are
+stored in Postgres: `DATABASE_URL` defaults to the dev Postgres from `just dev`, and the `topic_studio`
+schema and its table are created at first use. The CLI needs no database.
+
 ## Production
 
 `just deploy` runs the full stack with docker compose on the server. Production reads its settings

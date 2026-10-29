@@ -85,3 +85,12 @@ def test_daily_chart_cap() -> None:
     for bad in ("0", "-1", "abc", "2.5"):
         with pytest.raises(ValueError):
             load_settings({"DAILY_CHART_CAP": bad})
+
+
+def test_database_url() -> None:
+    dev = "postgresql://postgres:postgres@localhost:5432/postgres"
+    assert load_settings({}).database_url.get_secret_value() == dev
+    assert load_settings({"DATABASE_URL": ""}).database_url.get_secret_value() == dev
+    custom = load_settings({"DATABASE_URL": "host=h password=hunter2"})
+    assert custom.database_url.get_secret_value() == "host=h password=hunter2"
+    assert "hunter2" not in repr(custom)

@@ -1,6 +1,6 @@
 # 028: Style profiles
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -263,3 +263,8 @@ All checks pass.
 
 Reviewer (re-review after fix 2): Approved. Outage bug fixed: get_style_store/get_chart_service do no I/O, store connects lazily under its own lock, failed schema retried (tested), only psycopg.Error/OSError converted, 503 paths and printable signature check present; lint and 281 tests pass.
 Note: spec line 151 still says "(router, lock)" for web/app.py; the lock is gone, so that wording is stale.
+
+**scribe**: Docs checked: README "Your style" and runbook DATABASE_URL/password lines already present, no duplicates. Spec "(router, lock)" fixed to "(router)".
+PR opened against main: https://github.com/akonale/ai-trend-pipeline/pull/35 (CI pending at open; not merged).
+Diff touches files not in Files to touch (temporal_gateway.py, runs.py, run_status.html, home.html); flagged in PR body for the human.
+Next: human checks CI is green, reviews and merges (`merged`), then runs `just deploy` on prod.

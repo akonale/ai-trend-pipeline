@@ -27,6 +27,7 @@ def source_ingestion_input(settings: Settings, source: SourceName) -> SourceInge
         poll_limit=settings.source_poll_limit,
         poll_interval_seconds=settings.source_poll_interval_s,
         review_timeout_seconds=settings.candidate_review_timeout_s,
+        candidate_budget=settings.source_candidate_budget,
     )
 
 

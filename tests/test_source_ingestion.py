@@ -3,9 +3,10 @@
 import ast
 import asyncio
 import json
+import logging
 from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from typing import cast
 
@@ -26,6 +27,7 @@ from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
 import ai_trend_pipeline.source_ingestion as source_ingestion
+from ai_trend_pipeline.ingestion_logging import IngestionLogEvent
 from ai_trend_pipeline.source_ingestion import (
     SOURCE_INGESTION_TASK_QUEUE,
     SourceIngestionInput,
@@ -168,6 +170,43 @@ class ScriptedSelector:
         return SelectStoryCandidatesOutput(selections=list(self._selections))
 
 
+class AutoSelector:
+    """Select the first event of every batch, so the loop can keep moving."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.inputs: list[SelectStoryCandidatesInput] = []
+
+    @activity.defn(name="select_story_candidates")
+    async def select_story_candidates(
+        self, data: SelectStoryCandidatesInput
+    ) -> SelectStoryCandidatesOutput:
+        self.calls += 1
+        self.inputs.append(data)
+        if not data.events:
+            return SelectStoryCandidatesOutput()
+        return SelectStoryCandidatesOutput(selections=[selected(data.events[0].external_id)])
+
+
+def record_field(record: logging.LogRecord, name: str) -> object:
+    return record.__dict__.get(name)
+
+
+def budget_records(
+    caplog: pytest.LogCaptureFixture, event: IngestionLogEvent
+) -> list[logging.LogRecord]:
+    return [record for record in caplog.records if record_field(record, "event") == event.value]
+
+
+def until_just_before_midnight() -> timedelta:
+    now = datetime.now(UTC)
+    midnight = datetime.combine(now.date() + timedelta(days=1), time.min, tzinfo=UTC)
+    delta = midnight - now - timedelta(seconds=40)
+    if delta <= timedelta(seconds=0):
+        delta += timedelta(days=1)
+    return delta
+
+
 def anthropic_client(fixture_name: str) -> anthropic.AsyncAnthropic:
     body = cast(dict[str, object], json.loads((FIXTURES / fixture_name).read_text()))
 
@@ -271,6 +310,8 @@ async def ingestion_env(
     data: SourceIngestionInput,
     poller: PollerBase,
     selection: SelectActivity,
+    *,
+    pre_start: timedelta | None = None,
 ) -> AsyncGenerator[tuple[WorkflowEnvironment, StateHandle], None]:
     env = await WorkflowEnvironment.start_time_skipping(data_converter=pydantic_data_converter)
     await ensure_candidate_search_attributes(env.client)
@@ -288,6 +329,8 @@ async def ingestion_env(
     workflow_id = source_ingestion_workflow_id(data.source)
     async with env:
         async with ingestion_worker, candidate_worker:
+            if pre_start is not None:
+                await env.sleep(pre_start)
             await env.client.start_workflow(
                 SourceIngestionWorkflow.run,
                 data,
@@ -600,8 +643,235 @@ async def test_ingestion_state_query_tracks_counts() -> None:
         assert state.last_event_count == 2
         assert state.last_new_event_count == 2
         assert state.last_selected_count == 1
+        assert state.candidate_budget == 20
+        assert state.candidates_started == 1
+        assert state.budget_remaining == 19
+        assert state.budget_day == datetime.now(UTC).date()
         result = await stop_ingestion(handle, poller)
     assert result.reason == "stopped"
+
+
+@pytest.mark.asyncio
+async def test_budget_caps_candidate_starts(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO, logger="temporalio.workflow")
+    poller = GatedPoller(
+        [
+            poll_output(*(event(str(index)) for index in range(1, 6))),
+            poll_output(event("9")),
+        ]
+    )
+    selector = ScriptedSelector([selected(str(index)) for index in range(1, 6)])
+    data = make_input(candidate_budget=2)
+    async with ingestion_env(data, poller, selector.select_story_candidates) as (env, handle):
+        await poller.wait_for_call(1)
+        await poller.release()
+        await eventually(lambda: _all_awaiting(env, ("1", "2")), "two candidates did not start")
+        await env.sleep(30)
+        await poller.wait_for_call(2)
+        await poller.release()
+        state = await wait_for_total_polls(handle, 2)
+        assert state.candidates_started == 2
+        assert state.budget_remaining == 0
+        assert await candidate_status(env, "3") is None
+        assert await candidate_status(env, "9") is None
+        result = await stop_ingestion(handle, poller)
+    assert selector.calls == 1
+    assert result.reason == "stopped"
+    assert len(budget_records(caplog, IngestionLogEvent.CANDIDATE_STARTED)) == 2
+    exhausted = budget_records(caplog, IngestionLogEvent.BUDGET_EXHAUSTED)
+    assert len(exhausted) == 1
+    assert record_field(exhausted[0], "budget") == 2
+
+
+@pytest.mark.asyncio
+async def test_exhausted_budget_skips_the_selector_and_does_not_mark_the_batch_processed() -> None:
+    poller = GatedPoller(
+        [
+            poll_output(event("1")),
+            poll_output(event("2")),
+            poll_output(event("2"), event("3")),
+        ]
+    )
+    selector = AutoSelector()
+    data = make_input(candidate_budget=1)
+    pre_start = until_just_before_midnight()
+    async with ingestion_env(
+        data, poller, selector.select_story_candidates, pre_start=pre_start
+    ) as (env, handle):
+        await poller.wait_for_call(1)
+        await poller.release()
+        await eventually(lambda: candidate_awaiting(env, "1"), "first candidate did not start")
+        await env.sleep(30)
+        await poller.wait_for_call(2)
+        await poller.release()
+        skipped = await wait_for_total_polls(handle, 2)
+        assert selector.calls == 1
+        assert "2" not in skipped.processed_ids
+        assert skipped.candidates_started == 1
+
+        await env.sleep(30)
+        await poller.wait_for_call(3)
+        await poller.release()
+        await eventually(lambda: candidate_awaiting(env, "2"), "batch was not re-evaluated")
+        state = await wait_for_total_polls(handle, 3)
+        assert selector.calls == 2
+        assert "2" in state.processed_ids
+        new_day = (datetime.now(UTC) + pre_start + timedelta(seconds=60)).date()
+        assert state.budget_day == new_day
+        assert state.candidates_started == 1
+        result = await stop_ingestion(handle, poller)
+    assert result.reason == "stopped"
+
+
+@pytest.mark.asyncio
+async def test_budget_skip_logs_exhausted_once_per_day(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO, logger="temporalio.workflow")
+    poller = GatedPoller([poll_output(event(str(index))) for index in range(1, 5)])
+    selector = AutoSelector()
+    pre_start = until_just_before_midnight()
+    first_day = (datetime.now(UTC) + pre_start).date()
+    data = make_input(candidate_budget=1, budget_day=first_day, candidates_started=1)
+    async with ingestion_env(
+        data, poller, selector.select_story_candidates, pre_start=pre_start
+    ) as (env, handle):
+        for poll in range(1, 5):
+            await poller.wait_for_call(poll)
+            await poller.release()
+            await wait_for_total_polls(handle, poll)
+            if poll < 4:
+                await env.sleep(30)
+        state = await query_state(handle)
+        assert state.candidates_started == 1
+        result = await stop_ingestion(handle, poller)
+    assert result.reason == "stopped"
+    exhausted = budget_records(caplog, IngestionLogEvent.BUDGET_EXHAUSTED)
+    assert len(exhausted) == 2
+    assert record_field(exhausted[0], "day") == str(first_day)
+    assert record_field(exhausted[0], "day") != record_field(exhausted[1], "day")
+    assert record_field(exhausted[1], "budget") == 1
+
+
+@pytest.mark.asyncio
+async def test_budget_resets_on_a_new_utc_day() -> None:
+    poller = GatedPoller(
+        [poll_output(event("1")), poll_output(event("2")), poll_output(event("3"))]
+    )
+    selector = AutoSelector()
+    pre_start = until_just_before_midnight()
+    first_day = (datetime.now(UTC) + pre_start).date()
+    data = make_input(candidate_budget=5, budget_day=first_day, candidates_started=5)
+    async with ingestion_env(
+        data, poller, selector.select_story_candidates, pre_start=pre_start
+    ) as (env, handle):
+        await poller.wait_for_call(1)
+        await poller.release()
+        skipped = await wait_for_total_polls(handle, 1)
+        assert skipped.budget_remaining == 0
+        assert selector.calls == 0
+
+        await env.sleep(30)
+        await poller.wait_for_call(2)
+        await poller.release()
+        still_old_day = await wait_for_total_polls(handle, 2)
+        assert still_old_day.budget_remaining == 0
+
+        await env.sleep(30)
+        await poller.wait_for_call(3)
+        await poller.release()
+        await eventually(lambda: candidate_awaiting(env, "3"), "candidate did not start on reset")
+        state = await wait_for_total_polls(handle, 3)
+        new_day = (datetime.now(UTC) + pre_start + timedelta(seconds=60)).date()
+        assert state.budget_day == new_day
+        assert state.candidates_started == 1
+        assert state.budget_remaining == 4
+        assert selector.calls == 1
+        result = await stop_ingestion(handle, poller)
+    assert result.reason == "stopped"
+
+
+@pytest.mark.asyncio
+async def test_continue_as_new_preserves_budget_day_and_count() -> None:
+    poller = GatedPoller([poll_output(event("1"), event("2")), poll_output(event("3"))])
+    selector = ScriptedSelector([selected("1"), selected("2")])
+    data = make_input(max_polls_per_run=1, candidate_budget=2)
+    async with ingestion_env(data, poller, selector.select_story_candidates) as (env, handle):
+        await poller.wait_for_call(1)
+        await poller.release()
+        await poller.wait_for_call(2)
+        second_run = await query_state(handle)
+        assert second_run.candidates_started == 2
+        assert second_run.budget_day == datetime.now(UTC).date()
+        assert second_run.polls_in_run == 0
+        assert second_run.total_polls == 1
+
+        await poller.release()
+        third = await wait_for_total_polls(handle, 2)
+        assert third.candidates_started == 2
+        assert third.budget_day == second_run.budget_day
+        assert selector.calls == 1
+        assert await candidate_status(env, "3") is None
+        result = await stop_ingestion(handle, poller)
+    assert result.reason == "stopped"
+
+
+@pytest.mark.asyncio
+async def test_duplicate_candidate_start_does_not_consume_budget(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO, logger="temporalio.workflow")
+    poller = GatedPoller([poll_output(event("2001"))])
+    selector = ScriptedSelector([selected("2001")])
+    data = make_input(candidate_budget=5)
+    async with ingestion_env(data, poller, selector.select_story_candidates) as (env, handle):
+        await poller.wait_for_call(1)
+        await start_existing_candidate(env, "2001")
+        await poller.release()
+        await eventually(lambda: processed_contains(handle, "2001"), "batch never marked")
+        state = await query_state(handle)
+        assert state.candidates_started == 0
+        assert state.budget_remaining == 5
+        assert await candidate_status(env, "2001") is CandidateStatus.AWAITING_REVIEW
+        result = await stop_ingestion(handle, poller)
+    assert result.reason == "stopped"
+    duplicates = budget_records(caplog, IngestionLogEvent.CANDIDATE_DUPLICATE)
+    assert len(duplicates) == 1
+    assert record_field(duplicates[0], "external_id") == "2001"
+
+
+@pytest.mark.asyncio
+async def test_failure_logs_use_error_type_only(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO, logger="temporalio.workflow")
+    poller = GatedPoller(
+        [
+            ApplicationError("poll secret text", non_retryable=True),
+            poll_output(event("2001")),
+        ]
+    )
+    selector = ScriptedSelector(error=ApplicationError("selector secret text", non_retryable=True))
+    async with ingestion_env(make_input(), poller, selector.select_story_candidates) as (
+        env,
+        handle,
+    ):
+        await poller.wait_for_call(1)
+        await poller.release()
+        await env.sleep(30)
+        await poller.wait_for_call(2)
+        await poller.release()
+        await eventually(lambda: processed_contains(handle, "2001"), "batch never marked")
+        result = await stop_ingestion(handle, poller)
+    assert result.reason == "stopped"
+    poll_failures = budget_records(caplog, IngestionLogEvent.POLL_FAILED)
+    selection_failures = budget_records(caplog, IngestionLogEvent.SELECTION_FAILED)
+    assert len(poll_failures) == 1
+    assert len(selection_failures) == 1
+    assert record_field(poll_failures[0], "error_type") == "ActivityError"
+    assert record_field(poll_failures[0], "poll") == 1
+    assert record_field(selection_failures[0], "error_type") == "ActivityError"
+    assert record_field(selection_failures[0], "batch_size") == 1
+    for record in [*poll_failures, *selection_failures]:
+        assert "secret text" not in record.getMessage()
+        assert all("secret text" not in str(value) for value in record.__dict__.values())
+        assert record_field(record, "title") is None
 
 
 async def _state_selected(handle: StateHandle) -> bool:

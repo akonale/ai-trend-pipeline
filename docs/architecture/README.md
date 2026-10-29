@@ -2,9 +2,11 @@
 
 Topic Studio turns a topic into one chart post on Bluesky, with a human approving it first.
 A person types a topic on the web page or passes `--topic` to the CLI; without a topic (CLI only,
-`just chart`) the LLM picks one from Hacker News. There is no scheduler: nothing starts a run on its own. An LLM writes a Vega-Lite chart and caption from Our World in Data (OWID) data,
-a second LLM call critiques it, the chart is rendered to a PNG, a human approves or rejects it, and
-approval posts it to Bluesky. Everything is orchestrated by one Temporal workflow.
+`just chart`) the LLM picks one from Hacker News. Chart runs are started by a person: nothing starts
+a chart on its own. Ensured source ingestion workflows do poll continuously on Temporal timers and
+start story candidates. An LLM writes a Vega-Lite chart and caption from Our World in Data (OWID)
+data, a second LLM call critiques it, the chart is rendered to a PNG, a human approves or rejects
+it, and approval posts it to Bluesky. Everything is orchestrated by one Temporal workflow.
 
 ## System diagram
 
@@ -45,10 +47,19 @@ approval posts it to Bluesky. Everything is orchestrated by one Temporal workflo
 `SourceIngestionWorkflow` (one per enabled source, id `source-ingestion-v1-<source>`, task queue
 `source-ingestion-task-queue`) polls the source activity on a Temporal timer, drops stories already
 in its bounded processed-id set, prefilters the rest, calls `select_story_candidates`, and starts
-one `StoryCandidateWorkflow` per selected story. Cursor and processed ids live only in workflow
-state and are carried through continue-as-new. Workers never start it on boot: run `just ingest`
+one `StoryCandidateWorkflow` per selected story. Two sources are registered: `hn` (Hacker News) and
+`fake` (Test source, test-only, off by default). Cursor, processed ids and the per-source UTC-day
+candidate budget live only in workflow state and are carried through continue-as-new.
+
+The budget (`SOURCE_CANDIDATE_BUDGET`, default 20) bounds newly started candidate workflows per
+source per UTC day. When it is exhausted the workflow skips the selector entirely, so it spends no
+LLM credit, leaves the batch unprocessed for the next UTC day, and logs once. Operational events
+use the fixed `candidate_ingestion.*` names from `ingestion_logging.py`; a field guard keeps titles,
+URLs, prompts, payloads and secrets out. Workers never start ingestion on boot: run `just ingest`
 (or the production `docker compose exec worker python -m ai_trend_pipeline.ingestion_starter`
-command) to ensure the workflows exist; repeated runs are idempotent.
+command) to ensure the workflows exist; repeated runs are idempotent. Operate it with the
+[ingestion](../runbooks/ingestion.md) and
+[search-attributes](../runbooks/search-attributes.md) runbooks.
 
 ## Module map (`src/ai_trend_pipeline/`)
 
@@ -56,9 +67,10 @@ command) to ensure the workflows exist; repeated runs are idempotent.
 | --- | --- |
 | `config.py` | `Settings` and `load_settings()`; the only place env vars are read |
 | `hn.py` | Activity `fetch_hn_top_stories` (Hacker News API) |
-| `sources/` | Frozen bounded source contracts, static registry, shared normalization, HN and fake connectors (`poll_hn_source`) |
+| `sources/` | Frozen bounded source contracts, static registry (`hn`, `fake`), shared normalization, HN and fake connectors (`poll_hn_source`, `poll_fake_source`); fake is test-only |
+| `ingestion_logging.py` | Pure fixed `candidate_ingestion.*` event set, forbidden-field guard and truncation |
 | `story_selection.py` | Pure `prefilter_events` and activity `select_story_candidates` (batch LLM editorial selection) |
-| `source_ingestion.py` | `SourceIngestionWorkflow`: one long-running poll/select/start loop per enabled source, bounded cursor and processed ids |
+| `source_ingestion.py` | `SourceIngestionWorkflow`: one long-running poll/select/start loop per enabled source, bounded cursor, processed ids and per-source UTC-day candidate budget |
 | `ingestion_starter.py` | Operator entry point (`just ingest`) that ensures source ingestion workflows exist |
 | `story_candidate.py` | `StoryCandidateWorkflow` (one review per candidate), candidate models, `candidate_id_for`, candidate search-attribute keys |
 | `topic.py` | Activity `pick_topic` (LLM picks an OWID catalog title); `make_anthropic_client` |
@@ -85,6 +97,7 @@ command) to ensure the workflows exist; repeated runs are idempotent.
 | Run status, review, requester, approver, options | Temporal workflow history | Read by query `review_state`; no app database for runs |
 | Candidate review status, decision | Temporal workflow history (`StoryCandidateWorkflow`) | Read by query `review_state`; pending list from visibility (`CandidateStatus`, `CandidateSource`) |
 | Source cursor, processed ids, poll counters | Temporal workflow history (`SourceIngestionWorkflow`) | Bounded (1000 processed ids) and carried through continue-as-new; no Postgres table |
+| Source candidate budget (UTC day, starts) | Temporal workflow history (`SourceIngestionWorkflow`) | Per source, resets on a new UTC day with `workflow.now()`; carried through continue-as-new; no Postgres table |
 | Per-person style profile | Postgres `topic_studio.style_profiles` (default `postgres` db) | Created lazily on first use |
 | Chart PNGs | Directory `CHART_OUTPUT_DIR` (prod volume `charts`, mounted in worker and web) | File name `chart-<spec hash>.png` |
 | Daily cap count | Derived from Temporal visibility (memo `requested_by`) | Not stored separately |
@@ -123,4 +136,6 @@ code may import them. Full rules: `CLAUDE.md`.
   deployment, every setting, development how-to and pitfalls.
 - [../history.md](../history.md): why things are the way they are (decisions and gotchas).
 - [../runbooks/deploy.md](../runbooks/deploy.md), [../runbooks/cloudflare.md](../runbooks/cloudflare.md): operations.
+- [../runbooks/ingestion.md](../runbooks/ingestion.md): ensure, enable/disable, recover, replay and the two-source demo.
+- [../runbooks/search-attributes.md](../runbooks/search-attributes.md): `CandidateStatus` / `CandidateSource` registration and verification.
 - [../../CLAUDE.md](../../CLAUDE.md): rules every agent follows. [../mvp-plan.md](../mvp-plan.md): the agent relay.

@@ -117,10 +117,12 @@ Every pull request and every push to `main` runs `just lint` and `just test` thr
 ## Configuration
 
 Environment variables are read only in `ai_trend_pipeline.config` (`load_settings()` returns a
-`Settings` model that is passed to the code that needs it). Source polling adds four of them:
+`Settings` model that is passed to the code that needs it). Source polling adds five of them:
 `SOURCE_ENABLED` (comma-separated registered source names, default `hn`; `none` disables all),
-`SOURCE_POLL_LIMIT` (1-100, default 30), `SOURCE_POLL_INTERVAL_S` (30-3600 seconds, default 300) and
-`SOURCE_POLL_TIMEOUT_S` (over 0 and at most 60, default 15.0). `CANDIDATE_REVIEW_TIMEOUT_S`
+`SOURCE_POLL_LIMIT` (1-100, default 30), `SOURCE_POLL_INTERVAL_S` (30-3600 seconds, default 300),
+`SOURCE_POLL_TIMEOUT_S` (over 0 and at most 60, default 15.0) and `SOURCE_CANDIDATE_BUDGET`
+(1-500, default 20: new candidate workflows per source per UTC day; the selector is skipped and no
+LLM credit is spent when a source's budget is exhausted). `CANDIDATE_REVIEW_TIMEOUT_S`
 (1-604800 seconds, default 172800) sets how long a story candidate waits for an Approve/Reject
 decision before it expires.
 
@@ -130,8 +132,11 @@ decision before it expires.
 current HN top stories as typed models.
 
 `ai_trend_pipeline.sources` turns source items into normalized, bounded source events through the
-`poll_hn_source` activity (`HNSourceActivities`), reusing the existing HN fetch; the registry lists
-`hn` only, and a fake connector exists for tests but is not registered or wired into the worker yet.
+`poll_hn_source` activity (`HNSourceActivities`), reusing the existing HN fetch. The registry now
+lists two sources: `hn` (`Hacker News`) and `fake` (`Test source`, `poll_fake_source`). The fake
+source returns two fixed stories, is wired into the ingestion worker for the pluggability proof,
+and is **test-only**: it is off by default, never appears in `.env.prod`, and must never be enabled
+in production. Google Trends is the planned next connector once its API/provider access is chosen.
 
 ## Story candidates
 
@@ -142,13 +147,16 @@ candidates idempotently, list pending ones with pagination and send decisions. T
 pending candidates at `/candidates` and shows and decides one at `/candidates/<id>`.
 
 `ai_trend_pipeline.source_ingestion` provides `SourceIngestionWorkflow`: one long-running workflow
-per enabled source on `source-ingestion-task-queue` that polls through the source activity,
-prefilters new events, asks `select_story_candidates` for a bounded batch, and starts one candidate
-workflow per selection. Cursor and processed-story state live in the workflow (continue-as-new keeps
-both bounded), never in Postgres.
+per enabled source on `source-ingestion-task-queue` that polls through the source activity on a
+Temporal timer, prefilters new events, asks `select_story_candidates` for a bounded batch, and
+starts one candidate workflow per selection. Cursor, processed-story state and the per-source
+UTC-day candidate budget live in the workflow (continue-as-new carries them), never in Postgres.
+Before calling the selector it checks the budget; at zero it skips the LLM call entirely, leaves the
+batch unprocessed, and logs `candidate_ingestion.budget_exhausted` once for that UTC day.
 
-Ingestion is not started by worker startup. Run the idempotent operator command once after the
-worker is up (and after each production deploy):
+Ingestion is not started by worker startup. Once ensured, the workflow polls continuously on
+Temporal timers. Run the idempotent operator command once after the worker is up (and after each
+production deploy):
 
 ```sh
 just ingest   # dev: loads settings, connects, ensures one workflow per enabled source
@@ -162,6 +170,25 @@ env -i PATH="$PATH" HOME="$HOME" docker compose -f infra/compose.prod.yaml --env
 ```
 
 Re-running it is safe (`USE_EXISTING`); `SOURCE_ENABLED=none` ensures nothing and exits 0.
+
+### Structured ingestion logs
+
+Operational events are a fixed `candidate_ingestion.*` set: `started`, `poll`, `poll_failed`,
+`events_normalized`, `selection`, `selection_failed`, `selection_outside_batch`,
+`candidate_started`, `candidate_duplicate`, `budget_exhausted`, `continue_as_new` and `stopped`.
+Each record carries `event` and `source` plus primitive counters or ids. A guard rejects titles,
+URLs, summaries, angles, reasons, prompts, payloads, credentials and non-primitive values, and
+string values are truncated to 256 characters, so source text and secrets never reach the log.
+The selector activity emits no success log; the workflow logs the batch and budget context.
+
+Filter worker output with `grep candidate_ingestion`. To see two sources feed one inbox locally, set
+`SOURCE_ENABLED=hn,fake` and `SOURCE_CANDIDATE_BUDGET=5` in `.env`, then run `just dev`,
+`just ingest` and `just web`, and open `/candidates`. Fake stories are labelled `Test source`; the
+fake source is test-only and never belongs in `.env.prod`.
+
+Runbooks: [ingestion](docs/runbooks/ingestion.md) (ensure, enable/disable, recover, replay and the
+two-source demo) and [search attributes](docs/runbooks/search-attributes.md) (register and verify
+`CandidateStatus` / `CandidateSource`).
 
 ## Topic picking
 

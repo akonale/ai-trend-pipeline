@@ -63,6 +63,19 @@ PRs are on GitHub. Merge dates are UTC, taken from the PR list.
 | 034 | Prod stack with docker-compose: `Dockerfile`, `compose.prod.yaml`, `just deploy`, deploy runbook | #28 | 2026-10-28 |
 | 035 | UI refresh: editorial theme tokens, light and dark, cards, badges, progress bar | #33 | 2026-10-28 |
 
+## Phase 9: Real-time story candidates
+
+| Task | What was done | PR | Merged |
+| --- | --- | --- | --- |
+| 042 | Source contracts: bounded `SourceEvent`/`SourcePollInput`/`SourcePollOutput`, static registry, shared normalization, fake connector, `poll_hn_source` activity | #48 | 2026-10-29 |
+| 043 | Batch LLM editorial selection: pure prefilter and `select_story_candidates` activity (may select none, cap enforced in code) | #49 | 2026-10-29 |
+| 044 | `StoryCandidateWorkflow` and Temporal gateway: deterministic ids, Approve/Reject signals, expiry, visibility attributes | #50 | 2026-10-29 |
+| 045 | Candidate inbox page at `/candidates`: paging, empty and unavailable states, source badges | #51 | 2026-10-29 |
+| 046 | Candidate detail and decisions at `/candidates/{id}`: safe source link, metrics, approve/reject, end states | #52 | 2026-10-29 |
+| 047 | Candidate navigation and visual polish: Candidates in the header with an active state and pending badge | #53 | 2026-10-29 |
+| 048 | Continuous HN ingestion: one `SourceIngestionWorkflow` per enabled source, cursor and processed ids, timers, continue-as-new, `just ingest` | #54 | 2026-10-29 |
+| 049 | Hardening and docs: per-source UTC-day candidate budget, structured `candidate_ingestion.*` logs, fake second source and two-source proof, operator runbooks | — | — |
+
 ## Chores
 
 | Change | PR | Merged |
@@ -139,3 +152,21 @@ Charts, LLM and limits
 - Per-post time presets are relative to the dataset's latest year, not to today.
 - Numbers 012-016 are not in the plan. Prod pins the Temporal
   auto-setup image at 1.29.7; moving to the `temporalio/server` image is a possible follow-up.
+
+Story candidates and ingestion
+- The candidate budget is per source per UTC day (`SOURCE_CANDIDATE_BUDGET`, default 20) and is
+  baked into the workflow input at start. Changing it, the poll limit, the interval or the review
+  timeout requires stopping the source workflow and re-running `just ingest`; a running workflow
+  keeps its old value. Exhausted budgets skip the selector, so no LLM credit is spent, and the batch
+  is re-evaluated after the UTC reset.
+- A batch whose selector ran is marked processed even when the budget truncated starts, so those
+  stories are intentionally dropped rather than re-evaluated. Duplicate child starts consume no
+  budget.
+- `fake` is a test-only source. It is registered and its activity is always on the ingestion
+  worker, but `SOURCE_ENABLED` defaults to `hn`; never put `fake` in `.env.prod`.
+- Disabling a source does not stop its workflow or its pending reviews. Remove it from
+  `SOURCE_ENABLED`, run `just ingest`, then signal stop or terminate the old workflow; candidates
+  are `ABANDON`ed and stay reviewable and decidable.
+- Operational logs are the fixed `candidate_ingestion.*` set. The helper rejects source text and
+  secrets, so titles, URLs, summaries, angles, prompts, payloads and credentials never reach them.
+- Google Trends remains a follow-up connector until its API/provider access is chosen.

@@ -28,6 +28,7 @@ from ai_trend_pipeline.source_ingestion import (
     SOURCE_INGESTION_TASK_QUEUE,
     SourceIngestionWorkflow,
 )
+from ai_trend_pipeline.sources.fake import FakeSourceActivities
 from ai_trend_pipeline.sources.hn import HNSourceActivities, make_source_hn_client
 from ai_trend_pipeline.story_candidate import CANDIDATE_TASK_QUEUE, StoryCandidateWorkflow
 from ai_trend_pipeline.story_selection import StorySelectionActivities
@@ -82,8 +83,13 @@ def ingestion_activities(
     source_hn_client: httpx.AsyncClient,
 ) -> list[Callable[..., Any]]:
     source_hn = HNSourceActivities(source_hn_client)
+    source_fake = FakeSourceActivities()
     selection = StorySelectionActivities(anthropic_client)
-    return [source_hn.poll_hn_source, selection.select_story_candidates]
+    return [
+        source_hn.poll_hn_source,
+        source_fake.poll_fake_source,
+        selection.select_story_candidates,
+    ]
 
 
 async def main() -> None:

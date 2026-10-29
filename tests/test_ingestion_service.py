@@ -35,17 +35,26 @@ def test_source_ingestion_input_maps_settings() -> None:
         source_poll_limit=7,
         source_poll_interval_s=45,
         candidate_review_timeout_s=120,
+        source_candidate_budget=9,
     )
     data = source_ingestion_input(settings, SourceName.HN)
     assert data.source is SourceName.HN
     assert data.poll_limit == 7
     assert data.poll_interval_seconds == 45
     assert data.review_timeout_seconds == 120
+    assert data.candidate_budget == 9
     assert data.max_candidates == DEFAULT_MAX_CANDIDATES
     assert data.cursor is None
     assert data.processed_ids == ()
     assert data.polls_in_run == 0
     assert data.total_polls == 0
+
+
+def test_source_ingestion_input_maps_candidate_budget() -> None:
+    settings = Settings(source_candidate_budget=3)
+    assert source_ingestion_input(settings, SourceName.HN).candidate_budget == 3
+    assert source_ingestion_input(settings, SourceName.FAKE).candidate_budget == 3
+    assert source_ingestion_input(Settings(), SourceName.FAKE).candidate_budget == 20
 
 
 @pytest.mark.asyncio
@@ -68,6 +77,23 @@ async def test_ensure_starts_none_when_no_sources_enabled() -> None:
     result = await service.ensure()
     assert gateway.calls == []
     assert result.workflow_ids == ()
+
+
+@pytest.mark.asyncio
+async def test_ensure_starts_both_sources_when_fake_is_enabled() -> None:
+    gateway = FakeGateway(["source-ingestion-v1-hn", "source-ingestion-v1-fake"])
+    settings = Settings(
+        source_enabled=frozenset({SourceName.HN, SourceName.FAKE}),
+        source_candidate_budget=4,
+    )
+    service = SourceIngestionService(gateway, settings)
+    result = await service.ensure()
+    assert [source for source, _data in gateway.calls] == [SourceName.HN, SourceName.FAKE]
+    assert all(data.candidate_budget == 4 for _source, data in gateway.calls)
+    assert result.workflow_ids == (
+        "source-ingestion-v1-hn",
+        "source-ingestion-v1-fake",
+    )
 
 
 @pytest.mark.asyncio

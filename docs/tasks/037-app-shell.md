@@ -1,6 +1,6 @@
 # 037: App shell (header, nav, user chip, footer)
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -206,3 +206,10 @@ Next: orchestrator approves (approval no), builder implements on `task/037-app-s
 
 **builder**: Shell built as specced (optional_user, shell_context via context_processors, ShellView, base.html, skip-link and sticky-footer CSS); tests in tests/test_web_shell.py pin the GET /settings 401 exception; tech.md updated. No existing assertions changed.
 Checked 360/1280px, light/dark, local and cloudflare (email, long email, no header): no overflow, nav wraps cleanly, skip link and focus rings visible. frontend-design skill was loaded. Shots: scratchpad/build037/shots/.
+
+**verifier**: `just lint` passes (ruff, format, pyright 0 errors); `just test` passes (356 tests). Test diff has only insertions (tests/test_web_shell.py); no external assets in app.css or templates; git status clean apart from .claude/settings.json; ai-trend-prod containers all up (listed only, untouched).
+FAIL: `pgrep -af "[s]erve"` is not empty: 994 fail2ban-server, 34086 `./ui-server --env docker start`, 36525 `temporal-server --env docker start`. Look like system/Temporal infra, not task leftovers; human to confirm.
+FIXED: leftover-server check clean with precise patterns (`scratchpad/build03[0-9]/serve`, `[s]erve\.py` empty; nothing listening on 8760-8769). fail2ban and Temporal/ui processes are expected infra.
+
+**reviewer**: Approved. All criteria and listed tests present; routes untouched, shell_context wired once in create_app, current_user wraps optional_user with identical 401 behaviour, local mode ignores the header, email autoescaped (no |safe).
+No existing test lines edited; one <main>, skip target once; .tagline fully removed; no new colours so token contrast test still covers pairs; tech.md matches code.

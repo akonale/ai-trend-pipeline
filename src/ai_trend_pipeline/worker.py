@@ -24,11 +24,13 @@ from ai_trend_pipeline.hello import TASK_QUEUE, HelloWorkflow, say_hello
 from ai_trend_pipeline.hn import HNActivities, make_hn_client
 from ai_trend_pipeline.owid import OwidActivities, make_owid_client
 from ai_trend_pipeline.render import render_chart_png
-from ai_trend_pipeline.temporal_client import connect
+from ai_trend_pipeline.story_candidate import CANDIDATE_TASK_QUEUE, StoryCandidateWorkflow
+from ai_trend_pipeline.temporal_client import connect, ensure_candidate_search_attributes
 from ai_trend_pipeline.topic import TopicActivities, make_anthropic_client
 
 CONNECT_TIMEOUT_S = 30.0
 RETRY_DELAY_S = 1.0
+CANDIDATE_WORKFLOWS = [StoryCandidateWorkflow]
 
 
 async def connect_with_retry(settings: Settings) -> Client:
@@ -70,6 +72,7 @@ def daily_chart_activities(
 async def main() -> None:
     settings = load_settings()
     client = await connect_with_retry(settings)
+    await ensure_candidate_search_attributes(client)
     anthropic_client = make_anthropic_client(settings)
     credentials = load_bluesky_credentials(settings)
     async with (
@@ -88,7 +91,12 @@ async def main() -> None:
                 anthropic_client, hn_client, owid_client, bluesky_client, credentials
             ),
         )
-        await asyncio.gather(hello_worker.run(), chart_worker.run())
+        candidate_worker = Worker(
+            client,
+            task_queue=CANDIDATE_TASK_QUEUE,
+            workflows=CANDIDATE_WORKFLOWS,
+        )
+        await asyncio.gather(hello_worker.run(), chart_worker.run(), candidate_worker.run())
 
 
 if __name__ == "__main__":

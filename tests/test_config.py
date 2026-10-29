@@ -4,6 +4,7 @@ import pytest
 
 from ai_trend_pipeline.config import DEFAULT_BLUESKY_SERVICE, Settings, load_settings
 from ai_trend_pipeline.sources import SourceName
+from ai_trend_pipeline.story_candidate import DEFAULT_CANDIDATE_REVIEW_TIMEOUT_S
 
 
 def test_defaults() -> None:
@@ -138,3 +139,14 @@ def test_source_poll_timeout_bounds() -> None:
     for bad in ("0", "-1", "61", "abc"):
         with pytest.raises(ValueError):
             load_settings({"SOURCE_POLL_TIMEOUT_S": bad})
+
+
+def test_candidate_review_timeout_default_and_bounds() -> None:
+    assert Settings().candidate_review_timeout_s == 172800
+    assert DEFAULT_CANDIDATE_REVIEW_TIMEOUT_S == 172800
+    assert load_settings({}).candidate_review_timeout_s == 172800
+    assert load_settings({"CANDIDATE_REVIEW_TIMEOUT_S": ""}).candidate_review_timeout_s == 172800
+    assert load_settings({"CANDIDATE_REVIEW_TIMEOUT_S": "60"}).candidate_review_timeout_s == 60
+    for bad in ("0", "604801", "-1", "abc", "1.5"):
+        with pytest.raises(ValueError):
+            load_settings({"CANDIDATE_REVIEW_TIMEOUT_S": bad})

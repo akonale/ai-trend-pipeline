@@ -54,28 +54,7 @@ No open tasks. Add new rows here; approval follows the last column.
 
 ## Web architecture (rules for every Topic Studio task)
 
-The web app is a thin layer over a service layer that the CLI also uses. Dependencies point one way:
-
-```
- web routes ─┐
-             ├──▶ services ──▶ Temporal client ──▶ workflows ──▶ activities
- CLI ────────┘     (charts)                        (no web or service imports)
-```
-
-| Folder | Holds | Never does |
-| --- | --- | --- |
-| `src/ai_trend_pipeline/services/` | Use cases: start a chart, get its state, decide, refine, list runs. Plain async functions/classes taking Pydantic models | Read HTTP requests, render HTML, print |
-| `src/ai_trend_pipeline/web/app.py` | `create_app(settings)` factory: wires routes, templates, static files, dependencies | Business logic |
-| `src/ai_trend_pipeline/web/routes/` | One module per page (`home.py`, `runs.py`, ...). Parse input, call one service, render a template | Call Temporal or the LLM directly |
-| `src/ai_trend_pipeline/web/templates/` | Jinja templates; `partials/` for htmx fragments | Logic beyond loops and ifs |
-| `src/ai_trend_pipeline/web/view_models.py` | Pydantic models shaped for templates | I/O |
-| `src/ai_trend_pipeline/config.py` | One `Settings` model read from env vars, passed in, not imported as a global | Read env vars anywhere else |
-
-- Routes get services and settings through FastAPI dependencies, so tests swap in fakes. Route tests
-  never need Temporal running.
-- The signed-in user is one dependency, `current_user`, used by every route that changes
-  something.
-- No JavaScript build step: htmx and a small CSS file, served from `web/static/`.
+Moved to the "Web app" section of [docs/architecture/tech.md](architecture/tech.md).
 
 ## Running a task
 

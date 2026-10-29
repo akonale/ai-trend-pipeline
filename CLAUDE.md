@@ -2,6 +2,12 @@
 
 Project rules for every agent (planner, builder, verifier, reviewer, scribe). Keep this file short.
 
+## Start here
+
+Read `docs/architecture/README.md` first. Then read `docs/architecture/business.md` for what the
+product does and `docs/architecture/tech.md` for how it is built, only the part for the area you
+will touch. `docs/history.md` explains why things are the way they are.
+
 ## Stack
 
 - Python 3.12+, managed with `uv`. Temporal (`temporalio`) for workflows. Pydantic v2 for models.
@@ -46,7 +52,7 @@ Project rules for every agent (planner, builder, verifier, reviewer, scribe). Ke
   dependencies so tests can swap in fakes.
 - Templates hold no logic beyond loops and ifs. Shape data in `web/view_models.py` first.
 - Env vars are read only in `config.py` (one `Settings` model, passed in, not a global).
-- Details and folder layout: "Web architecture" in `docs/mvp-plan.md`.
+- Details and folder layout: "Web app" in `docs/architecture/tech.md`.
 
 ## Temporal rules
 

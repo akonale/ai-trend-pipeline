@@ -1,11 +1,12 @@
 """Pydantic models shaped for templates."""
 
+import re
 from typing import Literal
 from urllib.parse import quote, urlencode
 
 from pydantic import BaseModel, Field, ValidationError
 
-from ai_trend_pipeline.daily_chart import ReviewState
+from ai_trend_pipeline.daily_chart import APPROVAL_TIMEOUT, ReviewState
 from ai_trend_pipeline.post_options import (
     CHART_TYPES,
     MAX_COUNTRIES,
@@ -422,6 +423,57 @@ def option_lines(options: PostOptions | None) -> list[OptionLine]:
     return lines
 
 
+BSKY_POST_URI = re.compile(
+    r"at://(did:plc:[a-z2-7]{24})/app\.bsky\.feed\.post/([a-z2-7]{13})", re.ASCII
+)
+
+
+def bluesky_post_url(uri: str | None) -> str | None:
+    """Public bsky.app URL for a post URI of the exact shape our activity makes, else None."""
+    if uri is None:
+        return None
+    match = BSKY_POST_URI.fullmatch(uri)
+    if match is None:
+        return None
+    return f"https://bsky.app/profile/{match.group(1)}/post/{match.group(2)}"
+
+
+APPROVAL_HOURS = int(APPROVAL_TIMEOUT.total_seconds() // 3600)
+HEADINGS = {
+    "drafting": "Drafting your chart",
+    "awaiting_decision": "Review your chart",
+    "posting": "Posting to Bluesky",
+    "approved": "Posted to Bluesky",
+    "rejected": "Rejected",
+    "expired": "Expired: nobody decided in time",
+}
+HEADING_SENT = "Sending your decision"
+STAGE_MESSAGES = {
+    "drafting": "Drafting your chart. This usually takes a minute or two.",
+    "posting": "Posting your chart to Bluesky.",
+}
+STAGE_SENT = "Decision sent, waiting for the workflow."
+END_MESSAGES = {
+    "approved": "Your chart is live on Bluesky.",
+    "rejected": "Nothing was posted.",
+    "expired": (
+        f"Nobody approved or rejected this chart within {APPROVAL_HOURS} hours, "
+        "so nothing was posted."
+    ),
+}
+OUTCOME_TONES: dict[str, Literal["success", "danger", "muted"]] = {
+    "approved": "success",
+    "rejected": "danger",
+    "expired": "muted",
+}
+POST_LINK_MISSING = "The link to the post is not available for this run."
+
+
+def critique_summary(passed: bool, attempts: int) -> str:
+    noun = "draft" if attempts == 1 else "drafts"
+    return f"{'Passed' if passed else 'Failed'} after {attempts} {noun}."
+
+
 class RunView(BaseModel):
     wf_id: str
     status: str
@@ -447,6 +499,15 @@ class RunView(BaseModel):
     options: list[OptionLine] = []
     option_notes: list[str] = []
     stepper: StepperView
+    heading: str
+    progress_message: str = ""
+    is_end: bool = False
+    outcome_tone: Literal["success", "danger", "muted", ""] = ""
+    end_message: str = ""
+    post_url: str | None = None
+    post_link_note: str = ""
+    another_href: str = "/"
+    critique_summary: str = ""
 
 
 def build_run_view(
@@ -460,6 +521,9 @@ def build_run_view(
     review = state.review
     awaiting = state.status == "awaiting_decision"
     badge_label, badge_class = badge_for(state.status, sent)
+    approved = state.status == "approved"
+    post_url = bluesky_post_url(state.post_uri) if approved else None
+    sending = awaiting and sent
     return RunView(
         wf_id=wf_id,
         status=state.status,
@@ -485,6 +549,16 @@ def build_run_view(
         options=option_lines(state.options),
         option_notes=list(state.option_notes),
         stepper=build_stepper(RUN_STEP[state.status], oob=fragment),
+        heading=HEADING_SENT if sending else HEADINGS[state.status],
+        progress_message=STAGE_SENT if sending else STAGE_MESSAGES.get(state.status, ""),
+        is_end=state.status in OUTCOME_TONES,
+        outcome_tone=OUTCOME_TONES.get(state.status, ""),
+        end_message=END_MESSAGES.get(state.status, ""),
+        post_url=post_url,
+        post_link_note=POST_LINK_MISSING if approved and post_url is None else "",
+        critique_summary=(
+            critique_summary(review.critique.passed, review.attempts) if review else ""
+        ),
     )
 
 

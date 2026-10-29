@@ -205,7 +205,13 @@ What a person sees and decides on the run page (`web/templates/run.html`, built 
   the critique result (passed, or the reasons it failed) and how many drafts were made.
 - The options used for the run and any notes (for example a country that had no data).
 - Who requested the run and who decided it, and a link to the run in the Temporal UI.
-- Approve and Reject buttons, only while the status is `awaiting_decision`.
+- Approve and post and Reject buttons, only while the status is `awaiting_decision`.
+- One heading per state says what is true now (Drafting your chart, Review your chart, Sending your
+  decision, Posting to Bluesky, Posted to Bluesky, Rejected, Expired). While working, a message
+  names the stage.
+- End states (posted, rejected, expired) say what happened and offer "Make another chart". A posted
+  run also offers "View the post", a link to the Bluesky post (shown only when the stored post
+  address is valid; otherwise the page says the link is not available).
 
 Rules:
 

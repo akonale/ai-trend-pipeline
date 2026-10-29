@@ -487,3 +487,59 @@ async def test_options_reach_activities_and_notes_in_query() -> None:
     assert [w.options for w in fakes.write_inputs] == [options]
     assert state.options == options
     assert state.option_notes == ["No data for 'X' in Life expectancy."]
+
+
+@pytest.mark.asyncio
+async def test_post_uri_set_only_after_approval() -> None:
+    fakes = FakeDailyActivities()
+    async with await start_env() as env, make_worker(env, fakes):
+        handle = await start_workflow(env)
+        awaiting = await wait_for_state(handle, "awaiting_decision")
+        assert awaiting.post_uri is None
+        await handle.signal(DailyChartWorkflow.decide, ApprovalDecision(approved=True))
+        await handle.result()
+        state = await handle.query(DailyChartWorkflow.review_state)
+    assert state.status == "approved"
+    assert state.post_uri == POST_URI
+
+
+@pytest.mark.asyncio
+async def test_closed_approved_run_replays_with_post_uri() -> None:
+    """A closed run is queried by replaying its history with the current code."""
+    fakes = FakeDailyActivities()
+    async with await start_env() as env:
+        async with make_worker(env, fakes):
+            handle = await start_workflow(env)
+            await wait_for_state(handle, "awaiting_decision")
+            await handle.signal(DailyChartWorkflow.decide, ApprovalDecision(approved=True))
+            await handle.result()
+        # Fresh worker with an empty workflow cache: the query must replay the history.
+        async with make_worker(env, fakes):
+            replayed = await env.client.get_workflow_handle_for(
+                DailyChartWorkflow.run, handle.id
+            ).query(DailyChartWorkflow.review_state)
+    assert replayed.status == "approved"
+    assert replayed.post_uri == POST_URI
+
+
+@pytest.mark.asyncio
+async def test_post_uri_none_when_rejected_or_expired() -> None:
+    fakes = FakeDailyActivities()
+    async with await start_env() as env, make_worker(env, fakes):
+        rejected = await start_workflow(env)
+        await wait_for_state(rejected, "awaiting_decision")
+        await rejected.signal(DailyChartWorkflow.decide, ApprovalDecision(approved=False))
+        await rejected.result()
+        expired = await start_workflow(env)
+        await expired.result()
+        rejected_state = await rejected.query(DailyChartWorkflow.review_state)
+        expired_state = await expired.query(DailyChartWorkflow.review_state)
+    assert rejected_state.status == "rejected"
+    assert rejected_state.post_uri is None
+    assert expired_state.status == "expired"
+    assert expired_state.post_uri is None
+
+
+def test_review_state_without_post_uri_validates() -> None:
+    state = ReviewState.model_validate({"status": "approved"})
+    assert state.post_uri is None

@@ -65,6 +65,7 @@ class ReviewState(BaseModel):
     decided_by: str | None = None
     options: PostOptions | None = None
     option_notes: list[str] = Field(default_factory=list)
+    post_uri: str | None = None
 
 
 class DailyChartResult(BaseModel):
@@ -92,6 +93,7 @@ class DailyChartWorkflow:
         review: ReviewRequest | None = None,
         note: str = "",
         decided_by: str | None = None,
+        post_uri: str | None = None,
     ) -> ReviewState:
         return ReviewState(
             status=status,
@@ -101,6 +103,7 @@ class DailyChartWorkflow:
             decided_by=decided_by,
             options=self._options,
             option_notes=self._notes,
+            post_uri=post_uri,
         )
 
     @workflow.run
@@ -177,7 +180,12 @@ class DailyChartWorkflow:
                 retry_policy=IO_RETRY_POLICY,
             )
         self._state = self._new_state(
-            status, data.requested_by, review, decision.note, decision.decided_by
+            status,
+            data.requested_by,
+            review,
+            decision.note,
+            decision.decided_by,
+            post_uri=post.uri if post is not None else None,
         )
         return DailyChartResult(
             status=status,

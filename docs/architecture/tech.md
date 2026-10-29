@@ -22,7 +22,10 @@ Contents: [1 Temporal](#1-temporal) | [2 Web app](#2-web-app) | [3 Infra](#3-inf
 - Signal `decide(ApprovalDecision)`: ignored unless status is `awaiting_decision` and no decision
   exists yet. Approve and reject are one signal (`approved: bool`, `note`, `decided_by`).
 - Query `review_state() -> ReviewState` (status, `ReviewRequest`, note, `requested_by`,
-  `decided_by`, `options`, `option_notes`). Web and CLI read all run state from this query.
+  `decided_by`, `options`, `option_notes`, `post_uri`). Web and CLI read all run state from this query.
+  `post_uri` is set only on the final `approved` update (the URI `post_chart_to_bluesky` returned);
+  it adds no command, so replay is safe. Querying a closed run replays its history with the current
+  code, so runs approved before this field existed also get it (covered by a test).
 - Timeouts: I/O activities 60 s, 3 attempts (`IO_ACTIVITY_TIMEOUT`, `IO_RETRY_POLICY`); LLM
   activities 120 s, 3 attempts (`LLM_ACTIVITY_TIMEOUT`, `LLM_RETRY_POLICY` in `chart_loop.py`);
   approval wait `APPROVAL_TIMEOUT` = 20 hours. Non-retryable `ApplicationError` types:
@@ -182,6 +185,17 @@ Flow: `StepperView` / `build_stepper(current, topic_href)` (view_models) shape t
 step 3 or 4). On the run page the stepper sits outside `#run-status`; the `/runs/{id}/status`
 fragment re-emits it with `hx-swap-oob="true"` so it moves from 3 to 4 when polling ends. All flow
 state travels in the query string or form fields (`flow_query`); no session.
+
+Run page states (flow steps 3 and 4, `build_run_view`): the `<h1>` lives inside `#run-status` so it
+changes as polling moves on (Drafting your chart, Review your chart, Sending your decision, Posting
+to Bluesky, Posted to Bluesky, Rejected, Expired). Polling states show a stage message in the
+`role="status"` block; end states show an outcome card with `Make another chart` (and `View the
+post` when approved). The link comes from `bluesky_post_url`, which accepts only a `did:plc` post
+URI of the exact shape our activity makes and builds `https://bsky.app/profile/<did>/post/<rkey>`;
+anything else gives no link and the page says so. The anchor uses `target="_blank"
+rel="noopener noreferrer"` (it is a click-through link, not a loaded asset). There is no `stage`
+field: draft sub-steps run inside `chart_loop`, so honest per-stage progress would touch two modules
+and was left out; the page shows only the stages `ReviewState.status` carries.
 
 ## 3. Infra and deployment
 

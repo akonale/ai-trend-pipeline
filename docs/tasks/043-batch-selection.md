@@ -1,6 +1,6 @@
 # 043: Batch LLM editorial selection
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -138,3 +138,5 @@ not depend on connectors) and out of any workflow module. Suggested contents:
 **verifier**: Status verified. Next: reviewer.
 **reviewer**: Approved. 18 spec tests present and all pass; lint and pyright strict clean; fixtures only, no live calls.
 **reviewer**: Note: `DEFAULT_MODEL` is imported from `topic.py`, so this module transitively imports `hn`/`owid`/`config`; no forbidden direct imports and no behavioural impact.
+**scribe**: Docs already accurate: module map row in `docs/architecture/README.md`; no run/config change, so no root `README.md` edit.
+**scribe**: Pushed and opened PR https://github.com/akonale/ai-trend-pipeline/pull/49. Next: human merges.

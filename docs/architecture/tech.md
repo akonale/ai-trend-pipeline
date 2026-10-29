@@ -240,8 +240,9 @@ and optional `badge`, `user_email`, `env_tag` "dev" in local mode, `SHELL_TAGLIN
 the tagline and the `.dev-tag`. The brand always links to `/`. A `NavBadge` (`text`, `label`) renders
 as an `aria-hidden` `.nav-badge` count plus a visually hidden sentence; `pending_nav_badge` derives it
 only from the fetched first inbox page (`N`, or `N+` with a next page). The body is a flex column so
-the footer sticks to the bottom; no JavaScript, the nav wraps on phones. Static assets in
-`web/static/`: `app.css` and vendored `htmx.min.js` (2.0.4).
+the footer sticks to the bottom; no JavaScript, the nav wraps on phones. From `48rem` up the shared
+header and footer measure widens to `50rem` (with a tighter tablet nav gap) so brand, nav and chip
+stay on one row. Static assets in `web/static/`: `app.css` and vendored `htmx.min.js` (2.0.4).
 
 `app.css` is a neo-brutalist "graph paper and ink" system: 3px ink borders, hard offset shadows
 (no blur), flat fills, a faint 24px grid on the page, and the chart frame (ruler ticks, marigold

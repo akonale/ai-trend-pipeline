@@ -1,6 +1,6 @@
 # 047: Candidate UI navigation and visual polish
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -332,3 +332,7 @@ brand still opens `/`, and the "Back to candidates" text is unchanged but moves 
 
 **builder** (fix loop 1): widened the shared header/footer measure to 50rem from 48rem and tightened the tablet nav so brand, nav and chip share one row at 768 and 1280; changed the candidate back link colour to zero-specificity `:where(.candidate-back a)` so the global hover ink wins (11.50:1 in both themes).
 **builder** (fix loop 1): re-shot every state at 360/768/1280 light+dark in `/tmp/candidate-047-shots`; the harness asserts one header row at 768/1280 and the hover contrast. `just lint` and `just test` green, 614 passed.
+
+**verifier** (re-verify after fix loop 1): `just lint` green (ruff, format, pyright strict: 0 errors) and `just test` green, 614 passed on `task/047-candidate-ui-polish`. First run showed only pre-existing LLM tests failing with `anthropic.APIConnectionError`; rerun with harness `ANTHROPIC_*` vars unset, all green. Next: reviewer.
+
+**reviewer** (re-review after fix loop 1): Approved. Header is one row at 768/1280 light+dark on inbox, detail, not-available, home, settings and run states; back-link hover is ink on marigold at 11.5:1 (rest state muted is 6.7:1 light / 8.7:1 dark). The fixes are CSS-only, add no duplicate selectors, and regress no other state.

@@ -57,6 +57,10 @@ caption and critique with Approve and Reject buttons; approving posts to Bluesky
 approved run then links to the post on bsky.app. It also links to
 the run in the Temporal UI, at `TEMPORAL_UI_URL` (default `http://localhost:8233`).
 
+`/candidates` is the story candidate inbox: a plain server-rendered list of pending candidates
+(no JavaScript needed), paged with `?page=` and showing a full-shell notice if the candidate
+service is unreachable. Detail and Approve/Reject pages come later.
+
 `AUTH_MODE` (`local` by default, or `cloudflare`) decides who the web app records as the requester
 and approver of a run. `local` uses the fixed user `dev@localhost`. `cloudflare` reads the
 `Cf-Access-Authenticated-User-Email` header and answers 401 to POST requests without it. Prod sets
@@ -122,8 +126,8 @@ current HN top stories as typed models.
 `ai_trend_pipeline.story_candidate` provides `StoryCandidateWorkflow`, one durable review per
 selected story candidate (task queue `story-candidate-task-queue`), with a `review_state` query and
 Approve/Reject signals. `services/candidates.py` and the Temporal candidate gateway start
-candidates idempotently, list pending ones with pagination and send decisions. Nothing polls sources
-or shows a UI for candidates yet.
+candidates idempotently, list pending ones with pagination and send decisions. The web app lists
+pending candidates at `/candidates`; nothing polls sources into candidates automatically yet.
 
 ## Topic picking
 

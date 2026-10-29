@@ -1,6 +1,6 @@
 # 045: Candidate inbox page
 
-Status: built
+Status: pr-open
 
 ## Goal
 
@@ -232,3 +232,11 @@ Screenshots (not committed): `/tmp/candidate-045-shots` covers 360/1280, light/d
 title/angle), empty, invalid token and unavailable; 0 horizontal overflow, 3px focus outlines,
 no-JS and 200% zoom checks pass. A `li` max-width reset was needed to counter the global prose rule.
 
+
+**verifier**: `just lint` passed. Full `just test` passed (589 tests) with harness `ANTHROPIC_*` vars unset; with them set, 54 pre-existing LLM tests failed with `anthropic.APIConnectionError`. Next: reviewer.
+
+**reviewer**: Approved. Route is thin, service comes via a FastAPI dependency, view models shape all copy/URLs, text is escaped and paging is forward-cursor with 400/503 full-shell states; no detail or decision routes and no chart route/test changes. `just lint` (ruff, pyright strict) and the candidate plus existing web tests pass. Note for scribe: README's "shows a UI for candidates yet" line is now stale.
+
+**scribe**: Updated README (candidate inbox at `/candidates`, stale "no UI yet" line fixed); tech.md
+already carried the route, `CandidateUnavailable` and `candidates.html` from the builder. Pushed
+`task/045-candidate-inbox` and opened the PR. Next: human merge (CI green required).

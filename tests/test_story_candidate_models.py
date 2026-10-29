@@ -14,11 +14,15 @@ from ai_trend_pipeline.services.candidates import (
 )
 from ai_trend_pipeline.sources import SourceName
 from ai_trend_pipeline.story_candidate import (
+    CANDIDATE_SOURCE_ATTRIBUTE,
+    CANDIDATE_STATUS_ATTRIBUTE,
     DEFAULT_CANDIDATE_REVIEW_TIMEOUT_S,
     CandidateDecision,
     StoryCandidate,
     StoryCandidateInput,
     candidate_id_for,
+    candidate_memo,
+    candidate_search_attributes,
 )
 
 OBSERVED = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
@@ -140,3 +144,23 @@ def test_page_token_round_trips_and_invalid_token_raises() -> None:
     for bad in ("!!!", "not base64!", "a", ""):
         with pytest.raises(InvalidPageToken):
             decode_page_token(bad)
+
+
+def test_candidate_search_attributes_helper_sets_awaiting_status_and_source() -> None:
+    candidate = make_candidate()
+    attributes = candidate_search_attributes(candidate)
+    assert attributes.get(CANDIDATE_STATUS_ATTRIBUTE) == "awaiting_review"
+    assert attributes.get(CANDIDATE_SOURCE_ATTRIBUTE) == "hn"
+
+
+def test_candidate_memo_helper_has_only_the_three_compact_keys() -> None:
+    candidate = make_candidate()
+    memo = candidate_memo(candidate)
+    assert set(memo) == {
+        "candidate_title",
+        "candidate_proposed_angle",
+        "candidate_observed_at",
+    }
+    assert memo["candidate_title"] == candidate.title
+    assert memo["candidate_proposed_angle"] == candidate.proposed_angle
+    assert memo["candidate_observed_at"] == OBSERVED.isoformat()

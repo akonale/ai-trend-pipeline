@@ -6,7 +6,7 @@ from enum import StrEnum
 from typing import Annotated, Literal
 
 from temporalio import workflow
-from temporalio.common import SearchAttributeKey
+from temporalio.common import SearchAttributeKey, SearchAttributePair, TypedSearchAttributes
 
 with workflow.unsafe.imports_passed_through():
     from pydantic import (
@@ -100,6 +100,25 @@ class StoryCandidate(BaseModel):
     @classmethod
     def _to_utc(cls, value: datetime | None) -> datetime | None:
         return None if value is None else ensure_aware_utc(value)
+
+
+def candidate_search_attributes(candidate: StoryCandidate) -> TypedSearchAttributes:
+    """The attributes every started candidate must carry so the inbox can list it."""
+    return TypedSearchAttributes(
+        [
+            SearchAttributePair(CANDIDATE_STATUS_ATTRIBUTE, CandidateStatus.AWAITING_REVIEW.value),
+            SearchAttributePair(CANDIDATE_SOURCE_ATTRIBUTE, candidate.source.value),
+        ]
+    )
+
+
+def candidate_memo(candidate: StoryCandidate) -> dict[str, str]:
+    """The compact inbox fields, identical for direct and ingestion-started candidates."""
+    return {
+        "candidate_title": candidate.title,
+        "candidate_proposed_angle": candidate.proposed_angle,
+        "candidate_observed_at": candidate.observed_at.isoformat(),
+    }
 
 
 class StoryCandidateInput(BaseModel):

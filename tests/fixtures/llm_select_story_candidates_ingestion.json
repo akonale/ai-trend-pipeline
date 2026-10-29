@@ -1,0 +1,27 @@
+{
+  "id": "msg_01StorySelectionIngestion",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-5-5",
+  "content": [
+    {"type": "text", "text": "One story looks worth reviewing."},
+    {
+      "type": "tool_use",
+      "id": "toolu_01StorySelectionIngestion",
+      "name": "select_story_candidates",
+      "input": {
+        "selections": [
+          {
+            "external_id": "2001",
+            "summary": "A normal Show HN project is getting attention.",
+            "proposed_angle": "What the project does and why builders are trying it.",
+            "selection_reason": "A concrete builder story with a working project link."
+          }
+        ]
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {"input_tokens": 420, "output_tokens": 98}
+}

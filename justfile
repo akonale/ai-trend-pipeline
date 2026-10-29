@@ -41,6 +41,9 @@ reject id:
 web:
     uv run python -m ai_trend_pipeline.web
 
+ingest:
+    uv run python -m ai_trend_pipeline.ingestion_starter
+
 deploy:
     git pull --ff-only
     env -i PATH="$PATH" HOME="$HOME" docker compose -f infra/compose.prod.yaml --env-file .env.prod up -d --build

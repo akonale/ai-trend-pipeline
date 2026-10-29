@@ -60,12 +60,42 @@ Contents: [1 Temporal](#1-temporal) | [2 Web app](#2-web-app) | [3 Infra](#3-inf
 - `temporal_client.ensure_candidate_search_attributes(client)` registers both attributes and
   ignores `ALREADY_EXISTS`; the worker calls it once after connecting.
 
+### Source ingestion workflow (`source_ingestion.py`)
+
+`SourceIngestionWorkflow.run(SourceIngestionInput) -> SourceIngestionResult`, task queue
+`SOURCE_INGESTION_TASK_QUEUE = "source-ingestion-task-queue"`, one long-running run per enabled
+source with id `source_ingestion_workflow_id(source)` = `source-ingestion-v1-<source>`.
+
+- Loop: `poll_hn_source` (registry activity name) -> drop `processed_ids` -> `prefilter_events` ->
+  `select_story_candidates` if the batch is non-empty -> mark the batch processed -> start one
+  `StoryCandidateWorkflow` child per selection (deterministic id, `CANDIDATE_TASK_QUEUE`,
+  `ParentClosePolicy.ABANDON`, `REJECT_DUPLICATE`) -> stop check -> continue-as-new -> wait
+  `poll_interval_seconds` with `workflow.wait_condition`.
+- State lives only in workflow history: an opaque `cursor` (HN: highest numeric external id), at
+  most 1000 unique processed ids in first-seen order, `polls_in_run` and `total_polls`.
+  Continue-as-new carries all of it in `SourceIngestionInput` after `max_polls_per_run` (default 50)
+  or when the server suggests it; `polls_in_run` resets while `total_polls` accumulates.
+- Activity failures: poll 60 s / 3 attempts, selector 120 s / 3 attempts. After retries an
+  `ActivityError` is logged (no source text) and the loop continues: a failed poll only advances
+  counters, and a failed selection still marks its batch processed. Cancellation propagates.
+  Duplicate child starts (`WorkflowAlreadyStartedError`) are logged and ignored.
+- Signals and query: `stop` returns `SourceIngestionResult(reason="stopped")` after the current
+  activity; `ingestion_state() -> SourceIngestionState` reports source, cursor, processed ids,
+  counters, `last_poll_at`, and the last event/new/selected counts. Children are abandoned, so stop,
+  cancellation and continue-as-new never close a review.
+- Operator command: `just ingest` (dev) or `docker compose -f infra/compose.prod.yaml --env-file
+  .env.prod exec worker python -m ai_trend_pipeline.ingestion_starter` (prod) calls
+  `SourceIngestionService.ensure()`, which starts one workflow per `SOURCE_ENABLED` source with
+  `USE_EXISTING` and `ALLOW_DUPLICATE`. Worker startup does not start ingestion; the worker only
+  registers the workflow and activities.
+
 ### Activities and models
 
 | Activity | Class / function | Input -> output |
 | --- | --- | --- |
 | `fetch_hn_top_stories` | `HNActivities` | `HNTopStoriesInput` -> `HNTopStoriesOutput` |
 | `poll_hn_source` | `HNSourceActivities` | `SourcePollInput` -> `SourcePollOutput` |
+| `select_story_candidates` | `StorySelectionActivities` | `SelectStoryCandidatesInput` -> `SelectStoryCandidatesOutput` |
 | `pick_topic` | `TopicActivities` | `PickTopicInput` -> `PickTopicOutput` |
 | `fetch_owid_dataset` | `OwidActivities` | `FetchOwidInput` -> `OwidTable` |
 | `write_chart_spec` | `ChartSpecActivities` | `WriteChartSpecInput` -> `ChartSpec` |
@@ -86,8 +116,9 @@ bounded (IDs 1-128, titles 1-200, URLs at most 1024 and only `http`/`https`, at 
 The static registry (`sources/registry.py`) maps registered names to labels and poll activity names
 and imports only the models, so workflow code can import it without I/O. `sources/hn.py` wraps
 `HNActivities.fetch_hn_top_stories` in `HNSourceConnector` and `HNSourceActivities.poll_hn_source`;
-`sources/fake.py` is a deterministic, unregistered test connector. There is no worker registration,
-workflow, task queue, table or UI in 042.
+`sources/fake.py` is a deterministic, unregistered test connector. Task 048 registers the HN
+activity on the ingestion worker and runs `poll_hn_source` from `SourceIngestionWorkflow`; the
+chart workflow and chart queue are unchanged.
 
 ### Determinism, idempotency, replay
 
@@ -106,12 +137,14 @@ workflow, task queue, table or UI in 042.
 ### Worker (`worker.py`)
 
 `main()` loads settings, connects with retry (30 s), registers the candidate search attributes,
-builds the Anthropic, HN, OWID and Bluesky clients and runs three workers: `hello-task-queue`
+builds the Anthropic, HN, OWID and Bluesky clients and runs four workers: `hello-task-queue`
 (`HelloWorkflow`, `say_hello`), the daily chart queue (`DailyChartWorkflow` and the seven
-activities from `daily_chart_activities`), and `story-candidate-task-queue` (`CANDIDATE_WORKFLOWS =
-[StoryCandidateWorkflow]`, no activities). It exits at startup if `ANTHROPIC_API_KEY`,
-`BLUESKY_HANDLE` or `BLUESKY_APP_PASSWORD` is missing. `DraftChartWorkflow` (in `chart_loop.py`) is
-not registered.
+activities from `daily_chart_activities`), `story-candidate-task-queue` (`CANDIDATE_WORKFLOWS =
+[StoryCandidateWorkflow]`, no activities), and `source-ingestion-task-queue` (`INGESTION_WORKFLOWS =
+[SourceIngestionWorkflow]`, with `poll_hn_source` and `select_story_candidates` from
+`ingestion_activities`). It exits at startup if `ANTHROPIC_API_KEY`, `BLUESKY_HANDLE` or
+`BLUESKY_APP_PASSWORD` is missing. Worker startup does not start ingestion; `just ingest` does.
+`DraftChartWorkflow` (in `chart_loop.py`) is not registered.
 
 ## 2. Web app
 
@@ -349,6 +382,7 @@ environment variables.
 | `DATABASE_URL` | `database_url` | Postgres for style profiles | local dev Postgres URL |
 | `SOURCE_ENABLED` | `source_enabled` | comma-separated registered sources; `none` disables all | `hn` |
 | `SOURCE_POLL_LIMIT` | `source_poll_limit` | raw items requested and events returned per poll, 1-100 | `30` |
+| `SOURCE_POLL_INTERVAL_S` | `source_poll_interval_s` | seconds between source ingestion polls, 30-3600 | `300` |
 | `SOURCE_POLL_TIMEOUT_S` | `source_poll_timeout_s` | HN source poll HTTP timeout, over 0 and at most 60 | `15.0` |
 | `CANDIDATE_REVIEW_TIMEOUT_S` | `candidate_review_timeout_s` | story candidate review timeout, 1-604800 seconds | `172800` |
 
@@ -358,15 +392,18 @@ Secrets use `SecretStr`. Compose-only keys (`POSTGRES_PASSWORD`, `CLOUDFLARE_TUN
 ## 5. Development
 
 - Setup: `uv sync`; `just dev` (compose Postgres and Temporal, then the worker); `just web`;
-  `just chart [--topic "..."] [--id ...]`, `just show|approve|reject <id>`, `just hello`,
-  `just lint`, `just fmt`, `just test`, `just down`.
+  `just ingest` (idempotently ensure enabled source ingestion workflows); `just chart [--topic
+  "..."] [--id ...]`, `just show|approve|reject <id>`, `just hello`, `just lint`, `just fmt`,
+  `just test`, `just down`.
 - Tests (`tests/`): TDD, no live calls. Activities use `httpx.MockTransport` and recorded
   fixtures; web routes use `app.dependency_overrides` with fake services (`tests/style_fakes.py`
   has `InMemoryStyleStore`); workflows use `WorkflowEnvironment.start_time_skipping()`
-  (`test_daily_chart.py`, `test_chart_loop.py`, `test_hello.py`). Candidate visibility and gateway
-  tests use `WorkflowEnvironment.start_local` with the candidate search attributes pre-registered,
-  because the time-skipping server has no list-workflows; expiry is tested with a 1 s timeout.
-  Guard tests check `CLAUDE.md` structure, compose files and CI.
+  (`test_daily_chart.py`, `test_chart_loop.py`, `test_hello.py`, `test_source_ingestion.py`).
+  Ingestion tests gate each activity attempt so they step polls without wall-clock waits. Candidate
+  visibility and gateway tests use `WorkflowEnvironment.start_local` with the candidate search
+  attributes pre-registered, because the time-skipping server has no list-workflows; the ingestion
+  end-to-end visibility test does the same. Expiry is tested with a 1 s timeout. Guard tests check
+  `CLAUDE.md` structure, compose files and CI.
 - Lint: Ruff (line length 100) and Pyright strict; no `# type: ignore` or `Any` without a comment.
 - Agent relay: planner, builder, verifier, reviewer, scribe with human checkpoints; see
   `docs/mvp-plan.md` and `CLAUDE.md` (do not copy them).

@@ -37,6 +37,7 @@ class Settings(BaseModel):
     database_url: SecretStr = SecretStr(DEFAULT_DATABASE_URL)
     source_enabled: frozenset[SourceName] = frozenset({SourceName.HN})
     source_poll_limit: int = Field(default=30, ge=1, le=100)
+    source_poll_interval_s: int = Field(default=300, ge=30, le=3600)
     source_poll_timeout_s: float = Field(default=15.0, gt=0, le=60)
     candidate_review_timeout_s: int = Field(
         default=DEFAULT_CANDIDATE_REVIEW_TIMEOUT_S, ge=1, le=604800
@@ -97,6 +98,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         database_url=SecretStr(env.get("DATABASE_URL") or DEFAULT_DATABASE_URL),
         source_enabled=_parse_source_enabled(env.get("SOURCE_ENABLED")),
         source_poll_limit=int(env.get("SOURCE_POLL_LIMIT") or 30),
+        source_poll_interval_s=int(env.get("SOURCE_POLL_INTERVAL_S") or 300),
         source_poll_timeout_s=float(env.get("SOURCE_POLL_TIMEOUT_S") or 15.0),
         candidate_review_timeout_s=int(
             env.get("CANDIDATE_REVIEW_TIMEOUT_S") or DEFAULT_CANDIDATE_REVIEW_TIMEOUT_S

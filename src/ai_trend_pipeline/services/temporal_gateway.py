@@ -5,8 +5,6 @@ from datetime import UTC, datetime
 
 from temporalio.client import Client, WorkflowExecution, WorkflowHandle
 from temporalio.common import (
-    SearchAttributePair,
-    TypedSearchAttributes,
     WorkflowIDConflictPolicy,
     WorkflowIDReusePolicy,
 )
@@ -31,6 +29,12 @@ from ai_trend_pipeline.services.candidates import (
     encode_page_token,
 )
 from ai_trend_pipeline.services.charts import RunAlreadyExists, RunNotFound
+from ai_trend_pipeline.source_ingestion import (
+    SOURCE_INGESTION_TASK_QUEUE,
+    SourceIngestionInput,
+    SourceIngestionWorkflow,
+    source_ingestion_workflow_id,
+)
 from ai_trend_pipeline.sources import SourceName
 from ai_trend_pipeline.story_candidate import (
     CANDIDATE_SOURCE_ATTRIBUTE,
@@ -44,6 +48,8 @@ from ai_trend_pipeline.story_candidate import (
     StoryCandidateResult,
     StoryCandidateWorkflow,
     candidate_id_for,
+    candidate_memo,
+    candidate_search_attributes,
 )
 
 
@@ -110,6 +116,29 @@ class TemporalChartRunGateway:
         )
 
 
+class TemporalSourceIngestionGateway:
+    """Starts (or returns) the one ingestion workflow per configured source."""
+
+    def __init__(self, client: Client) -> None:
+        self._client = client
+
+    async def start(self, source: SourceName, data: SourceIngestionInput) -> str:
+        workflow_id = source_ingestion_workflow_id(source)
+        try:
+            await self._client.start_workflow(
+                SourceIngestionWorkflow.run,
+                data,
+                id=workflow_id,
+                task_queue=SOURCE_INGESTION_TASK_QUEUE,
+                id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,
+                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+            )
+        except WorkflowAlreadyStartedError:
+            # Defensive: USE_EXISTING normally returns the existing run instead of raising.
+            return workflow_id
+        return workflow_id
+
+
 def pending_candidates_query() -> str:
     return (
         f"WorkflowType = 'StoryCandidateWorkflow' AND "
@@ -161,19 +190,6 @@ class TemporalCandidateGateway:
 
     async def start(self, candidate: StoryCandidate, review_timeout_seconds: int) -> None:
         candidate_id = candidate_id_for(candidate.source, candidate.external_id)
-        memo = {
-            "candidate_title": candidate.title,
-            "candidate_proposed_angle": candidate.proposed_angle,
-            "candidate_observed_at": candidate.observed_at.isoformat(),
-        }
-        search_attributes = TypedSearchAttributes(
-            [
-                SearchAttributePair(
-                    CANDIDATE_STATUS_ATTRIBUTE, CandidateStatus.AWAITING_REVIEW.value
-                ),
-                SearchAttributePair(CANDIDATE_SOURCE_ATTRIBUTE, candidate.source.value),
-            ]
-        )
         try:
             await self._client.start_workflow(
                 StoryCandidateWorkflow.run,
@@ -184,8 +200,8 @@ class TemporalCandidateGateway:
                 task_queue=CANDIDATE_TASK_QUEUE,
                 id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,
                 id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
-                search_attributes=search_attributes,
-                memo=memo,
+                search_attributes=candidate_search_attributes(candidate),
+                memo=candidate_memo(candidate),
             )
         except WorkflowAlreadyStartedError:
             # The deterministic id already names a closed run: the existing candidate wins.

@@ -1,6 +1,6 @@
 # 044: StoryCandidateWorkflow and Temporal gateway
 
-Status: built
+Status: pr-open
 
 ## Goal
 
@@ -191,3 +191,9 @@ Temporal visibility. No source polling or UI in this task.
   worker wiring with tests. The time-skipping test server lacks ListWorkflowExecutions, so
   visibility/gateway tests use `start_local` with SAs pre-registered; expiry uses time-skipping
   with a 1 s timeout. Frontend-design skill not used (no UI). Next: verifier.
+- **verifier**: `just lint` passes (ruff check/format, pyright 0 errors). `just test` passes, 577 tests, with harness `ANTHROPIC_BASE_URL`/`ANTHROPIC_AUTH_TOKEN`/`ANTHROPIC_API_KEY` and model vars unset; with them set, 54 pre-existing LLM tests fail on `anthropic.APIConnectionError`. Candidate workflow/gateway/service/worker/config tests pass. Next: reviewer.
+- **reviewer**: Approved. Workflow uses only deterministic Temporal APIs; first-terminal-decision-wins, expiry, IDs, idempotent starts, visibility list and typed service errors match the spec; ruff/pyright clean; the new tests and the DailyChart replay test pass and `daily_chart.py` is untouched. Next: scribe.
+- **reviewer**: Note for scribe: `CANDIDATE_REVIEW_TIMEOUT_S` is not yet listed in the README Configuration section (task 049).
+- **scribe**: Documented the candidate workflow/settings in `README.md` and the workflow registry,
+  service/gateway boundary and search attributes in `docs/architecture/`; opened PR
+  https://github.com/akonale/ai-trend-pipeline/pull/50. Next: human merges once CI is green.

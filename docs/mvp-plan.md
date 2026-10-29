@@ -63,9 +63,10 @@ profile), `/health`. Templates are in `web/templates/`, the only stylesheet is `
 
 **Design direction (applies to 036-041):**
 - Neo-brutalism: thick near-black borders (about 3px), hard offset shadows with no blur, flat
-  saturated colour blocks (one bold accent plus two supporting colours), oversized heavy headings,
-  chunky buttons that "press" (shadow collapses) on active, square or barely rounded corners,
-  visible grid and generous spacing. Playful, not messy.
+  saturated colour blocks (one bold accent plus two supporting colours; the planner picks the
+  ground and palette with the `frontend-design` skill and must not reuse the current cream and
+  terracotta look), oversized heavy headings, chunky buttons that "press" (shadow collapses) on active,
+  square or barely rounded corners, visible grid and generous spacing. Playful, not messy.
 - Keep light and dark themes (`prefers-color-scheme`), driven by CSS custom tokens in `:root`.
 - Accessibility is a hard requirement: text contrast at least 4.5:1, borders, focus rings and
   controls at least 3:1, a thick visible focus outline, `prefers-reduced-motion` respected, works

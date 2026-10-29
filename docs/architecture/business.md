@@ -95,10 +95,33 @@ reach the run page via `ReviewState.option_notes`.
 ### Fixtures and the no-live-calls rule
 
 Tests never call HN, OWID, Anthropic or Bluesky. They use recorded responses in `tests/fixtures/`
-(`hn_top_stories.json`, `owid_life_expectancy.csv`, `llm_pick_topic_*.json`,
+(`hn_top_stories.json`, `hn_source_poll.json`, `llm_pick_topic_*.json`,
 `llm_chart_spec_response.json`, `llm_critique_*.json`, `bluesky_*.json`,
-`vega_lite_line_chart.json`) served through `httpx.MockTransport`. To record a new fixture, save a
-real response once by hand, strip anything private, and commit it.
+`llm_select_story_candidates_*.json`, `vega_lite_line_chart.json`) served through
+`httpx.MockTransport`. To record a new fixture, save a real response once by hand, strip anything
+private, and commit it.
+
+### Story candidates
+
+A long-running source workflow turns new source events into a small reviewable inbox:
+
+```
+poll source ─▶ drop processed ids ─▶ deterministic prefilter ─▶ batch LLM selection
+            ─▶ StoryCandidateWorkflow per selected story ─▶ /candidates inbox ─▶ approve/reject
+```
+
+- Only selected stories become candidates. The LLM compares a bounded batch and may select none;
+  it never controls cursors, workflow ids, review state or publishing.
+- Approval means only "this candidate is approved". Nothing is generated, charted or published;
+  candidate state lives entirely in Temporal.
+- Candidates are deduplicated by deterministic id `source + external_id`, so repeated polls never
+  create a second inbox row.
+- A per-source candidate budget (default 20 newly started candidates per source per UTC day) keeps
+  a noisy or broken source reviewable and bounds LLM spend. When it is exhausted the selector is
+  skipped, so no LLM credit is spent; the batch stays for the next UTC day.
+- The fake source (`Test source`) is a development and test connector only. It is off by default
+  and must never be enabled in production. Google Trends is the next candidate connector once its
+  API/provider access is chosen.
 
 ## 2. Charts
 
@@ -239,5 +262,6 @@ Rules:
 - Time presets are relative to the dataset's latest year, not today.
 - The model sees only a sample of rows, so captions are checked against summaries.
 - The PNG must stay under 1,000,000 bytes to be posted (`ImageTooLarge`).
-- Nothing starts a run on a schedule; runs are started by a person.
+- Chart runs are not started by a schedule; a person starts each chart. Ensured source ingestion
+  workflows do poll continuously on Temporal timers.
 - No refine loop, runs list, topic suggestions or timeline (planned, not built; see `docs/history.md`).

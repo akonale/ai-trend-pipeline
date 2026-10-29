@@ -7,6 +7,7 @@ from temporalio import activity
 
 from ai_trend_pipeline.config import Settings
 from ai_trend_pipeline.hn import HN_BASE_URL, HNActivities, HNTopStoriesInput
+from ai_trend_pipeline.ingestion_logging import IngestionLogEvent, log_event
 from ai_trend_pipeline.sources.models import (
     SourceName,
     SourcePollInput,
@@ -52,7 +53,15 @@ class HNSourceActivities:
 
     @activity.defn
     async def poll_hn_source(self, data: SourcePollInput) -> SourcePollOutput:
-        return await self._connector.poll(data)
+        output = await self._connector.poll(data)
+        log_event(
+            activity.logger,
+            IngestionLogEvent.EVENTS_NORMALIZED,
+            SourceName.HN,
+            requested_limit=data.limit,
+            event_count=len(output.events),
+        )
+        return output
 
 
 def make_source_hn_client(settings: Settings) -> httpx.AsyncClient:

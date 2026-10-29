@@ -118,11 +118,24 @@ def test_source_enabled_parsing() -> None:
 
 
 def test_source_enabled_unknown_raises() -> None:
-    for bad in ("google-trends", "fake"):
-        with pytest.raises(ValueError, match="Registered sources: hn"):
-            load_settings({"SOURCE_ENABLED": bad})
-    with pytest.raises(ValueError, match="Registered sources: hn"):
-        Settings(source_enabled=frozenset({SourceName.FAKE}))
+    with pytest.raises(ValueError, match="Registered sources: hn, fake"):
+        load_settings({"SOURCE_ENABLED": "google-trends"})
+    assert load_settings({"SOURCE_ENABLED": "fake"}).source_enabled == frozenset({SourceName.FAKE})
+    assert Settings(source_enabled=frozenset({SourceName.FAKE})).source_enabled == frozenset(
+        {SourceName.FAKE}
+    )
+
+
+def test_source_candidate_budget_default_and_bounds() -> None:
+    assert Settings().source_candidate_budget == 20
+    assert load_settings({}).source_candidate_budget == 20
+    assert load_settings({"SOURCE_CANDIDATE_BUDGET": ""}).source_candidate_budget == 20
+    assert load_settings({"SOURCE_CANDIDATE_BUDGET": "1"}).source_candidate_budget == 1
+    assert load_settings({"SOURCE_CANDIDATE_BUDGET": "500"}).source_candidate_budget == 500
+    for bad in ("0", "501", "-1", "abc", "2.5"):
+        with pytest.raises(ValueError):
+            load_settings({"SOURCE_CANDIDATE_BUDGET": bad})
+    assert Settings() == load_settings({})
 
 
 def test_source_poll_limit_bounds() -> None:

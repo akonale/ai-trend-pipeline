@@ -1,15 +1,17 @@
 """Model, helper and ID tests for the continuous source ingestion workflow."""
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 from pydantic import ValidationError
 from temporalio.contrib.pydantic import pydantic_data_converter
 
 from ai_trend_pipeline.source_ingestion import (
+    DEFAULT_SOURCE_CANDIDATE_BUDGET,
     MAX_CURSOR_LENGTH,
     MAX_PROCESSED_ID_LENGTH,
     MAX_PROCESSED_IDS,
+    MAX_SOURCE_CANDIDATE_BUDGET,
     SourceIngestionInput,
     SourceIngestionResult,
     SourceIngestionState,
@@ -51,6 +53,9 @@ def test_input_defaults_and_bounds() -> None:
     assert data.processed_ids == ()
     assert data.polls_in_run == 0
     assert data.total_polls == 0
+    assert data.candidate_budget == DEFAULT_SOURCE_CANDIDATE_BUDGET == 20
+    assert data.budget_day is None
+    assert data.candidates_started == 0
 
     assert SourceIngestionInput(source=SourceName.HN, poll_limit=100).poll_limit == 100
     assert SourceIngestionInput(source=SourceName.HN, poll_limit=1).poll_limit == 1
@@ -137,11 +142,43 @@ def test_input_round_trips_through_pydantic_data_converter_under_256kb() -> None
         processed_ids=processed,
         polls_in_run=400,
         total_polls=10_000_000,
+        candidate_budget=MAX_SOURCE_CANDIDATE_BUDGET,
+        budget_day=date(2026, 10, 9),
+        candidates_started=7,
+        budget_exhausted_day=date(2026, 10, 9),
     )
     converter = pydantic_data_converter.payload_converter
     payload = converter.to_payload(data)
     assert len(payload.data) < 256 * 1024
     assert converter.from_payload(payload, SourceIngestionInput) == data
+
+
+def test_budget_fields_defaults_and_bounds() -> None:
+    data = SourceIngestionInput(source=SourceName.HN)
+    assert data.candidate_budget == DEFAULT_SOURCE_CANDIDATE_BUDGET == 20
+    assert data.budget_day is None
+    assert data.candidates_started == 0
+    assert data.budget_exhausted_day is None
+    parsed = SourceIngestionInput(
+        source=SourceName.HN,
+        candidate_budget=500,
+        budget_day=date(2026, 10, 9),
+        candidates_started=12,
+        budget_exhausted_day=date(2026, 10, 8),
+    )
+    assert parsed.candidate_budget == MAX_SOURCE_CANDIDATE_BUDGET
+    assert parsed.budget_day == date(2026, 10, 9)
+    assert parsed.candidates_started == 12
+    assert parsed.budget_exhausted_day == date(2026, 10, 8)
+    for bad in (
+        {"candidate_budget": 0},
+        {"candidate_budget": 501},
+        {"candidates_started": -1},
+        {"budget_day": "not-a-date"},
+        {"budget_day": 12},
+    ):
+        with pytest.raises(ValidationError):
+            SourceIngestionInput.model_validate({"source": "hn", **bad})
 
 
 def test_filter_new_events_skips_processed_and_preserves_order() -> None:

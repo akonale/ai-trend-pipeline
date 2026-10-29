@@ -5,7 +5,7 @@ activities named by the source registry and `story_selection`.
 """
 
 from collections.abc import Sequence
-from datetime import datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Literal, cast
 
 from temporalio import workflow
@@ -26,6 +26,10 @@ with workflow.unsafe.imports_passed_through():
         model_validator,
     )
 
+    from ai_trend_pipeline.ingestion_logging import (
+        IngestionLogEvent,
+        log_event,
+    )
     from ai_trend_pipeline.sources.models import (
         MAX_POLL_LIMIT,
         SourceEvent,
@@ -73,6 +77,10 @@ DEFAULT_MAX_POLLS_PER_RUN = 50
 MIN_MAX_POLLS_PER_RUN = 1
 MAX_MAX_POLLS_PER_RUN = 500
 
+DEFAULT_SOURCE_CANDIDATE_BUDGET = 20
+MIN_SOURCE_CANDIDATE_BUDGET = 1
+MAX_SOURCE_CANDIDATE_BUDGET = 500
+
 POLL_ACTIVITY_TIMEOUT = timedelta(seconds=60)
 SELECT_ACTIVITY_TIMEOUT = timedelta(seconds=120)
 ACTIVITY_MAX_ATTEMPTS = 3
@@ -93,6 +101,23 @@ def _strip_cursor(value: object) -> object:
         stripped = value.strip()
         return stripped or None
     return value
+
+
+def budget_day_for(now: datetime) -> date:
+    """The UTC day a budget counter belongs to."""
+    return now.astimezone(UTC).date()
+
+
+def budget_remaining(
+    budget: int,
+    started: int,
+    day: date | None,
+    now: datetime,
+) -> int:
+    """Remaining starts for `day`; a different (or missing) day resets to the full budget."""
+    if day != budget_day_for(now):
+        return budget
+    return max(0, budget - started)
 
 
 class SourceIngestionInput(BaseModel):
@@ -122,6 +147,14 @@ class SourceIngestionInput(BaseModel):
     processed_ids: tuple[ProcessedId, ...] = Field(default=(), max_length=MAX_PROCESSED_IDS)
     polls_in_run: int = Field(default=0, ge=0)
     total_polls: int = Field(default=0, ge=0)
+    candidate_budget: int = Field(
+        default=DEFAULT_SOURCE_CANDIDATE_BUDGET,
+        ge=MIN_SOURCE_CANDIDATE_BUDGET,
+        le=MAX_SOURCE_CANDIDATE_BUDGET,
+    )
+    budget_day: date | None = None
+    candidates_started: int = Field(default=0, ge=0)
+    budget_exhausted_day: date | None = None
 
     @field_validator("cursor", mode="before")
     @classmethod
@@ -155,6 +188,14 @@ class SourceIngestionState(BaseModel):
     last_event_count: int = Field(default=0, ge=0)
     last_new_event_count: int = Field(default=0, ge=0)
     last_selected_count: int = Field(default=0, ge=0)
+    candidate_budget: int = Field(
+        default=DEFAULT_SOURCE_CANDIDATE_BUDGET,
+        ge=MIN_SOURCE_CANDIDATE_BUDGET,
+        le=MAX_SOURCE_CANDIDATE_BUDGET,
+    )
+    budget_day: date | None = None
+    candidates_started: int = Field(default=0, ge=0)
+    budget_remaining: int = Field(default=DEFAULT_SOURCE_CANDIDATE_BUDGET, ge=0)
 
     @field_validator("cursor", mode="before")
     @classmethod
@@ -165,6 +206,13 @@ class SourceIngestionState(BaseModel):
     @classmethod
     def _to_utc(cls, value: datetime | None) -> datetime | None:
         return None if value is None else ensure_aware_utc(value)
+
+    @model_validator(mode="after")
+    def _budget_remaining_from_counters(self) -> "SourceIngestionState":
+        remaining = max(0, self.candidate_budget - self.candidates_started)
+        if self.budget_remaining != remaining:
+            object.__setattr__(self, "budget_remaining", remaining)
+        return self
 
 
 class SourceIngestionResult(BaseModel):
@@ -259,6 +307,10 @@ class SourceIngestionWorkflow:
         self._last_event_count = 0
         self._last_new_event_count = 0
         self._last_selected_count = 0
+        self._candidate_budget = DEFAULT_SOURCE_CANDIDATE_BUDGET
+        self._budget_day: date | None = None
+        self._candidates_started = 0
+        self._budget_exhausted_day: date | None = None
 
     def _state(self) -> SourceIngestionState:
         return SourceIngestionState(
@@ -271,11 +323,20 @@ class SourceIngestionWorkflow:
             last_event_count=self._last_event_count,
             last_new_event_count=self._last_new_event_count,
             last_selected_count=self._last_selected_count,
+            candidate_budget=self._candidate_budget,
+            budget_day=self._budget_day,
+            candidates_started=self._candidates_started,
         )
 
     def _stopped(self) -> SourceIngestionResult:
         source = self._source
         assert source is not None
+        log_event(
+            workflow.logger,
+            IngestionLogEvent.STOPPED,
+            source,
+            total_polls=self._total_polls,
+        )
         return SourceIngestionResult(
             source=source,
             reason="stopped",
@@ -290,7 +351,25 @@ class SourceIngestionWorkflow:
                 "processed_ids": self._processed_ids,
                 "polls_in_run": 0,
                 "total_polls": self._total_polls,
+                "budget_day": self._budget_day,
+                "candidates_started": self._candidates_started,
+                "budget_exhausted_day": self._budget_exhausted_day,
             }
+        )
+
+    def _roll_budget(self, now: datetime) -> None:
+        day = budget_day_for(now)
+        if self._budget_day != day:
+            self._budget_day = day
+            self._candidates_started = 0
+            self._budget_exhausted_day = None
+
+    def _remaining(self, now: datetime) -> int:
+        return budget_remaining(
+            self._candidate_budget,
+            self._candidates_started,
+            self._budget_day,
+            now,
         )
 
     def _record_poll(self, event_count: int, new_event_count: int) -> None:
@@ -334,11 +413,20 @@ class SourceIngestionWorkflow:
         except ActivityError as exc:
             if is_cancelled_exception(exc):
                 raise
-            workflow.logger.error("Source poll failed; continuing: %s", type(exc).__name__)
+            log_event(
+                workflow.logger,
+                IngestionLogEvent.POLL_FAILED,
+                data.source,
+                poll=self._total_polls + 1,
+                error_type=type(exc).__name__,
+            )
             return None
 
     async def _select(
-        self, batch: Sequence[SourceEvent], max_candidates: int
+        self,
+        batch: Sequence[SourceEvent],
+        max_candidates: int,
+        source: SourceName,
     ) -> list[SelectedStory]:
         try:
             # Same string-name overload; the activity is named by contract, not imported.
@@ -355,24 +443,45 @@ class SourceIngestionWorkflow:
         except ActivityError as exc:
             if is_cancelled_exception(exc):
                 raise
-            workflow.logger.error("Story selection failed; skipping batch: %s", type(exc).__name__)
+            log_event(
+                workflow.logger,
+                IngestionLogEvent.SELECTION_FAILED,
+                source,
+                batch_size=len(batch),
+                error_type=type(exc).__name__,
+            )
             return []
+        log_event(
+            workflow.logger,
+            IngestionLogEvent.SELECTION,
+            source,
+            batch_size=len(batch),
+            selected_count=len(output.selections),
+            max_candidates=max_candidates,
+            budget_remaining=self._remaining(workflow.now()),
+        )
         return output.selections
 
     async def _start_candidates(
         self,
         batch: Sequence[SourceEvent],
         selections: Sequence[SelectedStory],
+        limit: int,
         data: SourceIngestionInput,
     ) -> int:
         by_id = {event.external_id: event for event in batch}
         started = 0
         for selection in selections:
-            if started >= data.max_candidates:
+            if started >= limit:
                 break
             event = by_id.get(selection.external_id)
             if event is None:
-                workflow.logger.warning("Skipping a selection outside the polled batch")
+                log_event(
+                    workflow.logger,
+                    IngestionLogEvent.SELECTION_OUTSIDE_BATCH,
+                    data.source,
+                    external_id=selection.external_id,
+                )
                 continue
             candidate = StoryCandidate(
                 source=event.source,
@@ -386,6 +495,7 @@ class SourceIngestionWorkflow:
                 selection_reason=selection.selection_reason,
                 metrics=dict(event.metrics),
             )
+            candidate_id = candidate_id_for(candidate.source, candidate.external_id)
             try:
                 await workflow.start_child_workflow(
                     StoryCandidateWorkflow.run,
@@ -393,7 +503,7 @@ class SourceIngestionWorkflow:
                         candidate=candidate,
                         review_timeout_seconds=data.review_timeout_seconds,
                     ),
-                    id=candidate_id_for(candidate.source, candidate.external_id),
+                    id=candidate_id,
                     task_queue=CANDIDATE_TASK_QUEUE,
                     parent_close_policy=workflow.ParentClosePolicy.ABANDON,
                     id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
@@ -401,9 +511,24 @@ class SourceIngestionWorkflow:
                     memo=candidate_memo(candidate),
                 )
             except WorkflowAlreadyStartedError:
-                workflow.logger.warning("Candidate already started; ignoring duplicate")
+                log_event(
+                    workflow.logger,
+                    IngestionLogEvent.CANDIDATE_DUPLICATE,
+                    data.source,
+                    external_id=event.external_id,
+                    candidate_id=candidate_id,
+                )
                 continue
+            self._candidates_started += 1
             started += 1
+            log_event(
+                workflow.logger,
+                IngestionLogEvent.CANDIDATE_STARTED,
+                data.source,
+                external_id=event.external_id,
+                candidate_id=candidate_id,
+                budget_remaining=self._remaining(workflow.now()),
+            )
         return started
 
     @workflow.run
@@ -413,10 +538,22 @@ class SourceIngestionWorkflow:
         self._processed_ids = data.processed_ids
         self._polls_in_run = data.polls_in_run
         self._total_polls = data.total_polls
+        self._candidate_budget = data.candidate_budget
+        self._budget_day = data.budget_day
+        self._candidates_started = data.candidates_started
+        self._budget_exhausted_day = data.budget_exhausted_day
+        log_event(
+            workflow.logger,
+            IngestionLogEvent.STARTED,
+            data.source,
+            polls_in_run=self._polls_in_run,
+            total_polls=self._total_polls,
+        )
 
         while True:
             if self._stop_requested:
                 return self._stopped()
+            self._roll_budget(workflow.now())
 
             output = await self._poll(data)
             if output is None:
@@ -425,19 +562,54 @@ class SourceIngestionWorkflow:
                 self._cursor = advance_cursor(self._cursor, output.events)
                 batch = prefilter_events(filter_new_events(output.events, self._processed_ids))
                 self._record_poll(len(output.events), len(batch))
+                remaining = self._remaining(workflow.now())
+                log_event(
+                    workflow.logger,
+                    IngestionLogEvent.POLL,
+                    data.source,
+                    poll=self._total_polls,
+                    event_count=len(output.events),
+                    new_event_count=len(batch),
+                    batch_size=len(batch),
+                    cursor=self._cursor,
+                    budget_remaining=remaining,
+                )
                 if batch:
-                    selections = await self._select(batch, data.max_candidates)
-                    self._processed_ids = append_processed_ids(
-                        self._processed_ids,
-                        [event.external_id for event in batch],
-                    )
-                    self._last_selected_count = await self._start_candidates(
-                        batch, selections, data
-                    )
+                    if remaining == 0:
+                        day = self._budget_day
+                        assert day is not None
+                        if self._budget_exhausted_day != day:
+                            log_event(
+                                workflow.logger,
+                                IngestionLogEvent.BUDGET_EXHAUSTED,
+                                data.source,
+                                day=str(day),
+                                budget=self._candidate_budget,
+                                candidates_started=self._candidates_started,
+                            )
+                            self._budget_exhausted_day = day
+                    else:
+                        limit = min(data.max_candidates, remaining)
+                        selections = await self._select(batch, limit, data.source)
+                        self._processed_ids = append_processed_ids(
+                            self._processed_ids,
+                            [event.external_id for event in batch],
+                        )
+                        self._last_selected_count = await self._start_candidates(
+                            batch, selections, limit, data
+                        )
 
             if self._stop_requested:
                 return self._stopped()
             if self._should_continue_as_new(data):
+                log_event(
+                    workflow.logger,
+                    IngestionLogEvent.CONTINUE_AS_NEW,
+                    data.source,
+                    total_polls=self._total_polls,
+                    processed_count=len(self._processed_ids),
+                    cursor=self._cursor,
+                )
                 workflow.continue_as_new(self._next_input(data))
             await self._wait(data)
 

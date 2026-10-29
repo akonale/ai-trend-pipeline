@@ -30,7 +30,7 @@ MetricValue = Annotated[int, Field(ge=0, le=MAX_METRIC_VALUE)]
 
 
 class SourceName(StrEnum):
-    """Registered-by-contract names; only `hn` is in the registry in this task."""
+    """Registered names; `hn` is the real connector, `fake` is a test-only second source."""
 
     HN = "hn"
     FAKE = "fake"

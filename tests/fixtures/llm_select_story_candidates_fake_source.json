@@ -1,0 +1,27 @@
+{
+  "id": "msg_01StorySelectionFakeSource",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-5-5",
+  "content": [
+    {"type": "text", "text": "One test-source story looks worth reviewing."},
+    {
+      "type": "tool_use",
+      "id": "toolu_01StorySelectionFakeSource",
+      "name": "select_story_candidates",
+      "input": {
+        "selections": [
+          {
+            "external_id": "fake-1001",
+            "summary": "A test-source story about a local transit pilot.",
+            "proposed_angle": "What the pilot changes for daily commuters.",
+            "selection_reason": "A concrete local service change with a clear audience."
+          }
+        ]
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {"input_tokens": 380, "output_tokens": 92}
+}

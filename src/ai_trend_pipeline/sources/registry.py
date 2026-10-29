@@ -29,6 +29,11 @@ _REGISTRY = {
         label="Hacker News",
         poll_activity="poll_hn_source",
     ),
+    SourceName.FAKE: SourceDefinition(
+        name=SourceName.FAKE,
+        label="Test source",
+        poll_activity="poll_fake_source",
+    ),
 }
 
 REGISTRY: Mapping[SourceName, SourceDefinition] = MappingProxyType(_REGISTRY)

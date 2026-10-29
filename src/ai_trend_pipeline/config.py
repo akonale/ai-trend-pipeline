@@ -42,6 +42,7 @@ class Settings(BaseModel):
     candidate_review_timeout_s: int = Field(
         default=DEFAULT_CANDIDATE_REVIEW_TIMEOUT_S, ge=1, le=604800
     )
+    source_candidate_budget: int = Field(default=20, ge=1, le=500)
 
     @field_validator("source_enabled")
     @classmethod
@@ -103,4 +104,5 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         candidate_review_timeout_s=int(
             env.get("CANDIDATE_REVIEW_TIMEOUT_S") or DEFAULT_CANDIDATE_REVIEW_TIMEOUT_S
         ),
+        source_candidate_budget=int(env.get("SOURCE_CANDIDATE_BUDGET") or 20),
     )

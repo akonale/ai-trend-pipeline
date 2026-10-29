@@ -6,7 +6,9 @@ root and always pass `--env-file .env.prod`: compose would otherwise look for `.
 compose file (`infra/`).
 
 `.env.prod` is separate from the dev `.env`. Prod never reads `.env`. Public access through the
-Cloudflare Tunnel is covered in [cloudflare.md](cloudflare.md).
+Cloudflare Tunnel is covered in [cloudflare.md](cloudflare.md). Source ingestion is covered in
+[ingestion.md](ingestion.md) and its search attributes in
+[search-attributes.md](search-attributes.md).
 
 ## `.env.prod` keys
 
@@ -18,6 +20,12 @@ Cloudflare Tunnel is covered in [cloudflare.md](cloudflare.md).
 - `BLUESKY_HANDLE`
 - `BLUESKY_APP_PASSWORD`
 - `APP_URL` (optional, documentation only; the web hostname, for example `app.example.com`)
+- `SOURCE_ENABLED` (optional, default `hn`; comma-separated registered sources. Never include `fake` in prod)
+- `SOURCE_POLL_LIMIT` (optional, default 30, 1-100)
+- `SOURCE_POLL_INTERVAL_S` (optional, default 300, 30-3600)
+- `SOURCE_POLL_TIMEOUT_S` (optional, default 15.0, over 0 and at most 60)
+- `CANDIDATE_REVIEW_TIMEOUT_S` (optional, default 172800, 1-604800)
+- `SOURCE_CANDIDATE_BUDGET` (optional, default 20, 1-500; new candidate workflows per source per UTC day)
 
 `DATABASE_URL` (style profiles) is assembled in compose from `POSTGRES_PASSWORD`, so it needs no new
 `.env.prod` key. It requires a password without spaces, quotes or backslashes.
@@ -59,7 +67,8 @@ just deploy   # git pull --ff-only, then compose up -d --build
 ```
 
 After a deploy, ensure the configured source ingestion workflows exist (idempotent, safe to re-run;
-worker startup does not start them):
+worker startup does not start them). Full procedure: [ingestion.md](ingestion.md); register the
+candidate search attributes per [search-attributes.md](search-attributes.md) on a fresh stack.
 
 ```sh
 env -i PATH="$PATH" HOME="$HOME" docker compose -f infra/compose.prod.yaml --env-file .env.prod \

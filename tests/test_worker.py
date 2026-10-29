@@ -52,6 +52,7 @@ def test_ingestion_workflow_and_activities_registered_on_ingestion_queue() -> No
     assert SOURCE_INGESTION_TASK_QUEUE == "source-ingestion-task-queue"
     activities = ingestion_activities(anthropic.AsyncAnthropic(api_key="test"), httpx.AsyncClient())
     assert sorted(activity.__name__ for activity in activities) == [
+        "poll_fake_source",
         "poll_hn_source",
         "select_story_candidates",
     ]

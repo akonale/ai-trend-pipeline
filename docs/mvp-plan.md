@@ -63,8 +63,9 @@ profile), `/health`. Templates are in `web/templates/`, the only stylesheet is `
 
 **Design direction (applies to 036-041):**
 - Neo-brutalism: thick near-black borders (about 3px), hard offset shadows with no blur, flat
-  saturated colour blocks (one bold accent plus two supporting colours on an off-white or cream
-  ground), oversized heavy headings, chunky buttons that "press" (shadow collapses) on active,
+  saturated colour blocks (one bold accent plus two supporting colours; the planner picks the
+  ground and palette with the `frontend-design` skill and must not reuse the current cream and
+  terracotta look), oversized heavy headings, chunky buttons that "press" (shadow collapses) on active,
   square or barely rounded corners, visible grid and generous spacing. Playful, not messy.
 - Keep light and dark themes (`prefers-color-scheme`), driven by CSS custom tokens in `:root`.
 - Accessibility is a hard requirement: text contrast at least 4.5:1, borders, focus rings and
@@ -75,6 +76,11 @@ profile), `/health`. Templates are in `web/templates/`, the only stylesheet is `
   its licence text, only if the planner shows a clear gain.
 - Templates stay logic-free (loops and ifs only); all labels, step states and URLs come from
   `web/view_models.py`.
+
+**Design skill:** the planner and builder agents load the `frontend-design` skill (the `skills:`
+field in `.claude/agents/planner.md` and `builder.md`) and use it on UI tasks. The planner writes
+the design decisions into each spec; the task row and the constraints above win over the skill's
+defaults.
 
 **Layout decision:** a top **header** (brand, main nav, signed-in user) plus the **stepper**
 beneath it, and a slim **footer**. No sidebar for now: the only thing it would hold is a list of

@@ -1,6 +1,6 @@
 # 043: Batch LLM editorial selection
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -133,3 +133,8 @@ not depend on connectors) and out of any workflow module. Suggested contents:
 **builder**: Added `story_selection.py`, 18 tests, and 8 recorded fixtures; module map row added; no worker/topic wiring.
 **builder**: Activity takes an injected `AsyncAnthropic` client (matching `TopicActivities`); `make_anthropic_client` stays in `topic.py` for 048 to reuse.
 **builder**: `just lint` and full `just test` pass (548 tests) with harness `ANTHROPIC_*` base-url vars unset. Next: verifier.
+**verifier**: `just lint` passes (ruff check, ruff format --check, pyright 0 errors).
+**verifier**: First `just test` run failed 54 LLM tests with `anthropic.APIConnectionError` because harness `ANTHROPIC_*` base-url vars were set; rerun with them unset passed 548/548.
+**verifier**: Status verified. Next: reviewer.
+**reviewer**: Approved. 18 spec tests present and all pass; lint and pyright strict clean; fixtures only, no live calls.
+**reviewer**: Note: `DEFAULT_MODEL` is imported from `topic.py`, so this module transitively imports `hn`/`owid`/`config`; no forbidden direct imports and no behavioural impact.

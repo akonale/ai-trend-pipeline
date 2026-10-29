@@ -1,6 +1,6 @@
 # 046: Candidate detail and decision page
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -319,3 +319,5 @@ harness `ANTHROPIC_*` base-url vars unset. Screenshots (360/1280, light/dark) in
 **verifier**: `just lint` passes; `just test` passes (608) with harness `ANTHROPIC_*` base-url vars unset. With them set, 54 pre-existing LLM tests fail on `anthropic.APIConnectionError` only. Next: reviewer.
 
 **reviewer**: Approved. Checked every criterion, the 360/1280 light and dark screenshots, escaping, http/https-only source link, 404/410 and the PRG closed notice; routes stay thin and decisions reach only `CandidateService.decide`. No service, gateway or workflow changes; no live calls; `just lint` and the candidate/web tests pass. Next: scribe.
+
+**scribe**: README now documents the detail page, decision redirect and 404/410 pages; tech.md route and template tables were updated by the builder. Pushed `task/046-candidate-detail` and opened PR #52: https://github.com/akonale/ai-trend-pipeline/pull/52. Next: human review and merge (never merged by agents).

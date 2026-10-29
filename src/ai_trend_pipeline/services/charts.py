@@ -17,6 +17,7 @@ from ai_trend_pipeline.daily_chart import (
 )
 from ai_trend_pipeline.post_options import PostOptions, merge_style
 from ai_trend_pipeline.services.styles import StyleStore
+from ai_trend_pipeline.style import ChartStyle
 
 
 class StartChartRequest(BaseModel):
@@ -25,6 +26,7 @@ class StartChartRequest(BaseModel):
     unique_id: bool = False
     requested_by: str | None = None
     options: PostOptions | None = None
+    save_as_default: bool = False
 
 
 class StartChartResult(BaseModel):
@@ -137,6 +139,10 @@ class ChartService:
         if req.requested_by and self._styles is not None:
             style = await self._styles.get(req.requested_by)
         style = merge_style(style, req.options)
+        if req.save_as_default and req.requested_by and self._styles is not None:
+            # Save before starting: a failed save then leaves no run behind. A saved profile
+            # is harmless and idempotent even if the start below fails.
+            await self._styles.save(req.requested_by, style or ChartStyle())
         output_dir = self._settings.chart_output_dir
         if output_dir:
             data = DailyChartInput(

@@ -6,7 +6,15 @@ from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 
-from ai_trend_pipeline.style import TONES, ChartStyle
+from ai_trend_pipeline.style import (
+    ChartStyle,
+    check_font,
+    check_hashtags,
+    check_palette,
+    check_signature,
+    check_tone,
+    parse_hashtags,
+)
 
 CHART_TYPES: dict[str, str] = {"line": "Line", "bar": "Bar (latest value)", "area": "Area"}
 TIME_PRESETS: dict[str, str] = {
@@ -22,6 +30,7 @@ MAX_COUNTRY_CHARS = 60
 MAX_INSTRUCTIONS_CHARS = 300
 CLOSE_MATCH_CUTOFF = 0.8
 _PRESET_YEARS = {"last10": 10, "last20": 20, "last50": 50}
+STYLE_OVERRIDE_FIELDS = ("palette", "font", "tone", "hashtags", "signature")
 
 
 class PostOptions(BaseModel):
@@ -34,6 +43,10 @@ class PostOptions(BaseModel):
     countries: list[str] = Field(default_factory=list)
     tone: str | None = None
     instructions: str = ""
+    palette: str | None = None
+    font: str | None = None
+    hashtags: list[str] | None = None
+    signature: str | None = None
 
     @field_validator("chart_type")
     @classmethod
@@ -56,9 +69,27 @@ class PostOptions(BaseModel):
     @field_validator("tone")
     @classmethod
     def _tone(cls, value: str | None) -> str | None:
-        if value is not None and value not in TONES:
-            raise ValueError(f"unknown tone {value!r}; choose one of {', '.join(TONES)}")
-        return value
+        return None if value is None else check_tone(value)
+
+    @field_validator("palette")
+    @classmethod
+    def _palette(cls, value: str | None) -> str | None:
+        return None if value is None else check_palette(value)
+
+    @field_validator("font")
+    @classmethod
+    def _font(cls, value: str | None) -> str | None:
+        return None if value is None else check_font(value)
+
+    @field_validator("hashtags")
+    @classmethod
+    def _hashtags(cls, value: list[str] | None) -> list[str] | None:
+        return None if value is None else check_hashtags(value)
+
+    @field_validator("signature")
+    @classmethod
+    def _signature(cls, value: str | None) -> str | None:
+        return None if value is None else check_signature(value)
 
     @field_validator("from_year", "to_year")
     @classmethod
@@ -132,6 +163,13 @@ def options_from_form(
     countries: str,
     tone: str,
     instructions: str,
+    *,
+    palette: str = "",
+    font: str = "",
+    hashtags: str = "",
+    signature: str = "",
+    hashtags_none: bool = False,
+    signature_none: bool = False,
 ) -> PostOptions | None:
     values: dict[str, str | list[str]] = {
         "chart_type": chart_type.strip(),
@@ -141,17 +179,41 @@ def options_from_form(
         "countries": parse_countries(countries),
         "tone": tone.strip(),
         "instructions": instructions.strip(),
+        "palette": palette.strip(),
+        "font": font.strip(),
     }
     given = {k: v for k, v in values.items() if v}
+    # A ticked "No ... on this chart" box wins over typed text and clears the field.
+    tags = [] if hashtags_none else parse_hashtags(hashtags)
+    if hashtags_none or tags:
+        given["hashtags"] = tags
+    sig = "" if signature_none else signature.strip()
+    if signature_none or sig:
+        given["signature"] = sig
     if not given:
         return None
     return PostOptions.model_validate(given)
 
 
 def merge_style(profile: ChartStyle | None, options: PostOptions | None) -> ChartStyle | None:
-    if options is not None and options.tone is not None:
-        return (profile or ChartStyle()).model_copy(update={"tone": options.tone})
-    return profile
+    """Per field: per-chart value > profile value > ChartStyle() default."""
+    if options is None:
+        return profile
+    overrides: dict[str, str | list[str]] = {}
+    if options.palette is not None:
+        overrides["palette"] = options.palette
+    if options.font is not None:
+        overrides["font"] = options.font
+    if options.tone is not None:
+        overrides["tone"] = options.tone
+    if options.hashtags is not None:
+        overrides["hashtags"] = options.hashtags
+    if options.signature is not None:
+        overrides["signature"] = options.signature
+    if not overrides:
+        return profile
+    base = (profile or ChartStyle()).model_dump()
+    return ChartStyle.model_validate({**base, **overrides})
 
 
 class _YearEntityRow(Protocol):

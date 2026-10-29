@@ -39,23 +39,56 @@
     <label for="countries">Countries</label>
     <input type="text" id="countries" name="countries" maxlength="{{ view.max_countries_text }}" value="{{ view.options.countries }}" aria-describedby="countries-help">
     <p class="meta" id="countries-help">Up to {{ view.max_countries }}, separated by commas, e.g. France, Japan</p>
+    <label for="instructions">Instructions</label>
+    <textarea id="instructions" name="instructions" rows="3" maxlength="{{ view.max_instructions }}" aria-describedby="instructions-help">{{ view.options.instructions }}</textarea>
+    <p class="meta" id="instructions-help">Up to {{ view.max_instructions }} characters. Steers the caption wording only.</p>
+  </section>
+  <section class="card style-panel" aria-labelledby="style-panel-h">
+    <h2 id="style-panel-h">Style for this chart</h2>
+    <p class="meta">{{ view.notice }}</p>
+    <fieldset>
+      <legend>Palette</legend>
+      <div class="swatches">
+        {% for p in view.palettes %}<label class="swatch">
+          <input type="radio" name="palette" value="{{ p.key }}"{% if p.checked %} checked{% endif %}>
+          {% if p.colors %}<span class="swatch-colors" aria-hidden="true">{% for c in p.colors %}<i style="background: {{ c }}"></i>{% endfor %}</span>
+          {% endif %}<span class="swatch-name">{{ p.label }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <label for="font">Font</label>
+    <select id="font" name="font">
+      {% for o in view.fonts %}<option value="{{ o.key }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>
+      {% endfor %}
+    </select>
     <label for="tone">Caption tone</label>
     <select id="tone" name="tone" aria-describedby="tone-help">
       {% for o in view.tones %}<option value="{{ o.key }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>
       {% endfor %}
     </select>
-    <p class="meta" id="tone-help">Blank uses your saved style.</p>
-    <label for="instructions">Instructions</label>
-    <textarea id="instructions" name="instructions" rows="3" maxlength="{{ view.max_instructions }}" aria-describedby="instructions-help">{{ view.options.instructions }}</textarea>
-    <p class="meta" id="instructions-help">Up to {{ view.max_instructions }} characters. Steers the caption wording only.</p>
-  </section>
-  <section class="card style-summary" aria-labelledby="style-summary-h">
-    <h2 id="style-summary-h">Your saved style</h2>
-    {% if view.summary %}<dl class="options-list">
-      {% for l in view.summary %}<dt>{{ l.label }}</dt>
-      <dd>{% if l.colors %}<span class="swatch-colors" aria-hidden="true">{% for c in l.colors %}<i style="background: {{ c }}"></i>{% endfor %}</span>{% endif %}{{ l.value }}</dd>
-      {% endfor %}
-    </dl>{% else %}<p class="meta">{{ view.notice }}</p>{% endif %}
+    <p class="meta" id="tone-help">Sets how the caption reads.</p>
+    <label for="hashtags">Hashtags</label>
+    <input type="text" id="hashtags" name="hashtags" value="{{ view.options.hashtags }}" aria-describedby="hashtags-help">
+    <p class="meta" id="hashtags-help">{{ view.hashtags_help }}</p>
+    <div class="check-row">
+      <input type="checkbox" id="hashtags_none" name="hashtags_none" value="1"{% if view.options.hashtags_none %} checked{% endif %}>
+      <label for="hashtags_none">No hashtags on this chart</label>
+    </div>
+    <label for="signature">Signature</label>
+    <input type="text" id="signature" name="signature" maxlength="{{ view.max_signature }}" value="{{ view.options.signature }}" aria-describedby="signature-help">
+    <p class="meta" id="signature-help">{{ view.signature_help }}</p>
+    <div class="check-row">
+      <input type="checkbox" id="signature_none" name="signature_none" value="1"{% if view.options.signature_none %} checked{% endif %}>
+      <label for="signature_none">No signature on this chart</label>
+    </div>
+    {% if view.can_save_default %}<div class="check-row save-default">
+      <input type="checkbox" id="save_default" name="save_default" value="1" aria-describedby="save_default-help"{% if view.options.save_default %} checked{% endif %}>
+      <label for="save_default">Save as my default</label>
+    </div>
+    <p class="meta" id="save_default-help">Also saves these choices as your style for future charts. Blank fields keep your saved value.</p>
+    {% else %}<p class="meta save-default">{{ view.save_note }}</p>
+    {% endif %}
     <p class="meta">Changes there apply to every chart.</p>
     <a href="/settings">Edit your style</a>
   </section>

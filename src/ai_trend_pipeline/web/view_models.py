@@ -137,6 +137,13 @@ class OptionsFormValues(BaseModel):
     countries: str = ""
     tone: str = ""
     instructions: str = ""
+    palette: str = ""
+    font: str = ""
+    hashtags: str = ""
+    signature: str = ""
+    hashtags_none: str = ""
+    signature_none: str = ""
+    save_default: str = ""
 
     def any_set(self) -> bool:
         return any(v.strip() for v in self.model_dump().values())
@@ -196,7 +203,22 @@ def build_home_view(
 STYLE_NOTICE_UNAVAILABLE = "Your saved style could not be loaded right now. Generate still works."
 STYLE_NOTICE_SIGN_IN = "Sign in to see your saved style."
 STYLE_NOTICE_APPLIED = "Your saved style is applied when you generate."
+SAVE_DEFAULT_UNAVAILABLE = (
+    "Saving a default is off right now because your saved style could not be loaded."
+)
+SAVE_DEFAULT_SIGN_IN = "Sign in to save a default style."
+STYLE_INTRO = (
+    "Your saved style is filled in. Change any field to use something else on this chart only."
+)
+SAVED_UNKNOWN = "Saved style"
 TOPIC_TOO_LONG_ERROR = f"Your topic is too long. Use {MAX_TOPIC_LENGTH} characters or fewer."
+
+
+class PaletteChoice(BaseModel):
+    key: str
+    label: str
+    colors: list[str]
+    checked: bool
 
 
 class StyleStepView(BaseModel):
@@ -208,7 +230,14 @@ class StyleStepView(BaseModel):
     chart_types: list[ChoiceOption]
     time_presets: list[ChoiceOption]
     tones: list[ChoiceOption]
-    summary: list[OptionLine] = []
+    palettes: list[PaletteChoice]
+    fonts: list[ChoiceOption]
+    profile_known: bool
+    hashtags_help: str
+    signature_help: str
+    max_signature: int = MAX_SIGNATURE_CHARS
+    can_save_default: bool
+    save_note: str = ""
     notice: str = ""
     min_year: int = MIN_YEAR
     max_year: int = MAX_YEAR
@@ -217,16 +246,11 @@ class StyleStepView(BaseModel):
     max_instructions: int = MAX_INSTRUCTIONS_CHARS
 
 
-def style_summary_lines(style: ChartStyle) -> list[OptionLine]:
-    return [
-        OptionLine(
-            label="Palette", value=style.palette.capitalize(), colors=list(PALETTES[style.palette])
-        ),
-        OptionLine(label="Font", value=style.font.capitalize()),
-        OptionLine(label="Caption tone", value=style.tone.capitalize()),
-        OptionLine(label="Hashtags", value=" ".join(f"#{t}" for t in style.hashtags) or "None"),
-        OptionLine(label="Signature", value=style.signature or "None"),
-    ]
+HASHTAGS_RULE = f"Up to {MAX_HASHTAGS}, separated by spaces or commas."
+
+
+def _saved(value: str | None) -> str:
+    return SAVED_UNKNOWN if value is None else f"Saved: {value.capitalize()}"
 
 
 def build_style_step_view(
@@ -235,9 +259,29 @@ def build_style_step_view(
     style: ChartStyle | None = None,
     notice: str = "",
     error: str = "",
+    save_note: str = "",
 ) -> StyleStepView:
     topic = topic.strip()
     change_href = f"/?{flow_query(topic, options)}"
+    palettes = [
+        PaletteChoice(
+            key="",
+            label=_saved(style.palette if style else None),
+            colors=list(PALETTES[style.palette]) if style else [],
+            checked=options.palette == "",
+        )
+    ]
+    palettes += [
+        PaletteChoice(key=k, label=k.capitalize(), colors=list(v), checked=k == options.palette)
+        for k, v in PALETTES.items()
+    ]
+    if style is None:
+        hashtags_help = f"Leave blank to use your saved hashtags. {HASHTAGS_RULE}"
+        signature_help = "Leave blank to use your saved signature."
+    else:
+        tags = " ".join(f"#{t}" for t in style.hashtags) or "None"
+        hashtags_help = f"Saved: {tags}. Leave blank to use it. {HASHTAGS_RULE}"
+        signature_help = f"Saved: {style.signature or 'None'}. Leave blank to use it."
     return StyleStepView(
         error=error,
         topic=topic,
@@ -246,11 +290,39 @@ def build_style_step_view(
         options=options,
         chart_types=_choices(CHART_TYPES, options.chart_type, "Default"),
         time_presets=_choices(TIME_PRESETS, options.time_preset, "Default"),
-        tones=_choices({k: k for k in TONES}, options.tone, "Your style", capitalise=True),
-        summary=style_summary_lines(style) if style is not None else [],
-        notice=notice,
+        tones=_choices(
+            {k: k for k in TONES},
+            options.tone,
+            _saved(style.tone if style else None),
+            capitalise=True,
+        ),
+        palettes=palettes,
+        fonts=_choices(
+            {k: k for k in FONTS},
+            options.font,
+            _saved(style.font if style else None),
+            capitalise=True,
+        ),
+        profile_known=style is not None,
+        hashtags_help=hashtags_help,
+        signature_help=signature_help,
+        can_save_default=not save_note,
+        save_note=save_note,
+        notice=STYLE_INTRO if style is not None else notice,
     )
 
+
+STYLE_ERRORS = {
+    "palette": "Palette: pick one of the listed palettes.",
+    "font": "Font: pick one of the listed fonts.",
+    "tone": "Tone: pick one of the listed tones.",
+    "hashtags": (
+        f"Hashtags: use at most {MAX_HASHTAGS}, each 1 to 24 letters, digits or underscores."
+    ),
+    "signature": (
+        f"Signature: use at most {MAX_SIGNATURE_CHARS} printable characters on a single line."
+    ),
+}
 
 OPTIONS_ERRORS = {
     "chart_type": "Chart type: pick line, bar or area.",
@@ -264,6 +336,10 @@ OPTIONS_ERRORS = {
     ),
     "tone": "Caption tone: pick one of the listed tones.",
     "instructions": f"Instructions: at most {MAX_INSTRUCTIONS_CHARS} characters.",
+    "palette": STYLE_ERRORS["palette"],
+    "font": STYLE_ERRORS["font"],
+    "hashtags": STYLE_ERRORS["hashtags"],
+    "signature": STYLE_ERRORS["signature"],
 }
 
 
@@ -332,6 +408,15 @@ def option_lines(options: PostOptions | None) -> list[OptionLine]:
         lines.append(OptionLine(label="Countries", value=", ".join(options.countries)))
     if options.tone is not None:
         lines.append(OptionLine(label="Caption tone", value=options.tone.capitalize()))
+    if options.palette is not None:
+        lines.append(OptionLine(label="Palette", value=options.palette.capitalize()))
+    if options.font is not None:
+        lines.append(OptionLine(label="Font", value=options.font.capitalize()))
+    if options.hashtags is not None:
+        tags = " ".join(f"#{t}" for t in options.hashtags)
+        lines.append(OptionLine(label="Hashtags", value=tags or "None"))
+    if options.signature is not None:
+        lines.append(OptionLine(label="Signature", value=options.signature or "None"))
     if options.instructions:
         lines.append(OptionLine(label="Instructions", value=options.instructions))
     return lines
@@ -447,19 +532,5 @@ def build_settings_view(
 
 def style_error_message(exc: ValidationError) -> str:
     fields = {str(e["loc"][0]) for e in exc.errors() if e["loc"]}
-    parts: list[str] = []
-    if "palette" in fields:
-        parts.append("Palette: pick one of the listed palettes.")
-    if "font" in fields:
-        parts.append("Font: pick one of the listed fonts.")
-    if "tone" in fields:
-        parts.append("Tone: pick one of the listed tones.")
-    if "hashtags" in fields:
-        parts.append(
-            f"Hashtags: use at most {MAX_HASHTAGS}, each 1 to 24 letters, digits or underscores."
-        )
-    if "signature" in fields:
-        parts.append(
-            f"Signature: use at most {MAX_SIGNATURE_CHARS} printable characters on a single line."
-        )
+    parts = [msg for key, msg in STYLE_ERRORS.items() if key in fields]
     return " ".join(parts) or "Check your style and try again."

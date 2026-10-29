@@ -149,11 +149,19 @@ always renders.
 
 #### Merge precedence
 
-per-post option > stored profile > default. Only `tone` can be overridden per post
-(`merge_style` copies the profile, or a default `ChartStyle()`, with the option's tone). The
-profile comes from `StyleStore.get(requested_by)`; the default is `ChartStyle()` (classic, sans,
-neutral, no hashtags). With no profile and no tone option, `style` is `None` and the spec is left
-as the model wrote it.
+per-post option > stored profile > default, field by field. All five style fields (palette, font,
+tone, hashtags, signature) can be overridden for one chart on step 2. `None` means "use the
+profile"; `[]` (hashtags) and `""` (signature) mean "none on this chart", set by the "No ... on this
+chart" boxes, which win over typed text. `merge_style` returns the profile itself when no style
+field is set, otherwise it builds a validated `ChartStyle` from the profile (or `ChartStyle()`) plus
+the overrides. The profile comes from `StyleStore.get(requested_by)`; the default is `ChartStyle()`
+(classic, sans, neutral, no hashtags). With no profile and no style option, `style` is `None` and
+the spec is left as the model wrote it.
+
+"Save as my default" (step 2 checkbox, signed-in users only): after the daily-cap check and the
+merge, `ChartService.start` saves the whole effective style with `StyleStore.save`, then starts the
+run. A failed save returns 503 and starts nothing; a capped person gets 429 and nothing is read or
+saved. If the start fails after a successful save (409, Temporal down) the profile stays saved.
 
 #### Free-text instructions and prompt injection
 

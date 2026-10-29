@@ -53,6 +53,13 @@ async def create_run(
     countries: Annotated[str, Form()] = "",
     tone: Annotated[str, Form()] = "",
     instructions: Annotated[str, Form()] = "",
+    palette: Annotated[str, Form()] = "",
+    font: Annotated[str, Form()] = "",
+    hashtags: Annotated[str, Form()] = "",
+    signature: Annotated[str, Form()] = "",
+    hashtags_none: Annotated[str, Form()] = "",
+    signature_none: Annotated[str, Form()] = "",
+    save_default: Annotated[str, Form()] = "",
     user: CurrentUser = Depends(current_user),
     service: ChartService = Depends(get_chart_service),
     templates: Jinja2Templates = Depends(get_templates),
@@ -66,6 +73,13 @@ async def create_run(
         countries=countries,
         tone=tone,
         instructions=instructions,
+        palette=palette,
+        font=font,
+        hashtags=hashtags,
+        signature=signature,
+        hashtags_none=hashtags_none,
+        signature_none=signature_none,
+        save_default=save_default,
     )
 
     def step_one(error: str, status_code: int) -> HTMLResponse:
@@ -84,13 +98,31 @@ async def create_run(
         return step_one(f"Error: enter a topic of 1 to {MAX_TOPIC_LENGTH} characters.", 400)
     try:
         options = options_from_form(
-            chart_type, time_preset, from_year, to_year, countries, tone, instructions
+            chart_type,
+            time_preset,
+            from_year,
+            to_year,
+            countries,
+            tone,
+            instructions,
+            palette=palette,
+            font=font,
+            hashtags=hashtags,
+            signature=signature,
+            hashtags_none=hashtags_none == "1",
+            signature_none=signature_none == "1",
         )
     except ValidationError as exc:
         return step_two(options_error_message(exc), 400)
     try:
         result = await service.start(
-            StartChartRequest(topic=topic, unique_id=True, requested_by=user.email, options=options)
+            StartChartRequest(
+                topic=topic,
+                unique_id=True,
+                requested_by=user.email,
+                options=options,
+                save_as_default=save_default == "1",
+            )
         )
     except DailyCapReached as exc:
         return step_two(str(exc), 429)

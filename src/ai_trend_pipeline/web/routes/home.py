@@ -14,6 +14,8 @@ from ai_trend_pipeline.web.dependencies import (
 )
 from ai_trend_pipeline.web.view_models import (
     MAX_TOPIC_LENGTH,
+    SAVE_DEFAULT_SIGN_IN,
+    SAVE_DEFAULT_UNAVAILABLE,
     STYLE_NOTICE_SIGN_IN,
     STYLE_NOTICE_UNAVAILABLE,
     TOPIC_TOO_LONG_ERROR,
@@ -36,6 +38,13 @@ async def home(
     countries: str = "",
     tone: str = "",
     instructions: str = "",
+    palette: str = "",
+    font: str = "",
+    hashtags: str = "",
+    signature: str = "",
+    hashtags_none: str = "",
+    signature_none: str = "",
+    save_default: str = "",
     templates: Jinja2Templates = Depends(get_templates),
 ) -> HTMLResponse:
     options = OptionsFormValues(
@@ -46,6 +55,13 @@ async def home(
         countries=countries,
         tone=tone,
         instructions=instructions,
+        palette=palette,
+        font=font,
+        hashtags=hashtags,
+        signature=signature,
+        hashtags_none=hashtags_none,
+        signature_none=signature_none,
+        save_default=save_default,
     )
     return templates.TemplateResponse(
         request, "home.html", {"view": build_home_view(topic, options)}
@@ -63,6 +79,13 @@ async def new_style(
     countries: str = "",
     tone: str = "",
     instructions: str = "",
+    palette: str = "",
+    font: str = "",
+    hashtags: str = "",
+    signature: str = "",
+    hashtags_none: str = "",
+    signature_none: str = "",
+    save_default: str = "",
     user: CurrentUser | None = Depends(optional_user),
     service: StyleService = Depends(get_style_service),
     templates: Jinja2Templates = Depends(get_templates),
@@ -75,6 +98,13 @@ async def new_style(
         countries=countries,
         tone=tone,
         instructions=instructions,
+        palette=palette,
+        font=font,
+        hashtags=hashtags,
+        signature=signature,
+        hashtags_none=hashtags_none,
+        signature_none=signature_none,
+        save_default=save_default,
     )
     clean = (topic or "").strip()
     if not clean:
@@ -84,12 +114,13 @@ async def new_style(
         return templates.TemplateResponse(request, "home.html", {"view": view}, status_code=400)
     style: ChartStyle | None = None
     notice = ""
+    save_note = ""
     if user is None:
-        notice = STYLE_NOTICE_SIGN_IN
+        notice, save_note = STYLE_NOTICE_SIGN_IN, SAVE_DEFAULT_SIGN_IN
     else:
         try:
             style = await service.get(user.email)
         except StyleStoreUnavailable:
-            notice = STYLE_NOTICE_UNAVAILABLE
-    view = build_style_step_view(clean, options, style, notice)
+            notice, save_note = STYLE_NOTICE_UNAVAILABLE, SAVE_DEFAULT_UNAVAILABLE
+    view = build_style_step_view(clean, options, style, notice, save_note=save_note)
     return templates.TemplateResponse(request, "new_style.html", {"view": view})

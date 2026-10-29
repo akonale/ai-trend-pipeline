@@ -1,6 +1,6 @@
 # 036: Neo-brutalist design system
 
-Status: built
+Status: pr-open
 
 ## Goal
 
@@ -287,3 +287,13 @@ Next: builder (re-check the stepper at 360px in a screenshot).
 **builder**: Rewrote app.css from the approved mock (dark block in the media query, `:where` element defaults, `.card ul` rule now `:where(.card ul)` so `.chips` wins), `card card--chart` in run_status.html, new tests/test_design_tokens.py, tech.md updated.
 Screenshots at 360/1280, light/dark, of home, await, draft, rejected (long id/email), settings, health, not-found, stepper scratch page: no horizontal overflow; "Review" stays whole at 360px; focus rings checked.
 frontend-design skill was in context. Shots: /tmp/claude-1000/-home-akonale-ai-trend-pipeline/5b5d6b35-c69e-5443-8442-dfc45e86630a/scratchpad/build036/shots/. Next: verifier.
+**verifier**: just lint (ruff check, ruff format --check, pyright strict) and just test (345 passed) both pass.
+Existing web tests unchanged vs origin/main, no leftover serve.py processes, app.css has no external URLs or @import/url(). git status clean apart from the untracked .claude/settings.json.
+ai-trend-prod containers all present (worker, web, cloudflared, temporal-ui, temporal, postgres); not touched.
+Next: scribe.
+**reviewer**: Approved. All criteria and listed tests present; contrast math is correct WCAG and would fail on a dropped token; lowest ratios (5.90, 5.62, 5.07, 6.43) recomputed independently and match.
+No url()/@import/http/!important; only outline is the focus replacement; web tests untouched; only the class edit in run_status.html; tech.md accurate.
+Note: min 44px step height is not set explicitly (met by padding + content); spec Status line was already modified in the worktree.
+**scribe**: tech.md already current; README needs no change (no CSS/design section). Branch pushed; PR https://github.com/akonale/ai-trend-pipeline/pull/40 opened against main (title "036: Neo-brutalist design system").
+Local main is stale (behind origin/main); PR diff checked against origin/main: 5 in-scope files only.
+Not merged; human merges. After merge, prod needs `just deploy` to show the new look.

@@ -49,8 +49,9 @@ just web     # serves http://127.0.0.1:8000 (health page at /health)
 On a remote dev server, tunnel the port first: `ssh -L 8000:localhost:8000 <host>`. The page needs
 no Temporal connection. htmx 2.0.4 is vendored as-is in `src/ai_trend_pipeline/web/static/`.
 
-Open `/`, type a topic and click Generate to start a run. Example chips under the box, and
-`/?topic=<text>`, prefill the box. This needs `just dev` running. The run
+Open `/`, type a topic (or click an example chip, which fills the box) and click Next. Step 2
+(`/new/style`) sets the per-post options and shows your saved style; Generate starts the run.
+`/?topic=<text>` prefills the topic. This needs `just dev` running. The run
 page at `/runs/<id>` updates live (htmx polling) and, once the chart is ready, shows the preview,
 caption and critique with Approve and Reject buttons; approving posts to Bluesky. It also links to
 the run in the Temporal UI, at `TEMPORAL_UI_URL` (default `http://localhost:8233`).
@@ -75,7 +76,7 @@ schema and its table are created at first use. The CLI needs no database.
 
 ### Per-post options
 
-The home form has a collapsed "More options" section with five fields: chart type (line, bar for the
+Step 2 of the flow has a "This chart" section with five fields: chart type (line, bar for the
 latest value, or area), time range (a preset or From/To years), countries (up to 8, comma separated;
 names or 3-letter codes), caption tone and free-text instructions. Blank options fall back to your
 saved style and then to the defaults. Time range presets are relative to the dataset's latest year, not

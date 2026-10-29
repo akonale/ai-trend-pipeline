@@ -1,6 +1,6 @@
 # 038: Flow steps 1 and 2 plus the stepper
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -297,3 +297,7 @@ the hidden `value="..."`, `test_blank_topic_error_keeps_chips`, `test_topic_pref
 frontend-design skill was in context; design reuses 036 tokens, no new colours. One PR. Next: approval (orchestrator), then builder.
 **builder**: Built per spec with the 4 listed test edits; just lint and test pass (388+). frontend-design skill was in context. Browser-checked 360/1280, light/dark, no overflow, no label wrap, OOB poll swap works; shots in scratchpad build038/shots.
 Small CSS deviations: `.step__check` absolutely positioned top-right (stays on one line with link steps), `.step a` flex column, focus outline fix on the cobalt done link, `.topic-form > .meta` margin. Next: verifier.
+**verifier**: just lint (ruff check, ruff format --check, pyright) and just test (388 passed) pass. Test diff has only the 4 listed assertion edits; new tests/test_web_flow.py. No leftover servers; ai-trend-prod containers untouched; no external assets in app.css or templates.
+All checks pass.
+**reviewer**: Approved. All criteria and listed tests present; the 4 edited assertions still pin the behaviour; POST /runs contract unchanged; escaping probed (quotes/angle brackets in topic and options are escaped in fields, hidden inputs and URL-encoded Change topic link); redirects are the constant `/`.
+Notes: (1) carry/option values are not length-limited on GET (escaped, harmless). (2) builder added one more CSS rule (`.step a .step__label` underline) beyond the four reported; it uses no new colours. (3) No dedicated escaping test for step 2 echoes; consider adding later.

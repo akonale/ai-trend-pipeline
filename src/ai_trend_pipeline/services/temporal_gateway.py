@@ -25,6 +25,7 @@ from ai_trend_pipeline.services.candidates import (
     CandidateNotFound,
     CandidatePage,
     CandidateSummary,
+    CandidateUnavailable,
     ListCandidatesRequest,
     decode_page_token,
     encode_page_token,
@@ -192,21 +193,24 @@ class TemporalCandidateGateway:
 
     async def list_pending(self, request: ListCandidatesRequest) -> CandidatePage:
         token = decode_page_token(request.page_token) if request.page_token is not None else None
-        iterator = self._client.list_workflows(
-            pending_candidates_query(), page_size=request.limit, next_page_token=token
-        )
-        await iterator.fetch_next_page()
-        rows = iterator.current_page or []
-        summaries: list[CandidateSummary] = []
-        for workflow_execution in rows:
-            summary = await _candidate_summary(workflow_execution)
-            if summary is not None:
-                summaries.append(summary)
-        next_token = (
-            encode_page_token(iterator.next_page_token)
-            if iterator.next_page_token is not None
-            else None
-        )
+        try:
+            iterator = self._client.list_workflows(
+                pending_candidates_query(), page_size=request.limit, next_page_token=token
+            )
+            await iterator.fetch_next_page()
+            rows = iterator.current_page or []
+            summaries: list[CandidateSummary] = []
+            for workflow_execution in rows:
+                summary = await _candidate_summary(workflow_execution)
+                if summary is not None:
+                    summaries.append(summary)
+            next_token = (
+                encode_page_token(iterator.next_page_token)
+                if iterator.next_page_token is not None
+                else None
+            )
+        except RPCError as exc:
+            raise CandidateUnavailable() from exc
         return CandidatePage(candidates=summaries, next_token=next_token)
 
     def handle(self, candidate_id: str) -> TemporalCandidateHandle:

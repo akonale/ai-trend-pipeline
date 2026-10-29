@@ -145,6 +145,7 @@ def test_input_round_trips_through_pydantic_data_converter_under_256kb() -> None
         candidate_budget=MAX_SOURCE_CANDIDATE_BUDGET,
         budget_day=date(2026, 10, 9),
         candidates_started=7,
+        budget_exhausted_day=date(2026, 10, 9),
     )
     converter = pydantic_data_converter.payload_converter
     payload = converter.to_payload(data)
@@ -157,15 +158,18 @@ def test_budget_fields_defaults_and_bounds() -> None:
     assert data.candidate_budget == DEFAULT_SOURCE_CANDIDATE_BUDGET == 20
     assert data.budget_day is None
     assert data.candidates_started == 0
+    assert data.budget_exhausted_day is None
     parsed = SourceIngestionInput(
         source=SourceName.HN,
         candidate_budget=500,
         budget_day=date(2026, 10, 9),
         candidates_started=12,
+        budget_exhausted_day=date(2026, 10, 8),
     )
     assert parsed.candidate_budget == MAX_SOURCE_CANDIDATE_BUDGET
     assert parsed.budget_day == date(2026, 10, 9)
     assert parsed.candidates_started == 12
+    assert parsed.budget_exhausted_day == date(2026, 10, 8)
     for bad in (
         {"candidate_budget": 0},
         {"candidate_budget": 501},

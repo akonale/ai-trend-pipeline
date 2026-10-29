@@ -281,7 +281,12 @@ async def query_state(handle: StateHandle) -> SourceIngestionState:
 
 async def wait_for_total_polls(handle: StateHandle, count: int) -> SourceIngestionState:
     for _ in range(3000):
-        state = await query_state(handle)
+        try:
+            state = await query_state(handle)
+        except RPCError:
+            # A continue-as-new or close briefly gives queries a stale/closed run.
+            await asyncio.sleep(0.005)
+            continue
         if state.total_polls >= count:
             return state
         await asyncio.sleep(0.005)
@@ -805,6 +810,7 @@ async def test_continue_as_new_preserves_budget_day_and_count() -> None:
         assert second_run.total_polls == 1
 
         await poller.release()
+        await poller.wait_for_call(3)
         third = await wait_for_total_polls(handle, 2)
         assert third.candidates_started == 2
         assert third.budget_day == second_run.budget_day
@@ -812,6 +818,38 @@ async def test_continue_as_new_preserves_budget_day_and_count() -> None:
         assert await candidate_status(env, "3") is None
         result = await stop_ingestion(handle, poller)
     assert result.reason == "stopped"
+
+
+@pytest.mark.asyncio
+async def test_budget_exhaustion_flag_survives_continue_as_new(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO, logger="temporalio.workflow")
+    poller = GatedPoller(
+        [poll_output(event("1")), poll_output(event("2")), poll_output(event("3"))]
+    )
+    selector = AutoSelector()
+    first_day = datetime.now(UTC).date()
+    data = make_input(
+        candidate_budget=1,
+        budget_day=first_day,
+        candidates_started=1,
+        max_polls_per_run=1,
+    )
+    async with ingestion_env(data, poller, selector.select_story_candidates) as (_env, handle):
+        await poller.wait_for_call(1)
+        await poller.release()
+        await poller.wait_for_call(2)
+        await wait_for_total_polls(handle, 1)
+        assert len(budget_records(caplog, IngestionLogEvent.BUDGET_EXHAUSTED)) == 1
+
+        await poller.release()
+        await poller.wait_for_call(3)
+        assert len(budget_records(caplog, IngestionLogEvent.BUDGET_EXHAUSTED)) == 1
+        assert selector.calls == 0
+        result = await stop_ingestion(handle, poller)
+    assert result.reason == "stopped"
+    assert len(budget_records(caplog, IngestionLogEvent.BUDGET_EXHAUSTED)) == 1
 
 
 @pytest.mark.asyncio

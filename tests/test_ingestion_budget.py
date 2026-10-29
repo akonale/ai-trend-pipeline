@@ -42,6 +42,7 @@ def test_budget_input_fields_defaults_and_bounds() -> None:
     assert data.candidate_budget == DEFAULT_SOURCE_CANDIDATE_BUDGET == 20
     assert data.budget_day is None
     assert data.candidates_started == 0
+    assert data.budget_exhausted_day is None
 
     assert MIN_SOURCE_CANDIDATE_BUDGET == 1
     assert MAX_SOURCE_CANDIDATE_BUDGET == 500

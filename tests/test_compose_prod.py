@@ -108,6 +108,16 @@ def test_worker_and_web_share_build_and_volume() -> None:
     assert web_env["WEB_HOST"] == "0.0.0.0"
 
 
+def test_worker_source_settings_from_env() -> None:
+    worker = _env(_load()["worker"])
+    assert worker["SOURCE_ENABLED"] == "${SOURCE_ENABLED:-hn}"
+    assert worker["SOURCE_POLL_LIMIT"] == "${SOURCE_POLL_LIMIT:-30}"
+    assert worker["SOURCE_POLL_INTERVAL_S"] == "${SOURCE_POLL_INTERVAL_S:-300}"
+    assert worker["SOURCE_POLL_TIMEOUT_S"] == "${SOURCE_POLL_TIMEOUT_S:-15.0}"
+    assert worker["CANDIDATE_REVIEW_TIMEOUT_S"] == "${CANDIDATE_REVIEW_TIMEOUT_S:-172800}"
+    assert worker["SOURCE_CANDIDATE_BUDGET"] == "${SOURCE_CANDIDATE_BUDGET:-20}"
+
+
 def test_secrets_are_interpolations_without_defaults() -> None:
     checked = 0
     for name, svc in _load().items():

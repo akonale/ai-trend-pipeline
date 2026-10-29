@@ -84,8 +84,8 @@ source with id `source_ingestion_workflow_id(source)` = `source-ingestion-v1-<so
   Otherwise the selector and `_start_candidates` get `max_candidates=min(max_candidates, remaining)`,
   and each successful child start consumes one. Duplicates consume none. A batch whose selector
   ran is marked processed in full even when starts were truncated. Continue-as-new carries the day
-  and count; terminating the chain starts a fresh count. `ingestion_state` reports
-  `candidate_budget`, `budget_day`, `candidates_started` and `budget_remaining`.
+  and count, and the exhaustion-log day; terminating the chain starts a fresh count. `ingestion_state`
+  reports `candidate_budget`, `budget_day`, `candidates_started` and `budget_remaining`.
 - Activity failures: poll 60 s / 3 attempts, selector 120 s / 3 attempts. After retries an
   `ActivityError` is logged with `error_type` (never the exception text) and the loop continues: a
   failed poll only advances counters, and a failed selection still marks its batch processed.

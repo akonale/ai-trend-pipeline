@@ -1,6 +1,6 @@
 # 049: Candidate-inbox hardening and docs
 
-Status: built
+Status: needs-fix
 
 ## Goal
 
@@ -525,3 +525,12 @@ already does)
   (689) pass. Note: `budget_exhausted` suppression across continue-as-new infers "already logged"
   from `total_polls > 0` plus the carried day/count rather than adding another input field. Next:
   verifier.
+- **verifier**: `just lint` and `just test` pass (689) with the harness `ANTHROPIC_*` base-url/auth vars unset; with them set, LLM tests fail with `anthropic.APIConnectionError`. One transient failure of `test_continue_as_new_preserves_budget_day_and_count` appeared in a vars-set full run (RPCError under load); it passes alone and in 3 repeat file runs. Next: reviewer.
+- **reviewer**: Needs fix, 3 items. 1) `test_continue_as_new_preserves_budget_day_and_count` flakes: after `poller.release()` (tests/test_source_ingestion.py:807) `wait_for_total_polls` (line 282) queries during continue-as-new and gets `RPCError: Timeout expired` (~1 in 3 runs here); wait for `poller.wait_for_call(3)` before querying, as the 048-era CAN test does, and retry transient `RPCError` in the helper.
+  2) `budget_exhausted` inference (source_ingestion.py:542-549) suppresses a real log: if the budget is spent in an earlier run without a skipped batch, every skip in the next run is silent for that day; carry a defaulted `budget_exhausted_day: date | None` in `SourceIngestionInput`/`_next_input` instead. No duplicate-emit path found.
+  3) `infra/compose.prod.yaml` worker (lines 54-59) forwards only TEMPORAL/ANTHROPIC/BLUESKY vars, so the `SOURCE_ENABLED`/`SOURCE_CANDIDATE_BUDGET` keys added to docs/runbooks/deploy.md:23-28 are inert in prod; pass them into the worker `environment:` (or correct the runbooks).
+- **builder (fix loop 1)**: Fixed all three. 1) Wait for `poller.wait_for_call(3)`; helper retries
+  transient `RPCError`; CAN tests pass 10/10 repeats. 2) Added defaulted
+  `budget_exhausted_day` to `SourceIngestionInput`, carried by `_next_input`, plus a CAN test.
+  3) Wired all six source settings into the prod worker environment and covered them by a compose
+  test. `just lint` and `just test` (691) pass. Next: verifier.

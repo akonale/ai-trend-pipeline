@@ -154,6 +154,7 @@ class SourceIngestionInput(BaseModel):
     )
     budget_day: date | None = None
     candidates_started: int = Field(default=0, ge=0)
+    budget_exhausted_day: date | None = None
 
     @field_validator("cursor", mode="before")
     @classmethod
@@ -309,7 +310,7 @@ class SourceIngestionWorkflow:
         self._candidate_budget = DEFAULT_SOURCE_CANDIDATE_BUDGET
         self._budget_day: date | None = None
         self._candidates_started = 0
-        self._budget_exhausted_logged_day: date | None = None
+        self._budget_exhausted_day: date | None = None
 
     def _state(self) -> SourceIngestionState:
         return SourceIngestionState(
@@ -352,6 +353,7 @@ class SourceIngestionWorkflow:
                 "total_polls": self._total_polls,
                 "budget_day": self._budget_day,
                 "candidates_started": self._candidates_started,
+                "budget_exhausted_day": self._budget_exhausted_day,
             }
         )
 
@@ -360,7 +362,7 @@ class SourceIngestionWorkflow:
         if self._budget_day != day:
             self._budget_day = day
             self._candidates_started = 0
-            self._budget_exhausted_logged_day = None
+            self._budget_exhausted_day = None
 
     def _remaining(self, now: datetime) -> int:
         return budget_remaining(
@@ -539,14 +541,7 @@ class SourceIngestionWorkflow:
         self._candidate_budget = data.candidate_budget
         self._budget_day = data.budget_day
         self._candidates_started = data.candidates_started
-        if (
-            data.total_polls > 0
-            and data.budget_day is not None
-            and data.budget_day == budget_day_for(workflow.now())
-            and data.candidates_started >= data.candidate_budget
-        ):
-            # A continued chain already logged today's exhaustion; keep "once per day".
-            self._budget_exhausted_logged_day = data.budget_day
+        self._budget_exhausted_day = data.budget_exhausted_day
         log_event(
             workflow.logger,
             IngestionLogEvent.STARTED,
@@ -583,7 +578,7 @@ class SourceIngestionWorkflow:
                     if remaining == 0:
                         day = self._budget_day
                         assert day is not None
-                        if self._budget_exhausted_logged_day != day:
+                        if self._budget_exhausted_day != day:
                             log_event(
                                 workflow.logger,
                                 IngestionLogEvent.BUDGET_EXHAUSTED,
@@ -592,7 +587,7 @@ class SourceIngestionWorkflow:
                                 budget=self._candidate_budget,
                                 candidates_started=self._candidates_started,
                             )
-                            self._budget_exhausted_logged_day = day
+                            self._budget_exhausted_day = day
                     else:
                         limit = min(data.max_candidates, remaining)
                         selections = await self._select(batch, limit, data.source)

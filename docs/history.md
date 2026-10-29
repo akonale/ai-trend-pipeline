@@ -74,7 +74,7 @@ PRs are on GitHub. Merge dates are UTC, taken from the PR list.
 | 046 | Candidate detail and decisions at `/candidates/{id}`: safe source link, metrics, approve/reject, end states | #52 | 2026-10-29 |
 | 047 | Candidate navigation and visual polish: Candidates in the header with an active state and pending badge | #53 | 2026-10-29 |
 | 048 | Continuous HN ingestion: one `SourceIngestionWorkflow` per enabled source, cursor and processed ids, timers, continue-as-new, `just ingest` | #54 | 2026-10-29 |
-| 049 | Hardening and docs: per-source UTC-day candidate budget, structured `candidate_ingestion.*` logs, fake second source and two-source proof, operator runbooks | — | — |
+| 049 | Hardening and docs: per-source UTC-day candidate budget, structured `candidate_ingestion.*` logs, fake second source and two-source proof, operator runbooks | #55 | — |
 
 ## Chores
 

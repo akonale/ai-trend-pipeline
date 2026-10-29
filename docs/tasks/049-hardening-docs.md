@@ -1,6 +1,6 @@
 # 049: Candidate-inbox hardening and docs
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -536,3 +536,4 @@ already does)
   test. `just lint` and `just test` (691) pass. Next: verifier.
 - **verifier (re-verify)**: All checks pass. `just lint` clean; `just test` 691 passed with harness `ANTHROPIC_*` vars unset (with them set, 54 LLM tests fail with `anthropic.APIConnectionError`, pre-existing). `tests/test_source_ingestion.py` 22/22 in 5 consecutive runs; CAN/budget tests 3/3 in 5 more runs. Next: reviewer.
 - **reviewer (re-review)**: Approved. 3/3 fixes verified: CAN test waits for call 3 and retries transient RPCError (8/8 repeats); `budget_exhausted_day` is defaulted, carried by `_next_input`, reset on day rollover, covered by a CAN test, and round-trips; prod worker forwards all six source settings, asserted by `test_compose_prod.py`. `just lint` clean and `just test` 691 pass (ANTHROPIC_* unset). No secrets, live calls or regressions found. Next: scribe.
+- **scribe**: Verified README, architecture docs, Phase 9 history, both runbooks and the chart-only scheduler wording; added `budget_exhausted_day` to the replay field list and the 049 PR link. Docs tests pass. PR #55. Next: human merges.

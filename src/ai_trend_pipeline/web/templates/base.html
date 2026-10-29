@@ -9,11 +9,18 @@
   <script src="/static/htmx.min.js"></script>
 </head>
 <body>
+  <a class="skip-link" href="#main">Skip to content</a>
   <header class="site-header">
-    <a class="brand" href="/">Topic Studio</a>
-    <nav class="site-nav" aria-label="Main"><a href="/settings">Your style</a></nav>
-    <p class="tagline">An editorial desk for one good chart a day.</p>
+    <a class="brand" href="{{ shell.brand_href }}">{{ shell.brand }}</a>
+    <nav class="site-nav" aria-label="Main">
+      {% for item in shell.nav %}<a href="{{ item.href }}"{% if item.current %} aria-current="page"{% endif %}>{{ item.label }}</a>{% endfor %}
+    </nav>
+    {% if shell.user_email %}<span class="user-chip"><span class="visually-hidden">Signed in as </span>{{ shell.user_email }}</span>{% endif %}
   </header>
-  <main>{% block content %}{% endblock %}</main>
+  <main id="main">{% block content %}{% endblock %}</main>
+  <footer class="site-footer">
+    <span>{{ shell.tagline }}</span>
+    {% if shell.env_tag %}<span class="dev-tag"><span class="visually-hidden">Environment: </span>{{ shell.env_tag }}</span>{% endif %}
+  </footer>
 </body>
 </html>

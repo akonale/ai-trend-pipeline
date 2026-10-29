@@ -1,5 +1,6 @@
 """Pydantic models shaped for templates."""
 
+from typing import Literal
 from urllib.parse import quote
 
 from pydantic import BaseModel, Field, ValidationError
@@ -23,6 +24,38 @@ from ai_trend_pipeline.style import (
     TONES,
     ChartStyle,
 )
+
+SHELL_TAGLINE = "Charts from Our World in Data, posted to Bluesky once you approve them."
+
+
+class NavItem(BaseModel):
+    label: str
+    href: str
+    current: bool = False
+
+
+class ShellView(BaseModel):
+    brand: str = "Topic Studio"
+    brand_href: str = "/"
+    nav: list[NavItem]
+    user_email: str | None = None
+    env_tag: str = ""
+    tagline: str = SHELL_TAGLINE
+
+
+def build_shell(
+    path: str, user_email: str | None, auth_mode: Literal["local", "cloudflare"]
+) -> ShellView:
+    """Header, nav, chip and footer data for one page. Pure: no I/O."""
+    on_new = path in ("/", "/runs") or path.startswith("/runs/")
+    return ShellView(
+        nav=[
+            NavItem(label="New chart", href="/", current=on_new),
+            NavItem(label="Your style", href="/settings", current=path == "/settings"),
+        ],
+        user_email=user_email,
+        env_tag="dev" if auth_mode == "local" else "",
+    )
 
 
 class HealthView(BaseModel):

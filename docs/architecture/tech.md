@@ -89,8 +89,8 @@ startup if `ANTHROPIC_API_KEY`, `BLUESKY_HANDLE` or `BLUESKY_APP_PASSWORD` is mi
 
 - Routes get services and settings through FastAPI dependencies, so tests swap in fakes. Route tests
   never need Temporal running.
-- The signed-in user is one dependency, `current_user`, used by every route that changes
-  something.
+- The signed-in user is one parsing path, `optional_user` (user or `None`). `current_user` wraps it
+  and raises 401 on `None`; it guards every route that changes something, plus `GET /settings`.
 - No JavaScript build step: htmx and a small CSS file, served from `web/static/`.
 
 ### Dependencies (`web/dependencies.py`)
@@ -98,7 +98,13 @@ startup if `ANTHROPIC_API_KEY`, `BLUESKY_HANDLE` or `BLUESKY_APP_PASSWORD` is mi
 `get_settings`, `get_templates` (read `app.state`), `get_style_store` (builds one
 `PostgresStyleStore` per process, no I/O), `get_style_service`, `get_chart_service` (connects to
 Temporal once, caches the client on `app.state`, returns `ChartService(TemporalChartRunGateway,
-settings, styles=...)`), `current_user`.
+settings, styles=...)`), `optional_user`, `current_user`, `shell_context`.
+
+`optional_user` returns `CurrentUser(email=DEV_USER_EMAIL)` in local mode and, in cloudflare mode, the
+lower-cased header email or `None` when it is missing or blank. `shell_context(request)` is the
+Starlette context processor passed to `Jinja2Templates` in `create_app`: it builds a `ShellView`
+(`build_shell(path, email, auth_mode)`) and returns `{"shell": ...}`, so every `TemplateResponse`,
+including error re-renders, gets the shell with no route code. It does no I/O.
 
 ### Routes
 
@@ -133,12 +139,12 @@ Other routes work while Postgres is down.
   `StyleStoreUnavailable`; a stored profile that no longer validates is ignored (defaults used).
   Table `topic_studio.style_profiles(email primary key, profile jsonb, updated_at)`.
 
-### Auth (`current_user`)
+### Auth (`optional_user`, `current_user`)
 
 | `AUTH_MODE` | Behaviour |
 | --- | --- |
 | `local` (default) | everyone is `dev@localhost` |
-| `cloudflare` | email from header `Cf-Access-Authenticated-User-Email`, lower-cased; missing header gives 401 |
+| `cloudflare` | email from header `Cf-Access-Authenticated-User-Email`, lower-cased; missing header gives 401 on POST routes and `GET /settings` (it needs an email); other GET pages render with no user chip |
 
 The Access JWT is not verified. That is acceptable only because prod publishes the web port on
 `127.0.0.1` and the only way in is the tunnel, which sits behind Access; nothing else can set the
@@ -149,7 +155,12 @@ header. Do not expose the web port publicly.
 Templates (`base.html`, `home.html`, `run.html`, `settings.html`, `health.html`,
 `run_not_found.html`, `partials/`) hold only loops and ifs; labels, badges, option lines and error
 text are computed in `view_models.py` (`STATUS_LABELS`, `badge_for`, `option_lines`,
-`options_error_message`, `style_error_message`). Static assets in `web/static/`: `app.css` and
+`options_error_message`, `style_error_message`). `ShellView` (brand, `NavItem`s with a `current` flag, `user_email`, `env_tag` "dev" in local mode,
+`SHELL_TAGLINE`) feeds `base.html`: a skip link, `<header class="site-header">` with brand, `<nav
+aria-label="Main">` ("New chart", "Your style", `aria-current="page"` on the current one) and the
+`.user-chip` (only when an email is known), `<main id="main">`, and `<footer class="site-footer">` with
+the tagline and the `.dev-tag`. The body is a flex column so the footer sticks to the bottom; no
+JavaScript, the nav wraps on phones. Static assets in `web/static/`: `app.css` and
 vendored `htmx.min.js` (2.0.4).
 
 `app.css` is a neo-brutalist "graph paper and ink" system: 3px ink borders, hard offset shadows
@@ -161,8 +172,8 @@ so `tests/test_design_tokens.py` can parse `app.css` and check each text/backgro
 WCAG AA (4.5 for text, 3 for borders and focus). Text on a fill token uses `--color-on-fill`, never
 `--color-text`. Element defaults sit in `:where(...)` so component classes win without fights.
 Fonts are system stacks (no web fonts). Reserved for task 038 and not used yet: `.stepper`,
-`.step`, `.step__num`, `.step--done|current|upcoming` (labels never break mid-word); `.btn--secondary`,
-`.user-chip`, `.site-footer`, `.dev-tag` and `.check` are also reserved. Reduced motion turns off
+`.step`, `.step__num`, `.step--done|current|upcoming` (labels never break mid-word); `.btn--secondary`
+and `.check` are also reserved. Reduced motion turns off
 transitions and the progress animation.
 
 ## 3. Infra and deployment

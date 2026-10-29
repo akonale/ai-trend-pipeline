@@ -240,3 +240,4 @@ no-JS and 200% zoom checks pass. A `li` max-width reset was needed to counter th
 **scribe**: Updated README (candidate inbox at `/candidates`, stale "no UI yet" line fixed); tech.md
 already carried the route, `CandidateUnavailable` and `candidates.html` from the builder. Pushed
 `task/045-candidate-inbox` and opened the PR. Next: human merge (CI green required).
+PR: https://github.com/akonale/ai-trend-pipeline/pull/51

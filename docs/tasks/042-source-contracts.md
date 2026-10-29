@@ -295,4 +295,4 @@ LLM tests fail on connection. Next: verifier runs `just lint` and `just test`.
 Next: reviewer checks the diff against the checklist.
 **reviewer**: Approved. Verified contracts are frozen/bounded, URLs restricted to http/https, duplicates collapse, dead/deleted/title-less items are excluded, `hn.py`/`worker.py`/chart code/`tests/test_hn.py` untouched, settings only in `config.py`, and no table or scope creep. `just lint` clean; `just test` 530 passed.
 Next: scribe updates docs and opens the PR.
-**scribe**: Docs were already updated in the build commit: `tech.md` (activity, sources section, settings), `architecture/README.md` (module row), `README.md` (settings and HN note); verified accurate, no further edits needed. Pushed and opened the PR. Next: human merges.
+**scribe**: Docs were already updated in the build commit: `tech.md` (activity, sources section, settings), `architecture/README.md` (module row), `README.md` (settings and HN note); verified accurate, no further edits needed. Pushed and opened PR https://github.com/akonale/ai-trend-pipeline/pull/48. Next: human merges.

@@ -1,6 +1,6 @@
 # 039: Per-chart style overrides
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -337,3 +337,5 @@ No leftover throwaway servers or listeners on 876x, no scratch containers or ima
 No external URLs or @import in app.css or templates. git status clean apart from this file and the untracked .claude/settings.json. Next: reviewer.
 **reviewer**: Approved. Checked diff vs spec and checklist: cap check, read, merge, save, start order; replay test uses a raw pre-039 payload; no existing assertions changed; lint, pyright, 435 tests pass.
 Note: a 400 re-render with an invalid palette leaves no radio checked (browser then sends blank = saved); harmless.
+**scribe**: Updated README "Per-post options" (panel, four fields in This chart) and pushed. PR opened: https://github.com/akonale/ai-trend-pipeline/pull/43
+Status set to pr-open. Not merged. Next: human merges the PR (after CI is green); prod needs `just deploy` to show it.

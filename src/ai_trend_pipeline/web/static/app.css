@@ -157,8 +157,9 @@ a { color: var(--color-accent); text-underline-offset: 0.2em; }
   margin-bottom: var(--space-2);
 }
 .topic-row { display: flex; flex-direction: column; gap: var(--space-3); }
-input[type="text"] {
+input[type="text"], .topic-form select, input[type="number"], textarea {
   width: 100%;
+  min-width: 0;
   font: inherit;
   padding: var(--space-3) var(--space-4);
   color: var(--color-text);
@@ -309,6 +310,27 @@ input::placeholder { color: var(--color-muted); opacity: 1; }
   border: 1px solid var(--color-field-border);
   border-radius: var(--radius-sm);
 }
+.more-options { margin-top: var(--space-4); }
+.more-options summary {
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  padding: var(--space-2) 0;
+}
+.more-options summary:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 2px; }
+.more-options label {
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  font-weight: 600;
+  margin: var(--space-4) 0 var(--space-2);
+}
+.more-options .meta { margin-top: var(--space-1); }
+.year-row { display: flex; gap: var(--space-3); margin-top: var(--space-2); }
+.year-row > div { flex: 1; min-width: 0; }
+.year-row label { margin-top: 0; }
+.options-list { margin: 0 0 var(--space-3); }
+.options-list dt { color: var(--color-muted); font-size: var(--text-sm); }
+.options-list dd { margin: 0 0 var(--space-2); overflow-wrap: anywhere; }
 .settings-form .btn { margin-top: var(--space-4); }
 .settings-form .meta { margin-top: var(--space-1); }
 .swatches { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); }
@@ -332,7 +354,7 @@ input::placeholder { color: var(--color-muted); opacity: 1; }
 .swatch-colors i { flex: 1; }
 
 /* Focus */
-a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, .chip:focus-visible {
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, .chip:focus-visible {
   outline: 3px solid var(--color-focus);
   outline-offset: 2px;
 }

@@ -17,6 +17,16 @@
     <p class="meta">Why: {{ view.topic_reason }}</p>
     {% endif %}
     {% if view.note %}<p class="meta">Note: {{ view.note }}</p>{% endif %}
+    {% if view.options %}
+    <h2>Options</h2>
+    <dl class="options-list">
+      {% for o in view.options %}<dt>{{ o.label }}</dt>
+      <dd>{{ o.value }}</dd>
+      {% endfor %}
+    </dl>
+    {% endif %}
+    {% for n in view.option_notes %}<p class="meta">{{ n }}</p>
+    {% endfor %}
   </section>
   {% if view.image_url %}
   <section class="card">

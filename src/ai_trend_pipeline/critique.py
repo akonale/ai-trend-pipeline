@@ -18,8 +18,9 @@ INVALID_CRITIQUE_ERROR_TYPE = "InvalidChartCritique"
 MAX_REASONS = 5
 SYSTEM_PROMPT = (
     "You review a Vega-Lite chart made from an Our World in Data table. Check that the caption "
-    "is factually supported by the data summary, that the encoding (entity as nominal colour, "
-    "year on x, value on y) and the title fit the topic, and that the chart is not misleading. "
+    "is factually supported by the data summary, that the encoding (entity as a nominal field; "
+    "year on x and value on y, or for a bar chart each entity's latest value as one bar) and the "
+    "title fit the topic, and that the chart is not misleading. "
     "Fail the chart only for concrete problems, and give one short reason per problem."
     f" Respond only by calling the {TOOL_NAME} tool."
 )

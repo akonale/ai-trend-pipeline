@@ -7,6 +7,12 @@ from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 from ai_trend_pipeline.owid import OwidRow, OwidTable
+from ai_trend_pipeline.post_options import (
+    MAX_COUNTRIES,
+    PostOptions,
+    apply_chart_type,
+    options_prompt,
+)
 from ai_trend_pipeline.style import ChartStyle, apply_style_to_spec, caption_suffix, style_prompt
 from ai_trend_pipeline.topic import DEFAULT_MODEL
 
@@ -14,7 +20,7 @@ MAX_TOKENS = 4096
 TOOL_NAME = "write_chart"
 INVALID_DRAFT_ERROR_TYPE = "InvalidChartDraft"
 SAMPLE_ROWS = 20
-MAX_ENTITIES = 8
+MAX_ENTITIES = MAX_COUNTRIES
 MAX_CAPTION_CHARS = 280
 SYSTEM_PROMPT = (
     "You are given a topic and a summary of an Our World in Data table. Pick 1 to 8 entities "
@@ -30,6 +36,7 @@ class WriteChartSpecInput(BaseModel):
     table: OwidTable
     feedback: list[str] = Field(default_factory=list)
     style: ChartStyle | None = None
+    options: PostOptions | None = None
 
 
 class ChartDraft(BaseModel):
@@ -49,7 +56,11 @@ def _caption_budget(suffix: str) -> int:
 
 
 def _format_request(
-    topic: str, table: OwidTable, feedback: list[str], style_block: str = ""
+    topic: str,
+    table: OwidTable,
+    feedback: list[str],
+    style_block: str = "",
+    options_block: str = "",
 ) -> str:
     entities = list(dict.fromkeys(r.entity for r in table.rows))
     years = [r.year for r in table.rows]
@@ -65,6 +76,8 @@ def _format_request(
     )
     if style_block:
         text += f"\n{style_block}"
+    if options_block:
+        text += f"\n{options_block}"
     if feedback:
         text += "\nA previous draft was rejected for these reasons:\n"
         text += "\n".join(f"- {reason}" for reason in feedback)
@@ -93,6 +106,7 @@ class ChartSpecActivities:
         suffix = caption_suffix(style) if style else ""
         budget = _caption_budget(suffix)
         style_block = style_prompt(style, budget) if style else ""
+        options_block = options_prompt(data.options, table.matched_countries)
         tool: ToolParam = {
             "name": TOOL_NAME,
             "description": "Report the chosen entities, the Vega-Lite spec and a caption.",
@@ -107,7 +121,9 @@ class ChartSpecActivities:
             messages=[
                 {
                     "role": "user",
-                    "content": _format_request(data.topic, table, data.feedback, style_block),
+                    "content": _format_request(
+                        data.topic, table, data.feedback, style_block, options_block
+                    ),
                 }
             ],
         )
@@ -132,8 +148,13 @@ class ChartSpecActivities:
         unknown = [e for e in draft.entities if e not in known]
         if unknown:
             raise _invalid(f"Chart draft names entities not in the table: {unknown}")
-        chosen = set(draft.entities)
+        entities = draft.entities
+        if table.matched_countries:
+            entities = [e for e in table.matched_countries if e in known]
+        chosen = set(entities)
         spec = {k: v for k, v in draft.vega_lite_spec.items() if k not in ("data", "datasets")}
+        if data.options is not None and data.options.chart_type is not None:
+            spec = apply_chart_type(spec, data.options.chart_type, table.title)
         values = _row_values([r for r in table.rows if r.entity in chosen])
         spec["data"] = {"values": values}
         caption = draft.caption
@@ -141,4 +162,4 @@ class ChartSpecActivities:
             spec = apply_style_to_spec(spec, style)
             if suffix:
                 caption = f"{caption}\n\n{suffix}"
-        return ChartSpec(vega_lite_spec=spec, caption=caption, entities=draft.entities)
+        return ChartSpec(vega_lite_spec=spec, caption=caption, entities=entities)

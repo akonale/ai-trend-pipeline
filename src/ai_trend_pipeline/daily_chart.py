@@ -19,6 +19,7 @@ with workflow.unsafe.imports_passed_through():
     from ai_trend_pipeline.critique import ChartCritique
     from ai_trend_pipeline.hn import HNActivities, HNTopStoriesInput
     from ai_trend_pipeline.owid import FetchOwidInput, OwidActivities
+    from ai_trend_pipeline.post_options import PostOptions
     from ai_trend_pipeline.render import RenderChartInput, render_chart_png
     from ai_trend_pipeline.style import ChartStyle
     from ai_trend_pipeline.topic import PickTopicInput, TopicActivities
@@ -37,6 +38,7 @@ class DailyChartInput(BaseModel):
     topic: str | None = Field(default=None, min_length=1)
     requested_by: str | None = None
     style: ChartStyle | None = None
+    options: PostOptions | None = None
 
 
 class ReviewRequest(BaseModel):
@@ -61,6 +63,8 @@ class ReviewState(BaseModel):
     note: str = ""
     requested_by: str | None = None
     decided_by: str | None = None
+    options: PostOptions | None = None
+    option_notes: list[str] = Field(default_factory=list)
 
 
 class DailyChartResult(BaseModel):
@@ -76,10 +80,33 @@ class DailyChartWorkflow:
     def __init__(self) -> None:
         self._state = ReviewState(status="drafting")
         self._decision: ApprovalDecision | None = None
+        self._options: PostOptions | None = None
+        self._notes: list[str] = []
+
+    def _new_state(
+        self,
+        status: Literal[
+            "drafting", "awaiting_decision", "posting", "approved", "rejected", "expired"
+        ],
+        requested_by: str | None,
+        review: ReviewRequest | None = None,
+        note: str = "",
+        decided_by: str | None = None,
+    ) -> ReviewState:
+        return ReviewState(
+            status=status,
+            review=review,
+            note=note,
+            requested_by=requested_by,
+            decided_by=decided_by,
+            options=self._options,
+            option_notes=self._notes,
+        )
 
     @workflow.run
     async def run(self, data: DailyChartInput) -> DailyChartResult:
-        self._state = ReviewState(status="drafting", requested_by=data.requested_by)
+        self._options = data.options
+        self._state = self._new_state("drafting", data.requested_by)
         if data.topic is not None:
             topic, reason = data.topic, MANUAL_TOPIC_REASON
         else:
@@ -98,12 +125,13 @@ class DailyChartWorkflow:
             topic, reason = picked.topic, picked.reason
         table = await workflow.execute_activity_method(
             OwidActivities.fetch_owid_dataset,
-            FetchOwidInput(topic=topic, since_year=data.since_year),
+            FetchOwidInput(topic=topic, since_year=data.since_year, options=data.options),
             start_to_close_timeout=IO_ACTIVITY_TIMEOUT,
             retry_policy=IO_RETRY_POLICY,
         )
+        self._notes = list(table.notes)
         chart = await draft_chart_with_critique(
-            WriteChartSpecInput(topic=topic, table=table, style=data.style)
+            WriteChartSpecInput(topic=topic, table=table, style=data.style, options=data.options)
         )
         rendered = await workflow.execute_activity(
             render_chart_png,
@@ -120,29 +148,21 @@ class DailyChartWorkflow:
             critique=chart.critique,
             attempts=chart.attempts,
         )
-        self._state = ReviewState(
-            status="awaiting_decision", review=review, requested_by=data.requested_by
-        )
+        self._state = self._new_state("awaiting_decision", data.requested_by, review)
         try:
             await workflow.wait_condition(
                 lambda: self._decision is not None, timeout=APPROVAL_TIMEOUT
             )
         except TimeoutError:
-            self._state = ReviewState(
-                status="expired", review=review, requested_by=data.requested_by
-            )
+            self._state = self._new_state("expired", data.requested_by, review)
             return DailyChartResult(status="expired", review=review)
         decision = self._decision
         assert decision is not None
         status: Literal["approved", "rejected"] = "approved" if decision.approved else "rejected"
         post: PostChartOutput | None = None
         if decision.approved:
-            self._state = ReviewState(
-                status="posting",
-                review=review,
-                note=decision.note,
-                requested_by=data.requested_by,
-                decided_by=decision.decided_by,
+            self._state = self._new_state(
+                "posting", data.requested_by, review, decision.note, decision.decided_by
             )
             post = await workflow.execute_activity_method(
                 BlueskyActivities.post_chart_to_bluesky,
@@ -156,12 +176,8 @@ class DailyChartWorkflow:
                 start_to_close_timeout=IO_ACTIVITY_TIMEOUT,
                 retry_policy=IO_RETRY_POLICY,
             )
-        self._state = ReviewState(
-            status=status,
-            review=review,
-            note=decision.note,
-            requested_by=data.requested_by,
-            decided_by=decision.decided_by,
+        self._state = self._new_state(
+            status, data.requested_by, review, decision.note, decision.decided_by
         )
         return DailyChartResult(
             status=status,

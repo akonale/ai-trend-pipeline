@@ -129,7 +129,7 @@ not registered.
 | `src/ai_trend_pipeline/web/app.py` | `create_app(settings)` factory: wires routes, templates, static files | Business logic |
 | `src/ai_trend_pipeline/web/routes/` | One module per page (`home.py`, `runs.py`, `settings.py`, `health.py`). Parse input, call one service, render a template | Call Temporal or the LLM directly |
 | `src/ai_trend_pipeline/web/templates/` | Jinja templates; `partials/` for htmx fragments | Logic beyond loops and ifs |
-| `src/ai_trend_pipeline/web/view_models.py` | Pydantic models shaped for templates (`HomeView`, `RunView`, `SettingsView`, `build_*_view`) | I/O |
+| `src/ai_trend_pipeline/web/view_models.py` | Pydantic models shaped for templates (`HomeView`, `RunView`, `SettingsView`, `CandidateDetailView`, `MetricChip`, `build_*_view`) | I/O |
 | `src/ai_trend_pipeline/config.py` | One `Settings` model read from env vars, passed in, not imported as a global | Read env vars anywhere else |
 
 - Routes get services and settings through FastAPI dependencies, so tests swap in fakes. Route tests
@@ -163,7 +163,9 @@ including error re-renders, gets the shell with no route code. It does no I/O.
 | GET | `/runs/{id}/status` | htmx fragment, polled every 2 s while `polling` | |
 | GET | `/runs/{id}/chart.png` | The PNG | 404 unless the file is inside `CHART_OUTPUT_DIR` |
 | POST | `/runs/{id}/decision` | Send approve/reject, 303 to `?sent=1` | uses `current_user`; 400 bad value, 409 not awaiting, 404 unknown |
-| GET | `/candidates` | Story candidate inbox | `?page=` is an opaque forward cursor; 400 with a friendly notice when the token is invalid, 503 full-shell unavailable page; no detail or decision routes yet |
+| GET | `/candidates` | Story candidate inbox | `?page=` is an opaque forward cursor; `?notice=` accepts only `approved`, `rejected` or `closed`; 400 with a friendly notice when the token is invalid, 503 full-shell unavailable page |
+| GET | `/candidates/{id}` | Candidate detail and decision form | 404 not-available page for a missing candidate, 410 status-specific page for approved/rejected/expired; renders only an `http`/`https` source link |
+| POST | `/candidates/{id}/decide` | Approve or reject, 303 to the inbox | uses `current_user`; 400 invalid decision re-renders the detail with an error; repeated/raced decisions 303 with `notice=closed`; 404 unknown |
 | GET, POST | `/settings` | Style profile form | uses `current_user`; 400 invalid, 503 store down |
 
 Which routes touch Postgres: `POST /runs` (style lookup, and the "Save as my default" write), `/settings`, and `GET /new/style`
@@ -194,7 +196,14 @@ while Postgres is down.
   tokens (default size 20, max 100). Any `RPCError` from visibility becomes `CandidateUnavailable`.
 - `candidates.html` backed by `build_candidate_inbox_view` / `build_candidate_unavailable_view`
   (`web/view_models.py`): one ledger of whole-row links with source badge, relative detection time
-  and a one-line angle; server-side forward paging plus "Back to newest", no JavaScript.
+  and a one-line angle; server-side forward paging plus "Back to newest", no JavaScript. A redirect
+  from a decision lands on `#candidate-notice`, which carries `tabindex="-1"` so the notice gets
+  focus without a script.
+- `candidate_detail.html` / `candidate_not_available.html` backed by
+  `build_candidate_detail_view` / `build_candidate_not_available_view`: title, source badge and safe
+  source link first, then summary, angle, reason and metric chips, with a two-form decision rail.
+  Copy, metric labels, the safe URL check, the notice allow-list and the 404/410 copy all live in
+  `web/view_models.py`; the decision route calls only `CandidateService.decide`.
 - `StyleService` / `StyleStore` protocol (`services/styles.py`); `PostgresStyleStore`
   (`services/postgres_style_store.py`): psycopg 3, one short connection per call, schema and table
   created on first use and retried if setup fails; `psycopg.Error` or `OSError` become

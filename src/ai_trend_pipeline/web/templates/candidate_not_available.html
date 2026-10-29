@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}{{ view.page_title }} - {{ shell.brand }}{% endblock %}
+{% block content %}
+<h1>{{ view.heading }}</h1>
+<p>{{ view.body }}</p>
+<p class="back"><a href="{{ view.back_href }}">{{ view.back_label }}</a></p>
+{% endblock %}

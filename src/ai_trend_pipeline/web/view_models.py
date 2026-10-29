@@ -3,7 +3,7 @@
 import re
 from datetime import UTC, datetime
 from typing import Literal
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlsplit
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -20,6 +20,7 @@ from ai_trend_pipeline.post_options import (
 )
 from ai_trend_pipeline.services.candidates import CandidatePage, CandidateSummary
 from ai_trend_pipeline.sources import SourceName
+from ai_trend_pipeline.story_candidate import CandidateReviewState, candidate_id_for
 from ai_trend_pipeline.style import (
     FONTS,
     MAX_HASHTAGS,
@@ -765,4 +766,182 @@ def build_candidate_unavailable_view(now: datetime) -> CandidateInboxView:
         older_label=OLDER_LABEL,
         newest_href=None,
         newest_label=NEWEST_LABEL,
+    )
+
+
+DECISION_HEADING = "Decide this story"
+DECISION_NOTE = "Approving only records the story for later. Nothing is published."
+APPROVE_LABEL = "Approve story"
+REJECT_LABEL = "Reject story"
+BACK_LABEL = "Back to candidates"
+SOURCE_LINK_LABEL = "Read the original story"
+SOURCE_LINK_HINT = "(opens in a new tab)"
+SOURCE_MISSING_LABEL = "No source link for this story."
+SUMMARY_LABEL = "Summary"
+SUMMARY_FALLBACK = "No summary available."
+ANGLE_LABEL = "Proposed angle"
+REASON_LABEL = "Why this story"
+REASON_FALLBACK = "No reason recorded."
+METRICS_LABEL = "Source metrics"
+METRICS_FALLBACK = "No source metrics for this story."
+DETECTED_PREFIX = "Detected"
+INVALID_DECISION_ERROR = "Choose Approve or Reject."
+METRIC_LABELS: dict[str, str] = {"score": "Points", "comments": "Comments"}
+DECISION_NOTICES: dict[str, str] = {
+    "approved": "Approved: the story is recorded. Nothing was published.",
+    "rejected": "Rejected: the story is out of the queue. Nothing was published.",
+    "closed": "That story was already decided or has expired. Nothing changed.",
+}
+NOT_AVAILABLE_MISSING = (
+    "This story is not available",
+    "It may have been removed, or the link may be wrong. "
+    "The candidate inbox is the best place to start.",
+)
+NOT_AVAILABLE_CLOSED: dict[str, tuple[str, str]] = {
+    "approved": (
+        "This story was already approved",
+        "It is no longer waiting for review. Approving only records a story; "
+        "nothing was published.",
+    ),
+    "rejected": (
+        "This story was already rejected",
+        "It is no longer waiting for review. Rejecting only removes a story; "
+        "nothing was published.",
+    ),
+    "expired": (
+        "This story expired without a decision",
+        "The review window closed before anyone decided. Nothing was published.",
+    ),
+}
+NOT_AVAILABLE_UNKNOWN = (
+    "This story is no longer available",
+    "It is no longer waiting for review.",
+)
+
+
+class MetricChip(BaseModel):
+    label: str
+    value: str
+
+
+def metric_chips(metrics: dict[str, int]) -> list[MetricChip]:
+    """Metric labels and values in input order; unknown keys are sentence-cased."""
+    return [
+        MetricChip(
+            label=METRIC_LABELS.get(key) or key.replace("_", " ").capitalize(),
+            value=f"{value:,}",
+        )
+        for key, value in metrics.items()
+    ]
+
+
+def safe_source_url(url: object) -> str | None:
+    """Only an absolute http(s) URL with a host is safe to link; anything else is dropped."""
+    if url is None:
+        return None
+    text = str(url)
+    try:
+        parsed = urlsplit(text)
+        host = parsed.hostname
+    except ValueError:
+        return None
+    if parsed.scheme not in ("http", "https") or not host:
+        return None
+    return text
+
+
+def decision_notice(token: str) -> str:
+    """Allow-listed inbox notice text; unknown tokens render nothing."""
+    return DECISION_NOTICES.get(token.strip(), "")
+
+
+class CandidateDetailView(BaseModel):
+    page_title: str
+    title: str
+    source_label: str
+    observed_iso: str | None
+    observed_text: str
+    source_url: str | None
+    source_link_label: str
+    source_link_hint: str
+    source_missing_label: str
+    error: str
+    summary_label: str
+    summary: str
+    angle_label: str
+    angle: str
+    reason_label: str
+    selection_reason: str
+    metrics_label: str
+    metrics: list[MetricChip]
+    metrics_note: str
+    decision_heading: str
+    decision_note: str
+    decision_action: str
+    approve_label: str
+    reject_label: str
+    back_href: str
+    back_label: str
+
+
+def build_candidate_detail_view(
+    state: CandidateReviewState, *, now: datetime, error: str = ""
+) -> CandidateDetailView:
+    """Every detail label, fallback, metric, URL and action. Pure: no I/O."""
+    candidate = state.candidate
+    title = candidate.title.strip() or TITLE_FALLBACK
+    observed_iso = _as_utc(candidate.observed_at).isoformat()
+    relative = relative_time(candidate.observed_at, now)
+    metrics = metric_chips(candidate.metrics)
+    candidate_id = candidate_id_for(candidate.source, candidate.external_id)
+    return CandidateDetailView(
+        page_title=title,
+        title=title,
+        source_label=source_label(candidate.source),
+        observed_iso=observed_iso,
+        observed_text=f"{DETECTED_PREFIX} {relative}" if relative else "",
+        source_url=safe_source_url(candidate.url),
+        source_link_label=SOURCE_LINK_LABEL,
+        source_link_hint=SOURCE_LINK_HINT,
+        source_missing_label=SOURCE_MISSING_LABEL,
+        error=error,
+        summary_label=SUMMARY_LABEL,
+        summary=candidate.summary.strip() or SUMMARY_FALLBACK,
+        angle_label=ANGLE_LABEL,
+        angle=candidate.proposed_angle.strip() or ANGLE_FALLBACK,
+        reason_label=REASON_LABEL,
+        selection_reason=candidate.selection_reason.strip() or REASON_FALLBACK,
+        metrics_label=METRICS_LABEL,
+        metrics=metrics,
+        metrics_note="" if metrics else METRICS_FALLBACK,
+        decision_heading=DECISION_HEADING,
+        decision_note=DECISION_NOTE,
+        decision_action=f"{INBOX_HREF}/{quote(candidate_id, safe='')}/decide",
+        approve_label=APPROVE_LABEL,
+        reject_label=REJECT_LABEL,
+        back_href=INBOX_HREF,
+        back_label=BACK_LABEL,
+    )
+
+
+class CandidateNotAvailableView(BaseModel):
+    page_title: str
+    heading: str
+    body: str
+    back_href: str
+    back_label: str
+
+
+def build_candidate_not_available_view(status: str | None) -> CandidateNotAvailableView:
+    """Neutral not-available copy: None is a missing candidate, else the closed status."""
+    if status is None:
+        heading, body = NOT_AVAILABLE_MISSING
+    else:
+        heading, body = NOT_AVAILABLE_CLOSED.get(str(status), NOT_AVAILABLE_UNKNOWN)
+    return CandidateNotAvailableView(
+        page_title=heading,
+        heading=heading,
+        body=body,
+        back_href=INBOX_HREF,
+        back_label=BACK_LABEL,
     )

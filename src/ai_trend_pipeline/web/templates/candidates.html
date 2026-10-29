@@ -3,7 +3,7 @@
 {% block content %}
 <h1>{{ view.heading }}</h1>
 {% if view.count_text %}<p class="meta">{{ view.count_text }}</p>{% endif %}
-{% if view.notice %}<p class="notice" role="status">{{ view.notice }}</p>{% endif %}
+{% if view.notice %}<p class="notice" id="candidate-notice" tabindex="-1" role="status">{{ view.notice }}</p>{% endif %}
 {% if view.unavailable %}
 <section class="card">
   <h2>{{ view.unavailable_heading }}</h2>

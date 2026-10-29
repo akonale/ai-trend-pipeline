@@ -29,7 +29,7 @@
     {% endfor %}
   </section>
   {% if view.image_url %}
-  <section class="card">
+  <section class="card card--chart">
     <figure class="chart-frame">
       <img class="preview" src="{{ view.image_url }}" alt="Chart preview">
       {% if view.caption %}<figcaption>{{ view.caption }}</figcaption>{% endif %}

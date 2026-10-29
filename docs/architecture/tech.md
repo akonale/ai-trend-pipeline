@@ -150,9 +150,20 @@ Templates (`base.html`, `home.html`, `run.html`, `settings.html`, `health.html`,
 `run_not_found.html`, `partials/`) hold only loops and ifs; labels, badges, option lines and error
 text are computed in `view_models.py` (`STATUS_LABELS`, `badge_for`, `option_lines`,
 `options_error_message`, `style_error_message`). Static assets in `web/static/`: `app.css` and
-vendored `htmx.min.js` (2.0.4). `app.css` defines design tokens as CSS custom properties on
-`:root` (`--color-*`, `--font-*`, `--text-*`, `--space-*`, `--radius-*`, `--shadow-*`), redefined
-under `@media (prefers-color-scheme: dark)`. Fonts are system stacks (no web fonts).
+vendored `htmx.min.js` (2.0.4).
+
+`app.css` is a neo-brutalist "graph paper and ink" system: 3px ink borders, hard offset shadows
+(no blur), flat fills, a faint 24px grid on the page, and the chart frame (ruler ticks, marigold
+shadow) as the one bold element. Tokens are CSS custom properties on `:root` (`--color-*`,
+`--font-*`, `--text-*`, `--space-*`, `--border-*`, `--radius-*`, `--shadow-*`), redefined under
+`@media (prefers-color-scheme: dark)`. Every `--color-*` is a literal 6-digit hex in both themes,
+so `tests/test_design_tokens.py` can parse `app.css` and check each text/background pair against
+WCAG AA (4.5 for text, 3 for borders and focus). Text on a fill token uses `--color-on-fill`, never
+`--color-text`. Element defaults sit in `:where(...)` so component classes win without fights.
+Fonts are system stacks (no web fonts). Reserved for task 038 and not used yet: `.stepper`,
+`.step`, `.step__num`, `.step--done|current|upcoming` (labels never break mid-word); `.btn--secondary`,
+`.user-chip`, `.site-footer`, `.dev-tag` and `.check` are also reserved. Reduced motion turns off
+transitions and the progress animation.
 
 ## 3. Infra and deployment
 

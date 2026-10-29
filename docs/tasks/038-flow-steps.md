@@ -1,6 +1,6 @@
 # 038: Flow steps 1 and 2 plus the stepper
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -301,3 +301,5 @@ Small CSS deviations: `.step__check` absolutely positioned top-right (stays on o
 All checks pass.
 **reviewer**: Approved. All criteria and listed tests present; the 4 edited assertions still pin the behaviour; POST /runs contract unchanged; escaping probed (quotes/angle brackets in topic and options are escaped in fields, hidden inputs and URL-encoded Change topic link); redirects are the constant `/`.
 Notes: (1) carry/option values are not length-limited on GET (escaped, harmless). (2) builder added one more CSS rule (`.step a .step__label` underline) beyond the four reported; it uses no new colours. (3) No dedicated escaping test for step 2 echoes; consider adding later.
+**scribe**: Updated README Web app (step 1 picks topic, step 2 /new/style holds options and Generate; options no longer in a collapsed home form). Pushed branch.
+PR: https://github.com/akonale/ai-trend-pipeline/pull/42. Next: orchestrator visual check at 360px and 1280px, then the human merges (not merged by scribe).

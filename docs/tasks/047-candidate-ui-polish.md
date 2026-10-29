@@ -323,3 +323,12 @@ brand still opens `/`, and the "Back to candidates" text is unchanged but moves 
 **builder**: added Candidates-first nav with a first-page `N`/`N+` badge (Starlette 1.10 runs context processors after the route context, so the badge is also stored on `request.state` for `build_request_shell`), one token-only candidate CSS section, and one Back link above each candidate heading with view-model titles.
 **builder**: new `tests/test_web_candidate_polish.py` plus three updated route test files; `just lint` and `just test` green (614 passed).
 **builder**: screenshots in `/tmp/candidate-047-shots` (Chromium 1248 headless shell; the full `chrome-linux64/chrome` binary is missing `libcups.so.2`). Unsure: the shared header's 44rem padding wraps the email chip to a second line at 768/1280, unlike the 1280 wireframe; left unchanged as out of scope.
+
+**verifier**: `just lint` green (ruff, format, pyright strict: 0 errors) and `just test` green, 614 passed on `task/047-candidate-ui-polish`. First run showed only pre-existing LLM tests failing with `anthropic.APIConnectionError`; rerun with harness `ANTHROPIC_*` vars unset, all green. Next: reviewer.
+
+**reviewer**: needs-fix.
+1. `app.css:161` — 44rem header measure + three nav items needs ~789px, so `.user-chip` wraps to a lone second row at 768/1280 on every page; 046 had one row at 1280 and the spec's 1280 wireframe shows one row. Widen the shared `.site-header`/`.site-footer` inline measure at `min-width: 60rem` (e.g. `padding-inline: max(var(--space-4), calc((100% - 50rem) / 2 + var(--space-4)))`), tighten the nav at 768 if it should also fit there, and re-shoot 768/1280 light+dark.
+2. `app.css:635` — `.candidate-back a { color: var(--color-muted); }` outranks the global `a:hover` ink, so dark hover is #B4BACB on #FFC93C (1.26:1, AA fail; light is 5.3:1). Use `:where(.candidate-back a)` so the hover ink wins, or add `.candidate-back a:hover { color: var(--color-on-fill); }`, and recheck both themes.
+
+**builder** (fix loop 1): widened the shared header/footer measure to 50rem from 48rem and tightened the tablet nav so brand, nav and chip share one row at 768 and 1280; changed the candidate back link colour to zero-specificity `:where(.candidate-back a)` so the global hover ink wins (11.50:1 in both themes).
+**builder** (fix loop 1): re-shot every state at 360/768/1280 light+dark in `/tmp/candidate-047-shots`; the harness asserts one header row at 768/1280 and the hover contrast. `just lint` and `just test` green, 614 passed.

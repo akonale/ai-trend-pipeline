@@ -163,6 +163,7 @@ including error re-renders, gets the shell with no route code. It does no I/O.
 | GET | `/runs/{id}/status` | htmx fragment, polled every 2 s while `polling` | |
 | GET | `/runs/{id}/chart.png` | The PNG | 404 unless the file is inside `CHART_OUTPUT_DIR` |
 | POST | `/runs/{id}/decision` | Send approve/reject, 303 to `?sent=1` | uses `current_user`; 400 bad value, 409 not awaiting, 404 unknown |
+| GET | `/candidates` | Story candidate inbox | `?page=` is an opaque forward cursor; 400 with a friendly notice when the token is invalid, 503 full-shell unavailable page; no detail or decision routes yet |
 | GET, POST | `/settings` | Style profile form | uses `current_user`; 400 invalid, 503 store down |
 
 Which routes touch Postgres: `POST /runs` (style lookup, and the "Save as my default" write), `/settings`, and `GET /new/style`
@@ -182,15 +183,18 @@ while Postgres is down.
   matching memos. Runs without the memo are not counted.
 - `CandidateService` (`services/candidates.py`): `start`, `list_pending`, `show`, `decide` over a
   `CandidateGateway` protocol (`start`, `list_pending`, `handle`). Errors: `CandidateNotFound`,
-  `CandidateClosed`, `InvalidPageToken`. `start` derives the candidate id and defaults the timeout
-  from `Settings.candidate_review_timeout_s`; `show` and `decide` query `review_state` first and
-  map a missing candidate to `CandidateNotFound` and a non-`awaiting_review` state to
-  `CandidateClosed`.
+  `CandidateClosed`, `InvalidPageToken`, `CandidateUnavailable`. `start` derives the candidate id
+  and defaults the timeout from `Settings.candidate_review_timeout_s`; `show` and `decide` query
+  `review_state` first and map a missing candidate to `CandidateNotFound` and a non-`awaiting_review`
+  state to `CandidateClosed`.
 - `TemporalCandidateGateway` / `TemporalCandidateHandle` (`services/temporal_gateway.py`): start
   with `id_conflict_policy=USE_EXISTING` and `id_reuse_policy=REJECT_DUPLICATE`, set both search
   attributes and the memo keys `candidate_title`, `candidate_proposed_angle`,
   `candidate_observed_at`; `list_pending` runs the visibility query with opaque URL-safe base64 page
-  tokens (default size 20, max 100).
+  tokens (default size 20, max 100). Any `RPCError` from visibility becomes `CandidateUnavailable`.
+- `candidates.html` backed by `build_candidate_inbox_view` / `build_candidate_unavailable_view`
+  (`web/view_models.py`): one ledger of whole-row links with source badge, relative detection time
+  and a one-line angle; server-side forward paging plus "Back to newest", no JavaScript.
 - `StyleService` / `StyleStore` protocol (`services/styles.py`); `PostgresStyleStore`
   (`services/postgres_style_store.py`): psycopg 3, one short connection per call, schema and table
   created on first use and retried if setup fails; `psycopg.Error` or `OSError` become

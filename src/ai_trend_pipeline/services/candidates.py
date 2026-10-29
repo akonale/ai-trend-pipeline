@@ -102,6 +102,11 @@ class InvalidPageToken(CandidateServiceError):
         self.token = token
 
 
+class CandidateUnavailable(CandidateServiceError):
+    def __init__(self, message: str = "candidate service unavailable") -> None:
+        super().__init__(message)
+
+
 def encode_page_token(token: bytes) -> str:
     """URL-safe base64 without padding, suitable for a query string."""
     return base64.urlsafe_b64encode(token).decode("ascii").rstrip("=")

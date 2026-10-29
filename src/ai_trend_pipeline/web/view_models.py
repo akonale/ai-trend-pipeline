@@ -1,6 +1,7 @@
 """Pydantic models shaped for templates."""
 
 import re
+from datetime import UTC, datetime
 from typing import Literal
 from urllib.parse import quote, urlencode
 
@@ -17,6 +18,8 @@ from ai_trend_pipeline.post_options import (
     TIME_PRESETS,
     PostOptions,
 )
+from ai_trend_pipeline.services.candidates import CandidatePage, CandidateSummary
+from ai_trend_pipeline.sources import SourceName
 from ai_trend_pipeline.style import (
     FONTS,
     MAX_HASHTAGS,
@@ -608,3 +611,158 @@ def style_error_message(exc: ValidationError) -> str:
     fields = {str(e["loc"][0]) for e in exc.errors() if e["loc"]}
     parts = [msg for key, msg in STYLE_ERRORS.items() if key in fields]
     return " ".join(parts) or "Check your style and try again."
+
+
+INBOX_HEADING = "Story candidates"
+INBOX_HREF = "/candidates"
+EMPTY_HEADING = "Nothing waiting for review"
+EMPTY_BODY = "New candidates show up here when a source finds a story. Check back soon."
+EMPTY_ACTION_LABEL = "Check again"
+UNAVAILABLE_HEADING = "The inbox is unavailable"
+UNAVAILABLE_BODY = (
+    "We couldn't reach the candidate service. Stories that were already waiting are not lost."
+)
+RETRY_LABEL = "Try again"
+OLDER_LABEL = "Older stories"
+NEWEST_LABEL = "Back to newest"
+INVALID_PAGE_NOTICE = "That page link is out of date. Start from the newest stories."
+TITLE_FALLBACK = "Untitled story"
+ANGLE_FALLBACK = "No angle proposed."
+SOURCE_LABELS: dict[str, str] = {
+    SourceName.HN.value: "Hacker News",
+    SourceName.FAKE.value: "Test source",
+}
+
+
+def source_label(source: str | SourceName) -> str:
+    value = source.value if isinstance(source, SourceName) else source
+    return SOURCE_LABELS.get(value, value)
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+def relative_time(observed_at: datetime | None, now: datetime) -> str:
+    """Human gap between detection and now; naive timestamps are treated as UTC."""
+    if observed_at is None:
+        return ""
+    moment = _as_utc(observed_at)
+    delta = _as_utc(now) - moment
+    seconds = delta.total_seconds()
+    if seconds < 60:
+        return "just now"
+    if seconds < 3600:
+        minutes = int(seconds // 60)
+        return "1 minute ago" if minutes == 1 else f"{minutes} minutes ago"
+    if seconds < 86400:
+        hours = int(seconds // 3600)
+        return "1 hour ago" if hours == 1 else f"{hours} hours ago"
+    if seconds < 604800:
+        days = delta.days
+        return "1 day ago" if days == 1 else f"{days} days ago"
+    return f"on {moment.strftime('%d %b %Y')}"
+
+
+class CandidateRow(BaseModel):
+    href: str
+    title: str
+    angle: str
+    source_label: str
+    observed_iso: str | None
+    observed_label: str
+
+
+class CandidateInboxView(BaseModel):
+    heading: str
+    count_text: str
+    rows: list[CandidateRow]
+    empty: bool
+    empty_heading: str
+    empty_body: str
+    empty_action_label: str
+    empty_href: str
+    unavailable: bool
+    unavailable_heading: str
+    unavailable_body: str
+    retry_href: str
+    retry_label: str
+    notice: str
+    older_href: str | None
+    older_label: str
+    newest_href: str | None
+    newest_label: str
+
+
+def _build_row(summary: CandidateSummary, now: datetime) -> CandidateRow:
+    observed = summary.observed_at
+    return CandidateRow(
+        href=f"/candidates/{quote(summary.candidate_id, safe='')}",
+        title=summary.title.strip() or TITLE_FALLBACK,
+        angle=summary.proposed_angle.strip() or ANGLE_FALLBACK,
+        source_label=source_label(summary.source),
+        observed_iso=_as_utc(observed).isoformat() if observed is not None else None,
+        observed_label=relative_time(observed, now),
+    )
+
+
+def build_candidate_inbox_view(
+    page: CandidatePage,
+    *,
+    now: datetime,
+    page_token: str | None = None,
+    notice: str = "",
+) -> CandidateInboxView:
+    """All inbox labels, fallbacks, relative times and links. Pure: no I/O."""
+    rows = [_build_row(summary, now) for summary in page.candidates]
+    count = len(rows)
+    count_text = (
+        f"{count} {'story' if count == 1 else 'stories'} waiting for review." if count else ""
+    )
+    return CandidateInboxView(
+        heading=INBOX_HEADING,
+        count_text=count_text,
+        rows=rows,
+        empty=not rows and not notice,
+        empty_heading=EMPTY_HEADING,
+        empty_body=EMPTY_BODY,
+        empty_action_label=EMPTY_ACTION_LABEL,
+        empty_href=INBOX_HREF,
+        unavailable=False,
+        unavailable_heading=UNAVAILABLE_HEADING,
+        unavailable_body=UNAVAILABLE_BODY,
+        retry_href=INBOX_HREF,
+        retry_label=RETRY_LABEL,
+        notice=notice,
+        older_href=(
+            f"{INBOX_HREF}?page={quote(page.next_token, safe='')}"
+            if page.next_token is not None
+            else None
+        ),
+        older_label=OLDER_LABEL,
+        newest_href=INBOX_HREF if page_token is not None else None,
+        newest_label=NEWEST_LABEL,
+    )
+
+
+def build_candidate_unavailable_view(now: datetime) -> CandidateInboxView:
+    return CandidateInboxView(
+        heading=INBOX_HEADING,
+        count_text="",
+        rows=[],
+        empty=False,
+        empty_heading=EMPTY_HEADING,
+        empty_body=EMPTY_BODY,
+        empty_action_label=EMPTY_ACTION_LABEL,
+        empty_href=INBOX_HREF,
+        unavailable=True,
+        unavailable_heading=UNAVAILABLE_HEADING,
+        unavailable_body=UNAVAILABLE_BODY,
+        retry_href=INBOX_HREF,
+        retry_label=RETRY_LABEL,
+        notice="",
+        older_href=None,
+        older_label=OLDER_LABEL,
+        newest_href=None,
+        newest_label=NEWEST_LABEL,
+    )

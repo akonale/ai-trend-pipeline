@@ -1,16 +1,21 @@
-"""FastAPI dependencies for settings, templates and the chart service."""
+"""FastAPI dependencies for settings, templates and the chart and candidate services."""
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from temporalio.client import Client
+from temporalio.service import RPCError
 
 from ai_trend_pipeline import temporal_client
 from ai_trend_pipeline.config import Settings
+from ai_trend_pipeline.services.candidates import CandidateService, CandidateUnavailable
 from ai_trend_pipeline.services.charts import ChartService
 from ai_trend_pipeline.services.postgres_style_store import PostgresStyleStore
 from ai_trend_pipeline.services.styles import StyleService, StyleStore
-from ai_trend_pipeline.services.temporal_gateway import TemporalChartRunGateway
+from ai_trend_pipeline.services.temporal_gateway import (
+    TemporalCandidateGateway,
+    TemporalChartRunGateway,
+)
 from ai_trend_pipeline.web.view_models import ShellView, build_shell
 
 DEV_USER_EMAIL = "dev@localhost"
@@ -60,6 +65,19 @@ async def get_chart_service(
         client = await temporal_client.connect(settings)
         request.app.state.temporal_client = client
     return ChartService(TemporalChartRunGateway(client), settings, styles=styles)
+
+
+async def get_candidate_service(
+    request: Request, settings: Settings = Depends(get_settings)
+) -> CandidateService:
+    client = getattr(request.app.state, "temporal_client", None)
+    if not isinstance(client, Client):
+        try:
+            client = await temporal_client.connect(settings)
+        except (RPCError, OSError, RuntimeError) as exc:
+            raise CandidateUnavailable() from exc
+        request.app.state.temporal_client = client
+    return CandidateService(TemporalCandidateGateway(client), settings)
 
 
 def optional_user(

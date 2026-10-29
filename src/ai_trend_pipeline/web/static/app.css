@@ -357,6 +357,11 @@ main {
   .chip:hover { background: var(--color-highlight); color: var(--color-on-fill); }
   :where(a:not([class])):hover { background: var(--color-highlight); color: var(--color-on-fill); }
   .site-nav a:hover { border-color: var(--color-border); }
+  .candidate-row:hover { transform: translate(-2px, -2px); box-shadow: var(--shadow-lift); }
+  .candidate-row:hover .candidate-row__title {
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+  }
 }
 .btn:active { transform: translate(4px, 4px); box-shadow: var(--shadow-none); }
 .btn:disabled,
@@ -554,7 +559,7 @@ main {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .btn, .chip { transition: none; }
+  .btn, .chip, .candidate-row, .candidate-inbox .candidate-row { transition: none; }
   .run-progress .bar::after {
     animation: none;
     width: 100%;
@@ -610,3 +615,58 @@ main {
   .decision .btn { width: 100%; }
 }
 .decision-card .meta { margin-bottom: var(--space-3); }
+
+/* Candidate inbox: one ledger of whole-row links */
+.candidate-inbox {
+  list-style: none;
+  margin: var(--space-5) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.candidate-inbox > li { min-width: 0; max-width: none; }
+.candidate-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  text-decoration: none;
+  min-width: 0;
+  transition: transform var(--duration-press) ease-out, box-shadow var(--duration-press) ease-out;
+}
+.candidate-row:active { transform: translate(4px, 4px); box-shadow: var(--shadow-none); }
+.candidate-row__title {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 900;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+.candidate-row__angle {
+  color: var(--color-muted);
+  font-size: var(--text-base);
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.candidate-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}

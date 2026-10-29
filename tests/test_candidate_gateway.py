@@ -3,10 +3,12 @@
 import asyncio
 import time
 from datetime import UTC, datetime
+from typing import cast
 
 import pytest
-from temporalio.client import WorkflowExecution
+from temporalio.client import Client, WorkflowExecution
 from temporalio.contrib.pydantic import pydantic_data_converter
+from temporalio.service import RPCError, RPCStatusCode
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
@@ -16,6 +18,7 @@ from ai_trend_pipeline.services.candidates import (
     CandidateNotFound,
     CandidateService,
     CandidateSummary,
+    CandidateUnavailable,
     DecideCandidateRequest,
     ListCandidatesRequest,
 )
@@ -212,3 +215,17 @@ def test_pending_query_mentions_workflow_type_and_status() -> None:
     assert pending_candidates_query() == (
         "WorkflowType = 'StoryCandidateWorkflow' AND CandidateStatus = 'awaiting_review'"
     )
+
+
+class FailingVisibilityClient:
+    def list_workflows(
+        self, query: str, *, page_size: int | None = None, next_page_token: bytes | None = None
+    ) -> None:
+        raise RPCError("visibility unavailable", RPCStatusCode.UNAVAILABLE, b"unavailable")
+
+
+@pytest.mark.asyncio
+async def test_list_pending_maps_rpc_error_to_unavailable() -> None:
+    gateway = TemporalCandidateGateway(cast(Client, FailingVisibilityClient()))
+    with pytest.raises(CandidateUnavailable):
+        await gateway.list_pending(ListCandidatesRequest())

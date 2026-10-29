@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{{ view.heading }} - {{ shell.brand }}{% endblock %}
+{% block content %}
+<h1>{{ view.heading }}</h1>
+{% if view.count_text %}<p class="meta">{{ view.count_text }}</p>{% endif %}
+{% if view.notice %}<p class="notice" role="status">{{ view.notice }}</p>{% endif %}
+{% if view.unavailable %}
+<section class="card">
+  <h2>{{ view.unavailable_heading }}</h2>
+  <p>{{ view.unavailable_body }}</p>
+  <p><a class="btn btn--primary" href="{{ view.retry_href }}">{{ view.retry_label }}</a></p>
+</section>
+{% elif view.empty %}
+<section class="card">
+  <h2>{{ view.empty_heading }}</h2>
+  <p>{{ view.empty_body }}</p>
+  <p><a class="btn btn--primary" href="{{ view.empty_href }}">{{ view.empty_action_label }}</a></p>
+</section>
+{% elif view.rows %}
+<ul class="candidate-inbox">
+  {% for row in view.rows %}
+  <li>
+    <a class="candidate-row" href="{{ row.href }}">
+      <span class="candidate-row__title">{{ row.title }}</span>
+      <span class="candidate-row__angle">{{ row.angle }}</span>
+      <span class="candidate-row__meta"><span class="badge badge--muted"><span class="visually-hidden">Source: </span>{{ row.source_label }}</span>{% if row.observed_iso %}<time datetime="{{ row.observed_iso }}">{{ row.observed_label }}</time>{% endif %}</span>
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% if view.older_href or view.newest_href %}
+<nav class="pager" aria-label="Candidate pages">
+  {% if view.older_href %}<a class="btn btn--secondary" href="{{ view.older_href }}">{{ view.older_label }}</a>{% endif %}
+  {% if view.newest_href %}<a class="btn btn--secondary" href="{{ view.newest_href }}">{{ view.newest_label }}</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}

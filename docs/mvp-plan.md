@@ -179,3 +179,5 @@ The main session only orchestrates: it calls each agent in turn, reads the statu
 the two human checkpoints (approve the spec, merge the PR) for tasks marked `yes` in the
 **Your approval?** column. Run the main session on `sonnet`
 (`/model sonnet`); it routes work, it doesn't do it.
+
+Finished specs are removed from `docs/tasks/` after merge and summarised in `docs/history.md`.

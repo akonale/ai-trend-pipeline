@@ -1,6 +1,6 @@
 # 047: Candidate UI navigation and visual polish
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -336,3 +336,5 @@ brand still opens `/`, and the "Back to candidates" text is unchanged but moves 
 **verifier** (re-verify after fix loop 1): `just lint` green (ruff, format, pyright strict: 0 errors) and `just test` green, 614 passed on `task/047-candidate-ui-polish`. First run showed only pre-existing LLM tests failing with `anthropic.APIConnectionError`; rerun with harness `ANTHROPIC_*` vars unset, all green. Next: reviewer.
 
 **reviewer** (re-review after fix loop 1): Approved. Header is one row at 768/1280 light+dark on inbox, detail, not-available, home, settings and run states; back-link hover is ink on marigold at 11.5:1 (rest state muted is 6.7:1 light / 8.7:1 dark). The fixes are CSS-only, add no duplicate selectors, and regress no other state.
+
+**scribe**: updated README (`Web app` header/badge paragraph, candidate back link and titles) and `tech.md` (nav order and badge, `build_request_shell`, route notes, candidate CSS section, 50rem header row). Committed the doc changes and pushed `task/047-candidate-ui-polish`. Next: human merge of https://github.com/akonale/ai-trend-pipeline/pull/53.

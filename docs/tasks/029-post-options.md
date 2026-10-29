@@ -1,6 +1,6 @@
 # 029: Per-post options
 
-Status: approved
+Status: built
 
 ## Goal
 
@@ -323,3 +323,6 @@ than installing anything. Note the result in the handoff.
 **planner**: One-PR spec (~900 lines). New pure `post_options.py`. Time range and countries are filtered in code in `fetch_owid_dataset` (presets relative to the data's latest year; unmatched names become run-page notes, never fatal). Chart type is a fixed code template applied after the LLM. Tone (merged option > profile > default in `ChartService.start`) and instructions are LLM-only.
 Instructions go only in the user message inside escaped `<user_instructions>` tags; the system prompt is unchanged. The critique prompt is reworded so bar charts pass. All new fields default to None/[] so replay holds; the workflow only forwards and exposes `option_notes`.
 Next: orchestrator sets `approved` (task is `no`), then builder on `task/029-post-options`.
+
+**builder**: Built per spec on `task/029-post-options`; `just lint` and `just test` pass (339 tests). Deviations: `FilteredRows` is a frozen generic dataclass (pydantic cannot schema the row Protocol; it never crosses an activity boundary), `filter_table_rows` takes an extra `title=""` arg for the unmatched-name note, bar y axis has `title: null`, and tests live in new `tests/test_post_options.py` and `tests/test_web_options.py` plus additions to `test_chart_loop.py` and `test_daily_chart.py`.
+Visual check: 360px and 1280px, light and dark, home (More options open) and run page (Options list, notes): no horizontal overflow; bar and area charts render correctly through the real path. Screenshots in the scratchpad `shots29/`. Unsure: area x axis extends to 2030 (Vega nice domain), cosmetic.

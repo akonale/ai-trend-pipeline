@@ -181,3 +181,28 @@ async def test_regenerate_keeps_style() -> None:
     await _run_fake(fake, style)
     assert [w.style for w in fake.write_inputs] == [style, style]
     assert fake.write_inputs[1].feedback == FAIL.reasons
+
+
+@pytest.mark.asyncio
+async def test_regenerate_keeps_options() -> None:
+    from ai_trend_pipeline.post_options import PostOptions
+
+    options = PostOptions(chart_type="bar", countries=["France"])
+    fake = FakeActivities([_chart("one"), _chart("two")], [FAIL, PASS])
+    task_queue = f"test-{uuid.uuid4()}"
+    async with await WorkflowEnvironment.start_time_skipping(
+        data_converter=pydantic_data_converter
+    ) as env:
+        async with Worker(
+            env.client,
+            task_queue=task_queue,
+            workflows=[DraftChartWorkflow],
+            activities=[fake.write_chart_spec, fake.critique_chart],
+        ):
+            await env.client.execute_workflow(
+                DraftChartWorkflow.run,
+                WriteChartSpecInput(topic=TOPIC, table=make_table(), options=options),
+                id=f"test-{uuid.uuid4()}",
+                task_queue=task_queue,
+            )
+    assert [w.options for w in fake.write_inputs] == [options, options]

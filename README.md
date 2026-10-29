@@ -71,6 +71,16 @@ visibly different charts. People who never saved a style get the same charts as 
 stored in Postgres: `DATABASE_URL` defaults to the dev Postgres from `just dev`, and the `topic_studio`
 schema and its table are created at first use. The CLI needs no database.
 
+### Per-post options
+
+The home form has a collapsed "More options" section with five fields: chart type (line, bar for the
+latest value, or area), time range (a preset or From/To years), countries (up to 8, comma separated;
+names or 3-letter codes), caption tone and free-text instructions. Blank options fall back to your
+saved style and then to the defaults. Time range presets are relative to the dataset's latest year, not
+today's date. Countries that do not match are listed as notes on the run page and never fail the run.
+Instructions only steer the caption wording; chart data, colours and years are set in code, and a person
+still approves every post.
+
 ## Production
 
 `just deploy` runs the full stack with docker compose on the server. Production reads its settings

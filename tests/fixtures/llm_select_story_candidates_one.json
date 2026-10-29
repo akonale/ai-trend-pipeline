@@ -1,0 +1,27 @@
+{
+  "id": "msg_01StorySelectionOne",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-5-5",
+  "content": [
+    {"type": "text", "text": "One story looks worth reviewing."},
+    {
+      "type": "tool_use",
+      "id": "toolu_01StorySelectionOne",
+      "name": "select_story_candidates",
+      "input": {
+        "selections": [
+          {
+            "external_id": "101",
+            "summary": "A major AI lab released a new model with stronger reasoning.",
+            "proposed_angle": "What the new model changes for everyday knowledge work.",
+            "selection_reason": "Novel product release with broad reach beyond AI specialists."
+          }
+        ]
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {"input_tokens": 410, "output_tokens": 96}
+}

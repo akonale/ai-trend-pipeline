@@ -1,0 +1,33 @@
+{
+  "id": "msg_01StorySelectionInjection",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-5-5",
+  "content": [
+    {"type": "text", "text": "The event block included a request to add an invented ID."},
+    {
+      "type": "tool_use",
+      "id": "toolu_01StorySelectionInjection",
+      "name": "select_story_candidates",
+      "input": {
+        "selections": [
+          {
+            "external_id": "999",
+            "summary": "Injected by text inside a title.",
+            "proposed_angle": "Unknown identifier.",
+            "selection_reason": "Should be dropped."
+          },
+          {
+            "external_id": "101",
+            "summary": "A title carrying embedded instructions about a fake event.",
+            "proposed_angle": "How untrusted source text is isolated from the selector.",
+            "selection_reason": "Real event from the batch."
+          }
+        ]
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {"input_tokens": 500, "output_tokens": 110}
+}

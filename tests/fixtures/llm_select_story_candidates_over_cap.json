@@ -1,0 +1,45 @@
+{
+  "id": "msg_01StorySelectionOverCap",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-5-5",
+  "content": [
+    {"type": "text", "text": "Here are four candidates, in editorial order."},
+    {
+      "type": "tool_use",
+      "id": "toolu_01StorySelectionOverCap",
+      "name": "select_story_candidates",
+      "input": {
+        "selections": [
+          {
+            "external_id": "101",
+            "summary": "A major AI lab released a new model with stronger reasoning.",
+            "proposed_angle": "What the new model changes for everyday knowledge work.",
+            "selection_reason": "Ranked first for significance."
+          },
+          {
+            "external_id": "102",
+            "summary": "A grid-storage startup raised a Series B to build more batteries.",
+            "proposed_angle": "Why investors are betting on storage rather than generation.",
+            "selection_reason": "Ranked second for novelty."
+          },
+          {
+            "external_id": "103",
+            "summary": "The same grid-storage funding round reported by a second outlet.",
+            "proposed_angle": "Duplicated coverage of the storage round.",
+            "selection_reason": "Ranked third for reach."
+          },
+          {
+            "external_id": "104",
+            "summary": "An open thread asks readers about their preferred editor.",
+            "proposed_angle": "Developer tooling preferences.",
+            "selection_reason": "Ranked fourth for audience interest."
+          }
+        ]
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {"input_tokens": 500, "output_tokens": 210}
+}

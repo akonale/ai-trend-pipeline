@@ -175,3 +175,94 @@ def test_source_poll_interval_default_and_bounds() -> None:
         with pytest.raises(ValueError):
             load_settings({"SOURCE_POLL_INTERVAL_S": bad})
     assert Settings() == load_settings({})
+
+
+def test_research_settings_defaults_and_empty_values() -> None:
+    s = load_settings({})
+    assert s.research_fetch_timeout_s == 10.0
+    assert s.research_max_response_bytes == 524288
+    assert s.research_max_redirects == 3
+    assert s.research_extra_context_hosts == frozenset()
+    assert s.research_user_agent == "ai-trend-pipeline-research/0.1"
+    assert Settings() == load_settings({})
+    empty = load_settings(
+        {
+            "RESEARCH_FETCH_TIMEOUT_S": "",
+            "RESEARCH_MAX_RESPONSE_BYTES": "",
+            "RESEARCH_MAX_REDIRECTS": "",
+            "RESEARCH_EXTRA_CONTEXT_HOSTS": "",
+            "RESEARCH_USER_AGENT": "",
+        }
+    )
+    assert empty == Settings()
+
+
+def test_research_extra_context_hosts_parsing_and_validation() -> None:
+    parsed = load_settings({"RESEARCH_EXTRA_CONTEXT_HOSTS": " Example.COM , sub.example.co.uk "})
+    assert parsed.research_extra_context_hosts == frozenset({"example.com", "sub.example.co.uk"})
+    assert (
+        load_settings({"RESEARCH_EXTRA_CONTEXT_HOSTS": "none"}).research_extra_context_hosts
+        == frozenset()
+    )
+    assert (
+        load_settings({"RESEARCH_EXTRA_CONTEXT_HOSTS": " NONE "}).research_extra_context_hosts
+        == frozenset()
+    )
+    assert (
+        load_settings({"RESEARCH_EXTRA_CONTEXT_HOSTS": " , "}).research_extra_context_hosts
+        == frozenset()
+    )
+    for bad in (
+        "https://example.com",
+        "example.com:443",
+        "example.com/path",
+        "user@example.com",
+        "127.0.0.1",
+        "::1",
+        "localhost",
+        "example",
+        "foo.local",
+        "foo.internal",
+        "foo.home.arpa",
+        "foo.lan",
+        "a" * 254,
+    ):
+        with pytest.raises(ValueError):
+            load_settings({"RESEARCH_EXTRA_CONTEXT_HOSTS": bad})
+
+
+def test_research_network_limit_bounds() -> None:
+    assert load_settings({"RESEARCH_FETCH_TIMEOUT_S": "0.1"}).research_fetch_timeout_s == 0.1
+    assert load_settings({"RESEARCH_FETCH_TIMEOUT_S": "60"}).research_fetch_timeout_s == 60.0
+    for bad in ("0", "-1", "61", "abc"):
+        with pytest.raises(ValueError):
+            load_settings({"RESEARCH_FETCH_TIMEOUT_S": bad})
+
+    assert (
+        load_settings({"RESEARCH_MAX_RESPONSE_BYTES": "1024"}).research_max_response_bytes == 1024
+    )
+    assert (
+        load_settings({"RESEARCH_MAX_RESPONSE_BYTES": "4194304"}).research_max_response_bytes
+        == 4194304
+    )
+    for bad in ("1023", "4194305", "abc", "1.5"):
+        with pytest.raises(ValueError):
+            load_settings({"RESEARCH_MAX_RESPONSE_BYTES": bad})
+
+    assert load_settings({"RESEARCH_MAX_REDIRECTS": "0"}).research_max_redirects == 0
+    assert load_settings({"RESEARCH_MAX_REDIRECTS": "5"}).research_max_redirects == 5
+    for bad in ("-1", "6", "abc", "1.5"):
+        with pytest.raises(ValueError):
+            load_settings({"RESEARCH_MAX_REDIRECTS": bad})
+
+
+def test_research_user_agent_bounds() -> None:
+    assert load_settings({"RESEARCH_USER_AGENT": "   "}).research_user_agent == (
+        "ai-trend-pipeline-research/0.1"
+    )
+    assert (
+        load_settings({"RESEARCH_USER_AGENT": " custom/1.0 "}).research_user_agent == "custom/1.0"
+    )
+    assert len(load_settings({"RESEARCH_USER_AGENT": "a" * 200}).research_user_agent) == 200
+    with pytest.raises(ValueError):
+        load_settings({"RESEARCH_USER_AGENT": "a" * 201})

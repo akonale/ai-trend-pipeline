@@ -126,6 +126,12 @@ LLM credit is spent when a source's budget is exhausted). `CANDIDATE_REVIEW_TIME
 (1-604800 seconds, default 172800) sets how long a story candidate waits for an Approve/Reject
 decision before it expires.
 
+Story research adds five more: `RESEARCH_FETCH_TIMEOUT_S` (over 0 and at most 60, default 10.0),
+`RESEARCH_MAX_RESPONSE_BYTES` (1024-4194304, default 524288), `RESEARCH_MAX_REDIRECTS` (0-5,
+default 3), `RESEARCH_USER_AGENT` (stripped 1-200, default `ai-trend-pipeline-research/0.1`) and
+`RESEARCH_EXTRA_CONTEXT_HOSTS` (comma-separated exact host names for approved extra context; empty
+or `none` disables it). The research activities are not wired into any workflow or worker yet.
+
 ## Hacker News
 
 `ai_trend_pipeline.hn` provides the `HNActivities.fetch_hn_top_stories` activity, which fetches

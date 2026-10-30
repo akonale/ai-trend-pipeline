@@ -73,6 +73,7 @@ command) to ensure the workflows exist; repeated runs are idempotent. Operate it
 | `source_ingestion.py` | `SourceIngestionWorkflow`: one long-running poll/select/start loop per enabled source, bounded cursor, processed ids and per-source UTC-day candidate budget |
 | `ingestion_starter.py` | Operator entry point (`just ingest`) that ensures source ingestion workflows exist |
 | `story_candidate.py` | `StoryCandidateWorkflow` (one review per candidate), candidate models, `candidate_id_for`, candidate search-attribute keys |
+| `research/` | Bounded research contracts, a safe bounded HTTP fetcher, and standalone `fetch_context`, `match_owid_evidence`, `research_story` activities (not registered yet; 053 wires them) |
 | `topic.py` | Activity `pick_topic` (LLM picks an OWID catalog title); `make_anthropic_client` |
 | `owid.py` | `CATALOG`, `match_dataset`, activity `fetch_owid_dataset`, `OwidTable` |
 | `post_options.py` | `PostOptions`, row filtering, chart-type rewrite, options prompt, `merge_style` (pure) |

@@ -3,7 +3,12 @@
 from collections.abc import Awaitable
 from datetime import UTC, datetime
 
-from temporalio.client import Client, WorkflowExecution, WorkflowHandle
+from temporalio.client import (
+    Client,
+    WorkflowExecution,
+    WorkflowExecutionStatus,
+    WorkflowHandle,
+)
 from temporalio.common import (
     WorkflowIDConflictPolicy,
     WorkflowIDReusePolicy,
@@ -29,6 +34,25 @@ from ai_trend_pipeline.services.candidates import (
     encode_page_token,
 )
 from ai_trend_pipeline.services.charts import RunAlreadyExists, RunNotFound
+from ai_trend_pipeline.services.stories import (
+    CANDIDATE_WORKFLOW_TYPE,
+    MAX_SEEN_CANDIDATES,
+    MAX_STORY_SCAN_PAGES,
+    ListStoriesRequest,
+    StoryFilter,
+    StoryListPage,
+    StoryPageToken,
+    StoryStatusUnavailable,
+    StoryVisibilityRow,
+    build_story_row,
+    collapse_story_rows,
+    decode_story_page_token,
+    encode_story_page_token,
+    matches_story_filter,
+    retained,
+    sort_story_rows,
+    story_visibility_query,
+)
 from ai_trend_pipeline.source_ingestion import (
     SOURCE_INGESTION_TASK_QUEUE,
     SourceIngestionInput,
@@ -50,6 +74,15 @@ from ai_trend_pipeline.story_candidate import (
     candidate_id_for,
     candidate_memo,
     candidate_search_attributes,
+)
+from ai_trend_pipeline.story_visibility import (
+    STORY_CANDIDATE_ID_ATTRIBUTE,
+    STORY_CREATED_AT_ATTRIBUTE,
+    STORY_SOURCE_ATTRIBUTE,
+    STORY_STATUS_ATTRIBUTE,
+    STORY_STATUS_DETAIL_ATTRIBUTE,
+    STORY_TITLE_ATTRIBUTE,
+    STORY_UPDATED_AT_ATTRIBUTE,
 )
 
 
@@ -139,10 +172,16 @@ class TemporalSourceIngestionGateway:
         return workflow_id
 
 
-def pending_candidates_query() -> str:
+def _query_stamp(moment: datetime) -> str:
+    stamp = moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return stamp
+
+
+def pending_candidates_query(cutoff: datetime) -> str:
     return (
-        f"WorkflowType = 'StoryCandidateWorkflow' AND "
-        f"CandidateStatus = '{CandidateStatus.AWAITING_REVIEW.value}'"
+        f"WorkflowType = '{CANDIDATE_WORKFLOW_TYPE}' AND "
+        f"CandidateStatus = '{CandidateStatus.AWAITING_REVIEW.value}' AND "
+        f"StoryCreatedAt > '{_query_stamp(cutoff)}'"
     )
 
 
@@ -209,11 +248,15 @@ class TemporalCandidateGateway:
             # The deterministic id already names a closed run: the existing candidate wins.
             return
 
-    async def list_pending(self, request: ListCandidatesRequest) -> CandidatePage:
+    async def list_pending(
+        self, request: ListCandidatesRequest, *, cutoff: datetime
+    ) -> CandidatePage:
         token = decode_page_token(request.page_token) if request.page_token is not None else None
         try:
             iterator = self._client.list_workflows(
-                pending_candidates_query(), page_size=request.limit, next_page_token=token
+                pending_candidates_query(cutoff),
+                page_size=request.limit,
+                next_page_token=token,
             )
             await iterator.fetch_next_page()
             rows = iterator.current_page or []
@@ -266,3 +309,145 @@ async def _candidate_summary(workflow_execution: WorkflowExecution) -> Candidate
         observed_at=observed_at,
         status=status,
     )
+
+
+def _datetime_value(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value)
+        except ValueError:
+            return None
+        return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
+    return None
+
+
+def _next_story_token(
+    filter: StoryFilter,
+    raw: bytes | None,
+    seen: list[str],
+    emitted: list[StoryVisibilityRow],
+) -> str | None:
+    combined = list(seen)
+    combined.extend(row.candidate_id for row in emitted if row.candidate_id is not None)
+    deduped = list(dict.fromkeys(combined))
+    if len(deduped) > MAX_SEEN_CANDIDATES:
+        return None
+    raw_token = encode_page_token(raw) if raw is not None else None
+    return encode_story_page_token(StoryPageToken(filter=filter, raw=raw_token, seen=deduped))
+
+
+class TemporalStoryStatusGateway:
+    """Reads both workflow types through one visibility query; no per-row workflow call."""
+
+    def __init__(self, client: Client) -> None:
+        self._client = client
+
+    async def _visibility_row(self, execution: WorkflowExecution) -> StoryVisibilityRow:
+        attributes = execution.typed_search_attributes
+        title_value = attributes.get(STORY_TITLE_ATTRIBUTE)
+        source_value = attributes.get(STORY_SOURCE_ATTRIBUTE)
+        status_value = attributes.get(STORY_STATUS_ATTRIBUTE)
+        candidate_value = attributes.get(STORY_CANDIDATE_ID_ATTRIBUTE)
+        created_value = attributes.get(STORY_CREATED_AT_ATTRIBUTE)
+        updated_value = attributes.get(STORY_UPDATED_AT_ATTRIBUTE)
+        detail_value = attributes.get(STORY_STATUS_DETAIL_ATTRIBUTE)
+
+        title = title_value if isinstance(title_value, str) else ""
+        source = source_value if isinstance(source_value, str) else ""
+        status = status_value if isinstance(status_value, str) else ""
+        candidate_id = candidate_value if isinstance(candidate_value, str) else None
+        created_at = _datetime_value(created_value)
+        updated_at = _datetime_value(updated_value)
+        detail = detail_value if isinstance(detail_value, str) else None
+
+        # Pre-053 candidate rows carry only the candidate keys; read memos only when the
+        # shared attribute is absent.
+        if not source:
+            source_fallback = attributes.get(CANDIDATE_SOURCE_ATTRIBUTE)
+            if isinstance(source_fallback, str):
+                source = source_fallback
+        if not status:
+            status_fallback = attributes.get(CANDIDATE_STATUS_ATTRIBUTE)
+            if isinstance(status_fallback, str):
+                status = status_fallback
+        if not title or created_at is None:
+            memo = await execution.memo()
+            if not title:
+                memo_title = memo.get("candidate_title")
+                if isinstance(memo_title, str):
+                    title = memo_title
+            if created_at is None:
+                created_at = _datetime_value(memo.get("candidate_observed_at"))
+        if candidate_id is None and execution.workflow_type == CANDIDATE_WORKFLOW_TYPE:
+            candidate_id = execution.id
+
+        execution_closed = (
+            execution.status is not None and execution.status is not WorkflowExecutionStatus.RUNNING
+        )
+        return StoryVisibilityRow(
+            workflow_type=execution.workflow_type,
+            workflow_id=execution.id,
+            candidate_id=candidate_id,
+            title=title,
+            source=source,
+            internal_status=status,
+            status_detail=detail,
+            created_at=created_at,
+            updated_at=updated_at,
+            execution_closed=execution_closed,
+        )
+
+    async def list_stories(
+        self, request: ListStoriesRequest, *, now: datetime, cutoff: datetime
+    ) -> StoryListPage:
+        token = (
+            decode_story_page_token(request.page_token, filter=request.filter)
+            if request.page_token is not None
+            else StoryPageToken(filter=request.filter)
+        )
+        query = story_visibility_query(request.filter, cutoff)
+        seen = list(token.seen)
+        seen_ids = set(seen)
+        cursor = decode_page_token(token.raw) if token.raw is not None else None
+        accumulated: list[StoryVisibilityRow] = []
+        try:
+            pages_scanned = 0
+            while pages_scanned < MAX_STORY_SCAN_PAGES:
+                pages_scanned += 1
+                page_start = cursor
+                iterator = self._client.list_workflows(
+                    query, page_size=request.limit, next_page_token=cursor
+                )
+                await iterator.fetch_next_page()
+                for execution in iterator.current_page or []:
+                    row = await self._visibility_row(execution)
+                    if row.candidate_id is None or row.created_at is None:
+                        continue
+                    if row.candidate_id in seen_ids:
+                        continue
+                    if not retained(row.created_at, cutoff):
+                        continue
+                    accumulated.append(row)
+                collapsed = collapse_story_rows(accumulated, now=now)
+                matching = sort_story_rows(
+                    [row for row in collapsed if matches_story_filter(row, request.filter)]
+                )
+                cursor = iterator.next_page_token
+                if len(matching) > request.limit:
+                    emitted = matching[: request.limit]
+                    return StoryListPage(
+                        stories=[build_story_row(row) for row in emitted],
+                        next_token=_next_story_token(request.filter, page_start, seen, emitted),
+                    )
+                if cursor is None:
+                    return StoryListPage(stories=[build_story_row(row) for row in matching])
+                if pages_scanned >= MAX_STORY_SCAN_PAGES:
+                    return StoryListPage(
+                        stories=[build_story_row(row) for row in matching],
+                        next_token=_next_story_token(request.filter, cursor, seen, matching),
+                    )
+        except RPCError as exc:
+            raise StoryStatusUnavailable() from exc
+        return StoryListPage()

@@ -58,14 +58,25 @@ caption and critique with Approve and Reject buttons; approving posts to Bluesky
 approved run then links to the post on bsky.app. It also links to
 the run in the Temporal UI, at `TEMPORAL_UI_URL` (default `http://localhost:8233`).
 
-The header lists Candidates first, then New chart and Your style, with the brand still opening `/`.
-Candidates is marked current on the inbox and every candidate page. On a successful first inbox
-page it also shows a count badge (`N`, or `N+` when there is another page); older pages and
-non-inbox pages show no badge.
+The header lists Stories first, then Candidates, New chart and Your style, with the brand still
+opening `/`. Stories is marked current on `/stories` and its fragments; Candidates is marked current
+on the inbox and every candidate page. On a successful first inbox page Candidates also shows a
+count badge (`N`, or `N+` when there is another page); older pages and non-inbox pages show no
+badge.
 
-`/candidates` is the story candidate inbox: a plain server-rendered list of pending candidates
+`/stories` is the status ledger for everything detected in the last 48 hours. Each row shows the
+title, source, one of five status stamps (Pending, Writing, Review, Ready, Closed), an optional
+one-line status detail, the updated time and a link to `/stories/<id>` (the detail page arrives in
+task 055). The six filter pills reset pagination; `?page=` is an opaque forward cursor that keeps
+the filter. It is plain server HTML: no JavaScript is needed to filter, page or open a row. While a
+visible row is Pending, Writing or Review the results region refreshes with htmx every 10 seconds;
+a Ready/Closed-only, empty or unavailable view stops polling. Invalid page links get a friendly
+notice and unavailable pages keep the shared shell.
+
+`/candidates` is the pending-action inbox: a plain server-rendered list of pending candidates
 (no JavaScript needed), paged with `?page=` and showing a full-shell notice if the candidate
-service is unreachable. Each row opens `/candidates/<id>`, a proof sheet with a single Back to
+service is unreachable. It applies the same rolling 48-hour cutoff to its rows, count text, badge
+and pages. Each row opens `/candidates/<id>`, a proof sheet with a single Back to
 candidates link, the title, source link (only `http`/`https`), summary, proposed angle, selection
 reason and source metrics, plus Approve and Reject buttons that 303 back to the inbox with a notice.
 Approving only records the story; nothing is published. Missing candidates get a 404 not-available
@@ -151,7 +162,8 @@ in production. Google Trends is the planned next connector once its API/provider
 selected story candidate (task queue `story-candidate-task-queue`), with a `review_state` query and
 Approve/Reject signals. `services/candidates.py` and the Temporal candidate gateway start
 candidates idempotently, list pending ones with pagination and send decisions. The web app lists
-pending candidates at `/candidates` and shows and decides one at `/candidates/<id>`.
+pending candidates at `/candidates` and shows and decides one at `/candidates/<id>`;
+`/stories` is the unified 48-hour status ledger over the same shared metadata.
 
 Approving a candidate starts one deterministic child `StoryGenerationWorkflow`
 (`story-generation-task-queue`) without waiting for it and records its id as `story_workflow_id` in

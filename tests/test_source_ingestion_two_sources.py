@@ -174,7 +174,7 @@ async def stop_runs(handles: dict[SourceName, IngestionHandle]) -> None:
 
 async def wait_for_pending(service: CandidateService, count: int) -> None:
     for _ in range(600):
-        page = await service.list_pending(ListCandidatesRequest())
+        page = await service.list_pending(ListCandidatesRequest(), now=datetime.now(UTC))
         if len(page.candidates) >= count:
             return
         await asyncio.sleep(0.02)
@@ -183,11 +183,11 @@ async def wait_for_pending(service: CandidateService, count: int) -> None:
 
 async def wait_for_pending_count(service: CandidateService, count: int) -> None:
     for _ in range(600):
-        page = await service.list_pending(ListCandidatesRequest())
+        page = await service.list_pending(ListCandidatesRequest(), now=datetime.now(UTC))
         if len(page.candidates) == count:
             return
         await asyncio.sleep(0.02)
-    page = await service.list_pending(ListCandidatesRequest())
+    page = await service.list_pending(ListCandidatesRequest(), now=datetime.now(UTC))
     raise AssertionError(f"expected {count} pending candidates, saw {len(page.candidates)}")
 
 
@@ -213,7 +213,7 @@ async def test_two_sources_feed_one_inbox() -> None:
     ):
         handles = await start_runs(env, settings)
         await wait_for_pending(service, 2)
-        page = await service.list_pending(ListCandidatesRequest())
+        page = await service.list_pending(ListCandidatesRequest(), now=datetime.now(UTC))
         by_source = {summary.source: summary for summary in page.candidates}
         assert len(page.candidates) == 2
         assert set(by_source) == {SourceName.HN, SourceName.FAKE}
@@ -239,7 +239,7 @@ async def test_reviews_are_unchanged_for_both_sources() -> None:
     ):
         handles = await start_runs(env, settings)
         await wait_for_pending(service, 2)
-        page = await service.list_pending(ListCandidatesRequest())
+        page = await service.list_pending(ListCandidatesRequest(), now=datetime.now(UTC))
         by_source = {summary.source: summary for summary in page.candidates}
         hn_id = by_source[SourceName.HN].candidate_id
         fake_id = by_source[SourceName.FAKE].candidate_id
@@ -289,7 +289,7 @@ async def test_budget_is_per_source() -> None:
     ):
         handles = await start_runs(env, settings)
         await wait_for_pending(service, 2)
-        page = await service.list_pending(ListCandidatesRequest())
+        page = await service.list_pending(ListCandidatesRequest(), now=datetime.now(UTC))
         assert {summary.source for summary in page.candidates} == {
             SourceName.HN,
             SourceName.FAKE,
@@ -319,7 +319,7 @@ async def test_one_failing_source_does_not_block_the_other(
         fake_description = await handles[SourceName.FAKE].describe()
         assert fake_description.status is WorkflowExecutionStatus.RUNNING
 
-        page = await service.list_pending(ListCandidatesRequest())
+        page = await service.list_pending(ListCandidatesRequest(), now=datetime.now(UTC))
         assert [summary.source for summary in page.candidates] == [SourceName.HN]
 
         failures = [
@@ -361,7 +361,7 @@ async def test_duplicate_candidate_start_does_not_duplicate_inbox_rows() -> None
 
         handles = await start_runs(env, settings)
         await wait_for_pending(service, 2)
-        page = await service.list_pending(ListCandidatesRequest())
+        page = await service.list_pending(ListCandidatesRequest(), now=datetime.now(UTC))
         hn_rows = [summary for summary in page.candidates if summary.source is SourceName.HN]
         assert len(hn_rows) == 1
         assert hn_rows[0].candidate_id == started.candidate_id
@@ -381,7 +381,7 @@ async def test_stop_leaves_pending_reviews() -> None:
     ):
         handles = await start_runs(env, settings)
         await wait_for_pending(service, 2)
-        page = await service.list_pending(ListCandidatesRequest())
+        page = await service.list_pending(ListCandidatesRequest(), now=datetime.now(UTC))
         by_source = {summary.source: summary for summary in page.candidates}
         await stop_runs(handles)
 

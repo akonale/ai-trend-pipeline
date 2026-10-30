@@ -114,7 +114,10 @@ class FakeGateway:
         self.handles = {handle.id: handle for handle in handles}
         self.page = page if page is not None else CandidatePage()
 
-    async def list_pending(self, request: ListCandidatesRequest) -> CandidatePage:
+    async def list_pending(
+        self, request: ListCandidatesRequest, *, cutoff: datetime
+    ) -> CandidatePage:
+        _ = (request, cutoff)
         return self.page
 
     async def start(self, candidate: StoryCandidate, review_timeout_seconds: int) -> None:

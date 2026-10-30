@@ -89,8 +89,10 @@ shared visibility attributes (`StoryStatus`, `StoryTitle`, `StorySource`, `Story
 `StoryCreatedAt`, `StoryUpdatedAt`, `StoryStatusDetail`) let the list pages read bounded metadata
 without workflow queries; the story inherits `StoryCreatedAt` from the candidate's original
 detection time. `story_status.primary_story_status` maps every internal state to the five UI
-statuses (`pending`, `writing`, `review`, `ready`, `closed`). Tasks 054-055 add the pages; 053 only
-provides the mapping and metadata.
+statuses (`pending`, `writing`, `review`, `ready`, `closed`). `StoryStatusService` reads both
+workflow types in one visibility query for `GET /stories`, de-duplicates the candidate-to-story
+handoff by `StoryCandidateId`, and hides anything at or past 48 hours. `/candidates` keeps its own
+pending query but applies the same cutoff. Task 055 adds the story detail page.
 
 Pre-053 candidate histories still replay: the new terminal upsert and child start sit behind
 `workflow.patched("story-generation-handoff-v1")`, and the new input, query and result fields are
@@ -127,7 +129,7 @@ optional with defaults.
 | `worker.py` | Runs the hello, daily-chart, story-candidate, ingestion and story-generation workers; wires activity classes |
 | `temporal_client.py` | `connect(settings)` with the Pydantic data converter; `ensure_story_search_attributes` (and the candidate wrapper) |
 | `cli.py` | argparse front end over `ChartService` |
-| `services/` | `charts.py`, `candidates.py`, `styles.py`, `postgres_style_store.py`, `temporal_gateway.py` |
+| `services/` | `charts.py`, `candidates.py`, `stories.py`, `styles.py`, `postgres_style_store.py`, `temporal_gateway.py` |
 | `web/` | `app.py`, `dependencies.py`, `routes/`, `view_models.py`, `templates/`, `static/` |
 | `hello.py`, `start_hello.py` | Smoke-test workflow (`just hello`) |
 
@@ -138,7 +140,7 @@ optional with defaults.
 | Run status, review, requester, approver, options | Temporal workflow history | Read by query `review_state`; no app database for runs |
 | Candidate review status, decision | Temporal workflow history (`StoryCandidateWorkflow`) | Read by query `review_state`; pending list from visibility (`CandidateStatus`, `CandidateSource`); the approved result carries `story_workflow_id` |
 | Story generation state, draft, critique, final decision | Temporal workflow history (`StoryGenerationWorkflow`) | Read by query `story_state`; closed runs by typed result; no story table |
-| Story list metadata (status, title, source, candidate id, detection/update time, sanitized detail) | Temporal visibility attributes | Shared by candidates and stories; `StoryStatus` stores the internal state, never the UI badge |
+| Story list metadata (status, title, source, candidate id, detection/update time, sanitized detail) | Temporal visibility attributes | Shared by candidates and stories; `StoryStatus` stores the internal state, never the UI badge; `/stories` and `/candidates` read only the strict last 48 hours (`StoryCreatedAt`) |
 | Source cursor, processed ids, poll counters | Temporal workflow history (`SourceIngestionWorkflow`) | Bounded (1000 processed ids) and carried through continue-as-new; no Postgres table |
 | Source candidate budget (UTC day, starts) | Temporal workflow history (`SourceIngestionWorkflow`) | Per source, resets on a new UTC day with `workflow.now()`; carried through continue-as-new; no Postgres table |
 | Per-person style profile | Postgres `topic_studio.style_profiles` (default `postgres` db) | Created lazily on first use |

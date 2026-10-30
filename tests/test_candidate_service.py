@@ -26,6 +26,7 @@ from ai_trend_pipeline.story_candidate import (
     StoryCandidateResult,
     candidate_id_for,
 )
+from ai_trend_pipeline.story_status import STORY_UI_RETENTION
 
 OBSERVED = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
 
@@ -100,6 +101,7 @@ class FakeGateway:
         self.attempts: list[tuple[StoryCandidate, int]] = []
         self.starts: list[str] = []
         self.list_requests: list[ListCandidatesRequest] = []
+        self.cutoffs: list[datetime] = []
         self.page = CandidatePage(candidates=[])
         self.handles: dict[str, FakeHandle] = {}
 
@@ -110,8 +112,11 @@ class FakeGateway:
             self.starts.append(candidate_id)
             self.handles[candidate_id] = FakeHandle(candidate_id, awaiting_state(candidate))
 
-    async def list_pending(self, request: ListCandidatesRequest) -> CandidatePage:
+    async def list_pending(
+        self, request: ListCandidatesRequest, *, cutoff: datetime
+    ) -> CandidatePage:
         self.list_requests.append(request)
+        self.cutoffs.append(cutoff)
         return self.page
 
     def handle(self, candidate_id: str) -> CandidateHandle:
@@ -166,9 +171,10 @@ async def test_list_pending_passes_limit_and_page_token() -> None:
     )
     service = make_service(gateway)
     request = ListCandidatesRequest(limit=5, page_token="page-token")
-    page = await service.list_pending(request)
+    page = await service.list_pending(request, now=OBSERVED)
     assert page == gateway.page
     assert gateway.list_requests == [request]
+    assert gateway.cutoffs == [OBSERVED - STORY_UI_RETENTION]
     with pytest.raises(ValidationError):
         ListCandidatesRequest(limit=101)
 

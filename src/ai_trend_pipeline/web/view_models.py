@@ -19,8 +19,11 @@ from ai_trend_pipeline.post_options import (
     PostOptions,
 )
 from ai_trend_pipeline.services.candidates import CandidatePage, CandidateSummary
+from ai_trend_pipeline.services.stories import StoryFilter, StoryListPage, StoryRow
 from ai_trend_pipeline.sources import SourceName
 from ai_trend_pipeline.story_candidate import CandidateReviewState, candidate_id_for
+from ai_trend_pipeline.story_status import PrimaryStoryStatus
+from ai_trend_pipeline.story_visibility import bounded_detail
 from ai_trend_pipeline.style import (
     FONTS,
     MAX_HASHTAGS,
@@ -62,10 +65,12 @@ def build_shell(
     pending: NavBadge | None = None,
 ) -> ShellView:
     """Header, nav, chip and footer data for one page. Pure: no I/O."""
+    on_stories = path == "/stories" or path.startswith("/stories/")
     on_candidates = path == "/candidates" or path.startswith("/candidates/")
     on_new = path in ("/", "/runs") or path.startswith(("/runs/", "/new/"))
     return ShellView(
         nav=[
+            NavItem(label="Stories", href="/stories", current=on_stories),
             NavItem(
                 label="Candidates",
                 href="/candidates",
@@ -980,4 +985,206 @@ def build_candidate_not_available_view(status: str | None) -> CandidateNotAvaila
         body=body,
         back_href=INBOX_HREF,
         back_label=BACK_LABEL,
+    )
+
+
+STORIES_HEADING = "Stories"
+UNKNOWN_SOURCE_LABEL = "Unknown source"
+STORIES_EMPTY_HEADING = "No stories yet"
+STORIES_EMPTY_BODY = (
+    "Stories appear here when a source finds a candidate. "
+    "They leave 48 hours after they were first detected."
+)
+STORIES_EMPTY_ACTION_LABEL = "Check again"
+STORIES_FILTERED_EMPTY_HEADING = "No stories in this view"
+STORIES_FILTERED_EMPTY_BODY = (
+    "Nothing in the last 48 hours has this status. "
+    "Stories leave this page 48 hours after they were first detected."
+)
+STORIES_FILTERED_EMPTY_ACTION_LABEL = "Show all stories"
+STORIES_UNAVAILABLE_HEADING = "Stories are unavailable"
+STORIES_UNAVAILABLE_BODY = "We couldn't reach the story service. Nothing is lost."
+STORIES_POLLING_HINT = "Updating while stories are in progress."
+STORIES_POLLING_TRIGGER = "every 10s"
+STORIES_RESULTS_ID = "stories-results"
+
+STORY_STATUS_LABELS: dict[PrimaryStoryStatus, str] = {
+    PrimaryStoryStatus.PENDING: "Pending",
+    PrimaryStoryStatus.WRITING: "Writing",
+    PrimaryStoryStatus.REVIEW: "Review",
+    PrimaryStoryStatus.READY: "Ready",
+    PrimaryStoryStatus.CLOSED: "Closed",
+}
+STORY_STATUS_BADGE_CLASSES: dict[PrimaryStoryStatus, str] = {
+    PrimaryStoryStatus.PENDING: "badge--muted",
+    PrimaryStoryStatus.WRITING: "badge--progress",
+    PrimaryStoryStatus.REVIEW: "badge--attention",
+    PrimaryStoryStatus.READY: "badge--success",
+    PrimaryStoryStatus.CLOSED: "badge--danger",
+}
+STORY_FILTER_LABELS: dict[StoryFilter, str] = {
+    StoryFilter.ALL: "All",
+    StoryFilter.PENDING: "Pending",
+    StoryFilter.WRITING: "Writing",
+    StoryFilter.REVIEW: "Review",
+    StoryFilter.READY: "Ready",
+    StoryFilter.CLOSED: "Closed",
+}
+_ACTIVE_STORY_STATUSES = frozenset(
+    {PrimaryStoryStatus.PENDING, PrimaryStoryStatus.WRITING, PrimaryStoryStatus.REVIEW}
+)
+
+
+class StoryRowView(BaseModel):
+    href: str
+    title: str
+    source_label: str
+    status_label: str
+    status_class: str
+    detail: str
+    updated_iso: str | None
+    updated_label: str
+
+
+class StoryFilterLink(BaseModel):
+    label: str
+    href: str
+    current: bool
+
+
+def _story_filter_href(filter: StoryFilter) -> str:
+    return "/stories" if filter is StoryFilter.ALL else f"/stories?filter={filter.value}"
+
+
+def _story_filter_links(current: StoryFilter) -> list[StoryFilterLink]:
+    return [
+        StoryFilterLink(
+            label=label,
+            href=_story_filter_href(filter),
+            current=filter is current,
+        )
+        for filter, label in STORY_FILTER_LABELS.items()
+    ]
+
+
+def _story_count_text(count: int, more: bool, filter: StoryFilter) -> str:
+    if count == 0:
+        return ""
+    noun = "story" if count == 1 and not more else "stories"
+    amount = f"{count} or more" if more else str(count)
+    where = "" if filter is StoryFilter.ALL else f" in {STORY_FILTER_LABELS[filter]}"
+    return f"{amount} {noun}{where} from the last 48 hours."
+
+
+def _story_row_view(row: StoryRow, now: datetime) -> StoryRowView:
+    updated = row.updated_at
+    detail = bounded_detail(row.status_detail) or ""
+    source = row.source.strip()
+    relative = relative_time(updated, now) if updated is not None else ""
+    return StoryRowView(
+        href=f"/stories/{quote(row.detail_id, safe='')}",
+        title=row.title.strip() or TITLE_FALLBACK,
+        source_label=UNKNOWN_SOURCE_LABEL if not source else source_label(source),
+        status_label=STORY_STATUS_LABELS[row.status],
+        status_class=STORY_STATUS_BADGE_CLASSES[row.status],
+        detail=detail,
+        updated_iso=_as_utc(updated).isoformat() if updated is not None else None,
+        updated_label=f"Updated {relative}" if relative else "",
+    )
+
+
+def _empty_story_row_views() -> list[StoryRowView]:
+    return []
+
+
+class StoryListView(BaseModel):
+    page_title: str = STORIES_HEADING
+    heading: str = STORIES_HEADING
+    filters: list[StoryFilterLink]
+    rows: list[StoryRowView] = Field(default_factory=_empty_story_row_views)
+    count_text: str = ""
+    empty: bool = False
+    empty_heading: str = STORIES_EMPTY_HEADING
+    empty_body: str = STORIES_EMPTY_BODY
+    empty_action_label: str = STORIES_EMPTY_ACTION_LABEL
+    empty_action_href: str = "/stories"
+    unavailable: bool = False
+    unavailable_heading: str = STORIES_UNAVAILABLE_HEADING
+    unavailable_body: str = STORIES_UNAVAILABLE_BODY
+    retry_href: str = "/stories"
+    retry_label: str = RETRY_LABEL
+    notice: str = ""
+    older_href: str | None = None
+    older_label: str = OLDER_LABEL
+    newest_href: str | None = None
+    newest_label: str = NEWEST_LABEL
+    polling: bool = False
+    polling_href: str = ""
+    polling_trigger: str = STORIES_POLLING_TRIGGER
+    polling_hint: str = STORIES_POLLING_HINT
+    results_id: str = STORIES_RESULTS_ID
+
+
+def _story_rows_href(filter: StoryFilter, page_token: str | None) -> str:
+    href = f"/stories/rows?filter={filter.value}"
+    if page_token is not None:
+        href += f"&page={quote(page_token, safe='')}"
+    return href
+
+
+def build_story_list_view(
+    page: StoryListPage,
+    *,
+    now: datetime,
+    filter: StoryFilter,
+    page_token: str | None,
+    notice: str = "",
+) -> StoryListView:
+    """All story labels, fallbacks, URLs and polling hints. Pure: no I/O."""
+    rows = [_story_row_view(row, now) for row in page.stories]
+    more = page.next_token is not None
+    base = _story_filter_href(filter)
+    older_href = (
+        f"{base}{'&' if '?' in base else '?'}page={quote(page.next_token, safe='')}"
+        if page.next_token is not None
+        else None
+    )
+    empty = not rows and not notice
+    filtered = filter is not StoryFilter.ALL
+    return StoryListView(
+        filters=_story_filter_links(filter),
+        rows=rows,
+        count_text=_story_count_text(len(rows), more, filter),
+        empty=empty,
+        empty_heading=(STORIES_FILTERED_EMPTY_HEADING if filtered else STORIES_EMPTY_HEADING),
+        empty_body=(STORIES_FILTERED_EMPTY_BODY if filtered else STORIES_EMPTY_BODY),
+        empty_action_label=(
+            STORIES_FILTERED_EMPTY_ACTION_LABEL if filtered else STORIES_EMPTY_ACTION_LABEL
+        ),
+        empty_action_href="/stories",
+        notice=notice,
+        older_href=older_href,
+        newest_href=base if page_token is not None else None,
+        polling=bool(rows)
+        and filter not in (StoryFilter.READY, StoryFilter.CLOSED)
+        and any(row.status in _ACTIVE_STORY_STATUSES for row in page.stories),
+        polling_href=_story_rows_href(filter, page_token),
+    )
+
+
+def build_story_unavailable_view(
+    *, now: datetime, filter: StoryFilter = StoryFilter.ALL
+) -> StoryListView:
+    """Unavailable copy; never polls and offers a retry from the current filter."""
+    filtered = filter is not StoryFilter.ALL
+    return StoryListView(
+        filters=_story_filter_links(filter),
+        empty=False,
+        empty_heading=(STORIES_FILTERED_EMPTY_HEADING if filtered else STORIES_EMPTY_HEADING),
+        empty_body=(STORIES_FILTERED_EMPTY_BODY if filtered else STORIES_EMPTY_BODY),
+        empty_action_label=(
+            STORIES_FILTERED_EMPTY_ACTION_LABEL if filtered else STORIES_EMPTY_ACTION_LABEL
+        ),
+        unavailable=True,
+        polling_href=_story_rows_href(filter, None),
     )

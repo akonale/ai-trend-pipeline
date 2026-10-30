@@ -369,9 +369,10 @@ not registered.
 ### Dependencies (`web/dependencies.py`)
 
 `get_settings`, `get_templates` (read `app.state`), `get_style_store` (builds one
-`PostgresStyleStore` per process, no I/O), `get_style_service`, `get_chart_service` (connects to
-Temporal once, caches the client on `app.state`, returns `ChartService(TemporalChartRunGateway,
-settings, styles=...)`), `optional_user`, `current_user`, `build_request_shell`, `shell_context`.
+`PostgresStyleStore` per process, no I/O), `get_style_service`, `get_chart_service`,
+`get_candidate_service`, `get_story_status_service` (both connect to Temporal once, share the
+client cached on `app.state`, and map connect-time `RPCError`/`OSError`/`RuntimeError` to their
+typed unavailable error), `optional_user`, `current_user`, `build_request_shell`, `shell_context`.
 
 `optional_user` returns `CurrentUser(email=DEV_USER_EMAIL)` in local mode and, in cloudflare mode, the
 lower-cased header email or `None` when it is missing or blank. `build_request_shell(request, *,
@@ -394,7 +395,9 @@ helper does I/O, and the badge is built only from an already-fetched `CandidateP
 | GET | `/runs/{id}/status` | htmx fragment, polled every 2 s while `polling` | |
 | GET | `/runs/{id}/chart.png` | The PNG | 404 unless the file is inside `CHART_OUTPUT_DIR` |
 | POST | `/runs/{id}/decision` | Send approve/reject, 303 to `?sent=1` | uses `current_user`; 400 bad value, 409 not awaiting, 404 unknown |
-| GET | `/candidates` | Story candidate inbox | `?page=` is an opaque forward cursor; `?notice=` accepts only `approved`, `rejected` or `closed`; 400 with a friendly notice when the token is invalid, 503 full-shell unavailable page; the header badge shows `N` (or `N+` with a next page) only on a successful first page |
+| GET | `/stories` | Unified story status ledger | `?filter=` accepts only `all`, `pending`, `writing`, `review`, `ready`, `closed`; `?page=` is an opaque forward cursor carrying the filter and seen candidate ids; 400 friendly notice on an invalid token, 503 full-shell unavailable page; only the last 48 hours are visible |
+| GET | `/stories/rows` | htmx fragment for the results region | 200 for both success and a service failure (so htmx swaps and stops); no filter bar or heading in the response |
+| GET | `/candidates` | Story candidate inbox | same 48-hour cutoff as `/stories`; `?page=` is an opaque forward cursor; `?notice=` accepts only `approved`, `rejected` or `closed`; 400 with a friendly notice when the token is invalid, 503 full-shell unavailable page; the header badge shows `N` (or `N+` with a next page) only on a successful first page |
 | GET | `/candidates/{id}` | Candidate detail and decision form | 404 not-available page for a missing candidate, 410 status-specific page for approved/rejected/expired; renders only an `http`/`https` source link |
 | POST | `/candidates/{id}/decide` | Approve or reject, 303 to the inbox | uses `current_user`; 400 invalid decision re-renders the detail with an error; repeated/raced decisions 303 with `notice=closed`; 404 unknown |
 | GET, POST | `/settings` | Style profile form | uses `current_user`; 400 invalid, 503 store down |
@@ -417,14 +420,34 @@ while Postgres is down.
 - `CandidateService` (`services/candidates.py`): `start`, `list_pending`, `show`, `decide` over a
   `CandidateGateway` protocol (`start`, `list_pending`, `handle`). Errors: `CandidateNotFound`,
   `CandidateClosed`, `InvalidPageToken`, `CandidateUnavailable`. `start` derives the candidate id
-  and defaults the timeout from `Settings.candidate_review_timeout_s`; `show` and `decide` query
+  and defaults the timeout from `Settings.candidate_review_timeout_s`; `list_pending(request, *,
+  now)` computes the same 48-hour cutoff as the Stories page; `show` and `decide` query
   `review_state` first and map a missing candidate to `CandidateNotFound` and a non-`awaiting_review`
   state to `CandidateClosed`.
 - `TemporalCandidateGateway` / `TemporalCandidateHandle` (`services/temporal_gateway.py`): start
   with `id_conflict_policy=USE_EXISTING` and `id_reuse_policy=REJECT_DUPLICATE`, set both search
   attributes and the memo keys `candidate_title`, `candidate_proposed_angle`,
-  `candidate_observed_at`; `list_pending` runs the visibility query with opaque URL-safe base64 page
-  tokens (default size 20, max 100). Any `RPCError` from visibility becomes `CandidateUnavailable`.
+  `candidate_observed_at`; `list_pending(request, *, cutoff)` runs the visibility query with opaque
+  URL-safe base64 page tokens (default size 20, max 100) and `StoryCreatedAt > cutoff`. Any
+  `RPCError` from visibility becomes `CandidateUnavailable`.
+- `StoryStatusService` (`services/stories.py`): `list_stories(request, *, now)` requires an aware
+  UTC clock, computes `cutoff = now - STORY_UI_RETENTION` (48 hours) once and calls a
+  `StoryStatusGateway`. Pure helpers map the six UI filters, encode/decode the base64url JSON page
+  token (`v`, `filter`, `raw`, `seen`), build the single visibility query for both workflow types,
+  apply the strict `StoryCreatedAt > cutoff` window, de-duplicate by `StoryCandidateId` preferring
+  the generation workflow (including the generation-start-failure mapping), and sort newest first.
+  Errors: `InvalidStoryPageToken`, `StoryStatusUnavailable`.
+- `TemporalStoryStatusGateway` (`services/temporal_gateway.py`): scans up to five raw visibility
+  pages per request, maps the seven shared `Story*` attributes (falling back to candidate memos and
+  `CandidateSource`/`CandidateStatus` only for pre-053 rows), re-applies the cutoff and the filter
+  after collapse, and emits a forward token without any per-row handle or query. Any `RPCError`
+  from visibility becomes `StoryStatusUnavailable`.
+- `stories.html` / `partials/story_results.html` backed by `build_story_list_view` /
+  `build_story_unavailable_view` (`web/view_models.py`): one ledger of whole-row links sharing the
+  candidate row styles, a `.status-filters` switchboard with `aria-current`, one `.badge` status
+  stamp from the single five-status mapping, a bounded detail line, `Updated ...` and the opaque
+  pager. The results region polls `GET /stories/rows` every 10 seconds only while a visible row is
+  `pending`, `writing` or `review`; terminal-only, empty and unavailable views omit `hx-get`.
 - `candidates.html` backed by `build_candidate_inbox_view` / `build_candidate_unavailable_view`
   (`web/view_models.py`): one ledger of whole-row links with a `.source-badge` pill, relative
   detection time and a one-line angle; server-side forward paging plus "Back to newest", no
@@ -463,7 +486,7 @@ text are computed in `view_models.py` (`STATUS_LABELS`, `badge_for`, `option_lin
 `options_error_message`, `style_error_message`). `ShellView` (brand, `NavItem`s with a `current` flag
 and optional `badge`, `user_email`, `env_tag` "dev" in local mode, `SHELL_TAGLINE`) feeds
 `base.html`: a skip link, `<header class="site-header">` with brand, `<nav aria-label="Main">`
-("Candidates", "New chart", "Your style", `aria-current="page"` on the current one) and the
+("Stories", "Candidates", "New chart", "Your style", `aria-current="page"` on the current one) and the
 `.user-chip` (only when an email is known), `<main id="main">`, and `<footer class="site-footer">` with
 the tagline and the `.dev-tag`. The brand always links to `/`. A `NavBadge` (`text`, `label`) renders
 as an `aria-hidden` `.nav-badge` count plus a visually hidden sentence; `pending_nav_badge` derives it
@@ -485,8 +508,9 @@ labels never break mid-word) and `.btn--secondary` (the Back button) are used by
 is still reserved. All candidate rules live in one labelled section at the end of `app.css` and use
 tokens only: `.nav-badge`, `.source-badge` (a pill built on the `.badge` stamp),
 `.candidate-state`, `.candidate-flash`, `.candidate-back`, the inbox row hover/active pair inside one
-`@media (hover: hover)` block, and `.candidate-decisions`. Reduced motion turns off transitions and
-the progress animation, plus the candidate row transition.
+`@media (hover: hover)` block, `.candidate-decisions`, `.status-filters`/`.status-filter` (the active
+pill is marigold) and `.story-row__detail` (a muted, ellipsized one-liner). Reduced motion turns off
+transitions and the progress animation, plus the candidate row transition.
 
 Flow: `StepperView` / `build_stepper(current, topic_href)` (view_models) shape the four steps
 (Topic, Style, Review, Done); shown on step 1, step 2 and the run page (`RUN_STEP` maps status to

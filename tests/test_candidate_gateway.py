@@ -37,6 +37,7 @@ from ai_trend_pipeline.story_candidate import (
     StoryCandidateWorkflow,
     candidate_id_for,
 )
+from ai_trend_pipeline.story_status import STORY_UI_RETENTION
 from ai_trend_pipeline.temporal_client import ensure_candidate_search_attributes
 
 OBSERVED = datetime.now(UTC)
@@ -83,16 +84,20 @@ async def wait_for_rows(
     raise AssertionError(f"visibility never returned {count} rows for {query!r}")
 
 
+def cutoff_now() -> datetime:
+    return datetime.now(UTC) - STORY_UI_RETENTION
+
+
 async def wait_for_pending_count(
     gateway: TemporalCandidateGateway, count: int, *, timeout: float = 10.0
 ) -> None:
     deadline = time.monotonic() + timeout
-    page = await gateway.list_pending(ListCandidatesRequest(limit=100))
+    page = await gateway.list_pending(ListCandidatesRequest(limit=100), cutoff=cutoff_now())
     while time.monotonic() < deadline:
         if len(page.candidates) == count:
             return
         await asyncio.sleep(0.1)
-        page = await gateway.list_pending(ListCandidatesRequest(limit=100))
+        page = await gateway.list_pending(ListCandidatesRequest(limit=100), cutoff=cutoff_now())
     raise AssertionError(f"pending candidates never reached {count}: {page}")
 
 
@@ -147,14 +152,15 @@ async def test_list_pending_paginates_and_excludes_decided() -> None:
 
         seen: list[str] = []
         summaries: list[CandidateSummary] = []
-        page = await gateway.list_pending(ListCandidatesRequest(limit=1))
+        page = await gateway.list_pending(ListCandidatesRequest(limit=1), cutoff=cutoff_now())
         for _ in range(5):
             seen.extend(candidate.candidate_id for candidate in page.candidates)
             summaries.extend(page.candidates)
             if page.next_token is None:
                 break
             page = await gateway.list_pending(
-                ListCandidatesRequest(limit=1, page_token=page.next_token)
+                ListCandidatesRequest(limit=1, page_token=page.next_token),
+                cutoff=cutoff_now(),
             )
     assert len(seen) == 2
     assert set(seen) == {
@@ -210,11 +216,47 @@ async def test_decide_maps_missing_and_closed_and_returns_result() -> None:
     assert result.decided_by == "alice"
 
 
-def test_pending_query_mentions_workflow_type_and_status() -> None:
+def test_pending_query_includes_cutoff() -> None:
+    cutoff = datetime(2026, 10, 28, 12, 0, tzinfo=UTC)
     assert CANDIDATE_TASK_QUEUE == "story-candidate-task-queue"
-    assert pending_candidates_query() == (
-        "WorkflowType = 'StoryCandidateWorkflow' AND CandidateStatus = 'awaiting_review'"
+    assert pending_candidates_query(cutoff) == (
+        "WorkflowType = 'StoryCandidateWorkflow' AND "
+        "CandidateStatus = 'awaiting_review' AND "
+        "StoryCreatedAt > '2026-10-28T12:00:00Z'"
     )
+
+
+class EmptyVisibilityIterator:
+    current_page: list[WorkflowExecution] = []
+    next_page_token: bytes | None = None
+
+    async def fetch_next_page(self) -> None:
+        return None
+
+
+class RecordingVisibilityClient:
+    def __init__(self) -> None:
+        self.queries: list[str] = []
+
+    def list_workflows(
+        self, query: str, *, page_size: int | None = None, next_page_token: bytes | None = None
+    ) -> EmptyVisibilityIterator:
+        _ = (page_size, next_page_token)
+        self.queries.append(query)
+        return EmptyVisibilityIterator()
+
+
+@pytest.mark.asyncio
+async def test_list_pending_passes_the_cutoff() -> None:
+    cutoff = datetime(2026, 10, 28, 12, 0, tzinfo=UTC)
+    client = RecordingVisibilityClient()
+    gateway = TemporalCandidateGateway(cast(Client, client))
+
+    page = await gateway.list_pending(ListCandidatesRequest(), cutoff=cutoff)
+
+    assert page.candidates == []
+    assert client.queries == [pending_candidates_query(cutoff)]
+    assert "2026-10-28T12:00:00Z" in client.queries[0]
 
 
 class FailingVisibilityClient:
@@ -228,4 +270,4 @@ class FailingVisibilityClient:
 async def test_list_pending_maps_rpc_error_to_unavailable() -> None:
     gateway = TemporalCandidateGateway(cast(Client, FailingVisibilityClient()))
     with pytest.raises(CandidateUnavailable):
-        await gateway.list_pending(ListCandidatesRequest())
+        await gateway.list_pending(ListCandidatesRequest(), cutoff=cutoff_now())

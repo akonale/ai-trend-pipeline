@@ -11,10 +11,15 @@ from ai_trend_pipeline.config import Settings
 from ai_trend_pipeline.services.candidates import CandidateService, CandidateUnavailable
 from ai_trend_pipeline.services.charts import ChartService
 from ai_trend_pipeline.services.postgres_style_store import PostgresStyleStore
+from ai_trend_pipeline.services.stories import (
+    StoryStatusService,
+    StoryStatusUnavailable,
+)
 from ai_trend_pipeline.services.styles import StyleService, StyleStore
 from ai_trend_pipeline.services.temporal_gateway import (
     TemporalCandidateGateway,
     TemporalChartRunGateway,
+    TemporalStoryStatusGateway,
 )
 from ai_trend_pipeline.web.view_models import NavBadge, ShellView, build_shell
 
@@ -78,6 +83,19 @@ async def get_candidate_service(
             raise CandidateUnavailable() from exc
         request.app.state.temporal_client = client
     return CandidateService(TemporalCandidateGateway(client), settings)
+
+
+async def get_story_status_service(
+    request: Request, settings: Settings = Depends(get_settings)
+) -> StoryStatusService:
+    client = getattr(request.app.state, "temporal_client", None)
+    if not isinstance(client, Client):
+        try:
+            client = await temporal_client.connect(settings)
+        except (RPCError, OSError, RuntimeError) as exc:
+            raise StoryStatusUnavailable() from exc
+        request.app.state.temporal_client = client
+    return StoryStatusService(TemporalStoryStatusGateway(client))
 
 
 def optional_user(

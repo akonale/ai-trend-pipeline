@@ -47,7 +47,7 @@ async def candidate_inbox(
     now = datetime.now(UTC)
     token = page.strip() or None
     try:
-        candidates = await service.list_pending(ListCandidatesRequest(page_token=token))
+        candidates = await service.list_pending(ListCandidatesRequest(page_token=token), now=now)
     except InvalidPageToken:
         view = build_candidate_inbox_view(
             CandidatePage(), now=now, page_token=token, notice=INVALID_PAGE_NOTICE

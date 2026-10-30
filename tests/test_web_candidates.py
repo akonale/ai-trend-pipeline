@@ -3,6 +3,7 @@
 import html
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from fastapi.testclient import TestClient
 
 from ai_trend_pipeline.config import Settings
@@ -17,11 +18,13 @@ from ai_trend_pipeline.services.candidates import (
 )
 from ai_trend_pipeline.sources import SourceName
 from ai_trend_pipeline.story_candidate import CandidateStatus, StoryCandidate
+from ai_trend_pipeline.story_status import STORY_UI_RETENTION
 from ai_trend_pipeline.web.app import create_app
 from ai_trend_pipeline.web.dependencies import get_candidate_service
 from ai_trend_pipeline.web.view_models import (
     build_candidate_inbox_view,
     build_candidate_unavailable_view,
+    pending_nav_badge,
     relative_time,
     source_label,
 )
@@ -53,9 +56,13 @@ class FakeGateway:
         self.page = page if page is not None else CandidatePage()
         self.error = error
         self.requests: list[ListCandidatesRequest] = []
+        self.cutoffs: list[datetime] = []
 
-    async def list_pending(self, request: ListCandidatesRequest) -> CandidatePage:
+    async def list_pending(
+        self, request: ListCandidatesRequest, *, cutoff: datetime
+    ) -> CandidatePage:
         self.requests.append(request)
+        self.cutoffs.append(cutoff)
         if self.error is not None:
             raise self.error
         return self.page
@@ -278,3 +285,44 @@ def test_unavailable_view_has_no_list() -> None:
     assert view.unavailable is True
     assert view.rows == []
     assert view.retry_href == "/candidates"
+
+
+@pytest.mark.asyncio
+async def test_inbox_applies_48_hour_cutoff_to_rows_badge_and_count() -> None:
+    class CuttingGateway(FakeGateway):
+        def __init__(self, summaries: list[CandidateSummary]) -> None:
+            super().__init__()
+            self.summaries = summaries
+
+        async def list_pending(
+            self, request: ListCandidatesRequest, *, cutoff: datetime
+        ) -> CandidatePage:
+            self.requests.append(request)
+            self.cutoffs.append(cutoff)
+            kept = [
+                summary
+                for summary in self.summaries
+                if summary.observed_at is not None and summary.observed_at > cutoff
+            ]
+            return CandidatePage(candidates=kept)
+
+    visible = summary(
+        candidate_id="candidate-v1-visible",
+        observed_at=NOW - timedelta(hours=48) + timedelta(seconds=1),
+    )
+    boundary = summary(
+        candidate_id="candidate-v1-boundary",
+        observed_at=NOW - timedelta(hours=48),
+    )
+    gateway = CuttingGateway([visible, boundary])
+    service = CandidateService(gateway, Settings())
+
+    result = await service.list_pending(ListCandidatesRequest(), now=NOW)
+    view = build_candidate_inbox_view(result, now=NOW)
+    badge = pending_nav_badge(result, first_page=True)
+
+    assert [candidate.candidate_id for candidate in result.candidates] == ["candidate-v1-visible"]
+    assert view.count_text == "1 story waiting for review."
+    assert badge is not None
+    assert badge.text == "1"
+    assert gateway.cutoffs == [NOW - STORY_UI_RETENTION]

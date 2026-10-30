@@ -40,6 +40,8 @@ def test_build_shell_current_flags() -> None:
         assert current_labels(build_shell(path, None, "local")) == ["New chart"], path
     assert current_labels(build_shell("/settings", None, "local")) == ["Your style"]
     assert current_labels(build_shell("/health", None, "local")) == []
+    assert current_labels(build_shell("/stories", None, "local")) == ["Stories"]
+    assert current_labels(build_shell("/stories/story-v1-abc", None, "local")) == ["Stories"]
     assert current_labels(build_shell("/candidates", None, "local")) == ["Candidates"]
     assert current_labels(build_shell("/candidates/candidate-v1-abc", None, "local")) == [
         "Candidates"
@@ -52,8 +54,18 @@ def test_build_shell_fields() -> None:
     assert local.user_email == "a@b.co"
     assert build_shell("/", None, CF).env_tag == ""
     assert build_shell("/", None, CF).user_email is None
-    assert [item.href for item in local.nav] == ["/candidates", "/", "/settings"]
-    assert [item.label for item in local.nav] == ["Candidates", "New chart", "Your style"]
+    assert [item.href for item in local.nav] == [
+        "/stories",
+        "/candidates",
+        "/",
+        "/settings",
+    ]
+    assert [item.label for item in local.nav] == [
+        "Stories",
+        "Candidates",
+        "New chart",
+        "Your style",
+    ]
     assert all(item.badge is None for item in local.nav)
     assert local.tagline == SHELL_TAGLINE
 

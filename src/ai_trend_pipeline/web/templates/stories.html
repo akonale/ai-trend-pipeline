@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ view.page_title }} - {{ shell.brand }}{% endblock %}
+{% block content %}
+<h1>{{ view.heading }}</h1>
+<ul class="status-filters" aria-label="Filter stories">
+{% for filter in view.filters %}<li><a class="status-filter{% if filter.current %} status-filter--active{% endif %}" href="{{ filter.href }}"{% if filter.current %} aria-current="true"{% endif %}>{{ filter.label }}</a></li>
+{% endfor %}
+</ul>
+{% include "partials/story_results.html" %}
+{% endblock %}

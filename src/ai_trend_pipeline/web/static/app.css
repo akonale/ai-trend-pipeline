@@ -655,6 +655,35 @@ main {
 .candidate-state--empty { border-top-color: var(--color-info); }
 .candidate-state--unavailable { border-top-color: var(--color-neutral); }
 
+/* Story status filters: a switchboard of pills above the ledger */
+.status-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-4) 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+}
+.status-filters > li { max-width: none; }
+.status-filter {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-3);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: var(--border-thin) solid var(--color-border);
+  border-radius: var(--radius-pill);
+  box-shadow: 2px 2px 0 0 var(--color-shadow);
+  font-size: var(--text-sm);
+  font-weight: 800;
+  text-decoration: none;
+}
+.status-filter--active {
+  background: var(--color-highlight);
+  color: var(--color-on-fill);
+  box-shadow: var(--shadow-none);
+}
+
 /* Candidate inbox: one ledger of whole-row links */
 .candidate-inbox {
   list-style: none;
@@ -686,7 +715,8 @@ main {
   line-height: 1.15;
   letter-spacing: -0.01em;
 }
-.candidate-row__angle {
+.candidate-row__angle,
+.story-row__detail {
   color: var(--color-muted);
   font-size: var(--text-base);
   min-width: 0;
@@ -709,6 +739,8 @@ main {
   margin-top: var(--space-5);
 }
 @media (hover: hover) {
+  .status-filter:hover { background: var(--color-neutral); }
+  .status-filter--active:hover { background: var(--color-highlight); }
   .candidate-row:hover { transform: translate(-2px, -2px); box-shadow: var(--shadow-lift); }
   .candidate-row:hover .candidate-row__title {
     text-decoration: underline;

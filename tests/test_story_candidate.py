@@ -36,6 +36,7 @@ from ai_trend_pipeline.story_candidate import (
     StoryCandidateWorkflow,
     candidate_id_for,
 )
+from ai_trend_pipeline.story_status import STORY_UI_RETENTION
 from ai_trend_pipeline.temporal_client import ensure_candidate_search_attributes
 
 OBSERVED = datetime.now(UTC)
@@ -283,7 +284,8 @@ async def test_visibility_status_changes_from_awaiting_to_terminal() -> None:
         candidate_id = candidate_id_for(candidate.source, candidate.external_id)
         async with make_worker(env):
             await gateway.start(candidate, review_timeout_seconds=600)
-            assert await wait_for_visibility(env, pending_candidates_query(), 1) == [candidate_id]
+            pending_query = pending_candidates_query(datetime.now(UTC) - STORY_UI_RETENTION)
+            assert await wait_for_visibility(env, pending_query, 1) == [candidate_id]
             await gateway.handle(candidate_id).approve(CandidateDecision())
             await gateway.handle(candidate_id).result()
             terminal_query = (

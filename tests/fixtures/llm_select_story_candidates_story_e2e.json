@@ -1,0 +1,39 @@
+{
+  "id": "msg_01StorySelectionE2E",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-5-5",
+  "content": [
+    {"type": "text", "text": "All three stories look worth reviewing."},
+    {
+      "type": "tool_use",
+      "id": "toolu_01StorySelectionE2E",
+      "name": "select_story_candidates",
+      "input": {
+        "selections": [
+          {
+            "external_id": "3001",
+            "summary": "Global life expectancy climbed again in the latest estimates.",
+            "proposed_angle": "Show the latest world life-expectancy figure and how it changed.",
+            "selection_reason": "A concrete long-run health story with a supporting dataset."
+          },
+          {
+            "external_id": "3002",
+            "summary": "A second report discusses life expectancy trends across regions.",
+            "proposed_angle": "Compare reported life-expectancy trends across regions.",
+            "selection_reason": "A timely follow-up on the same health topic."
+          },
+          {
+            "external_id": "3003",
+            "summary": "A contrarian post questions whether life-expectancy gains are real.",
+            "proposed_angle": "Examine the claims behind the sceptical post.",
+            "selection_reason": "A useful counterpoint for editorial review."
+          }
+        ]
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {"input_tokens": 420, "output_tokens": 160}
+}

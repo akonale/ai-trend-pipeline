@@ -100,6 +100,29 @@ Pre-053 candidate histories still replay: the new terminal upsert and child star
 `workflow.patched("story-generation-handoff-v1")`, and the new input, query and result fields are
 optional with defaults.
 
+Budgets are layered in existing code rather than a new global counter: the per-source UTC-day
+`SOURCE_CANDIDATE_BUDGET` (1-500, default 20) bounds candidate starts, deterministic `story-v1-`
+ids allow exactly one story per candidate ever, and each story makes one research call, one facts
+call, at most two drafts and at most two critiques with three attempts each and fixed timeouts.
+Article HTTP, contexts/evidence, facts and draft text also have fixed bounds; the review wait is
+capped at `story_created_at + 48 h`. No budget workflow, table or setting exists.
+
+`StoryGenerationWorkflow` is the only writer of the fixed `story_generation.*` events
+(`started`, `status`, `research_completed`, `facts_completed`, `draft_completed`,
+`check_completed`, `revision`, `activity_failed`, `review_waiting`, `decision`, `ignored_signal`,
+`finished`). The pure `story_logging.py` guard rejects forbidden names, non-primitives and
+over-long strings, so titles, URLs, prompts, article text, drafts, critiques, notes, emails and
+secrets never reach a record. Filter with `grep story_generation`.
+
+Operate the feature with the [stories runbook](../runbooks/stories.md),
+[search-attributes](../runbooks/search-attributes.md) and [ingestion](../runbooks/ingestion.md)
+runbooks. The deterministic end-to-end proof is
+`uv run pytest tests/test_story_generation_e2e.py -q`: recorded HN, article, OWID and Anthropic
+fixtures with the real workflows, activities, gateways, services and FastAPI routes on a
+`start_local` server, covering success, unsupported, failed-after-retry, critique revision,
+candidate rejection, story rejection, review expiry, one row/workflow per candidate, the 48-hour
+cutoff and replay-safe histories.
+
 ## Module map (`src/ai_trend_pipeline/`)
 
 | Module | Purpose |
@@ -108,6 +131,8 @@ optional with defaults.
 | `hn.py` | Activity `fetch_hn_top_stories` (Hacker News API) |
 | `sources/` | Frozen bounded source contracts, static registry (`hn`, `fake`), shared normalization, HN and fake connectors (`poll_hn_source`, `poll_fake_source`); fake is test-only |
 | `ingestion_logging.py` | Pure fixed `candidate_ingestion.*` event set, forbidden-field guard and truncation |
+| `operational_logging.py` | Shared pure primitives: `MAX_LOG_VALUE_LENGTH`, `FORBIDDEN_LOG_FIELDS`, the `StructuredLogger` protocol and `check_log_field` |
+| `story_logging.py` | Pure fixed `story_generation.*` event set, story forbidden-field set and level mapping |
 | `story_selection.py` | Pure `prefilter_events` and activity `select_story_candidates` (batch LLM editorial selection) |
 | `source_ingestion.py` | `SourceIngestionWorkflow`: one long-running poll/select/start loop per enabled source, bounded cursor, processed ids and per-source UTC-day candidate budget |
 | `ingestion_starter.py` | Operator entry point (`just ingest`) that ensures source ingestion workflows exist |
@@ -184,5 +209,6 @@ code may import them. Full rules: `CLAUDE.md`.
 - [../history.md](../history.md): why things are the way they are (decisions and gotchas).
 - [../runbooks/deploy.md](../runbooks/deploy.md), [../runbooks/cloudflare.md](../runbooks/cloudflare.md): operations.
 - [../runbooks/ingestion.md](../runbooks/ingestion.md): ensure, enable/disable, recover, replay and the two-source demo.
+- [../runbooks/stories.md](../runbooks/stories.md): the two human decisions, local walkthrough, budget enforcement, search-attribute checks, failure recovery, 48-hour retention, replay and `story_generation.*` logs.
 - [../runbooks/search-attributes.md](../runbooks/search-attributes.md): `CandidateStatus` / `CandidateSource` registration and verification.
 - [../../CLAUDE.md](../../CLAUDE.md): rules every agent follows. [../mvp-plan.md](../mvp-plan.md): the agent relay.

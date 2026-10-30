@@ -228,6 +228,50 @@ Runbooks: [ingestion](docs/runbooks/ingestion.md) (ensure, enable/disable, recov
 two-source demo) and [search attributes](docs/runbooks/search-attributes.md) (register and verify the two
 `Candidate*` and seven shared `Story*` attributes).
 
+### Story generation after approval
+
+Two human decisions gate the feature. **Candidate approval starts generation:** approving a
+candidate starts exactly one deterministic `StoryGenerationWorkflow`; a second approval is ignored
+because the candidate is closed and the story id is `story-v1-<candidate-hash>`.
+**Final story approval marks the package `ready` and never publishes:** the final Approve/Reject
+in `/stories` is separate from the candidate decision, the first final decision wins, and nothing
+is posted, charted or rendered.
+
+Internally the story moves through `researching -> analyzing -> writing -> checking`, with at most
+one revision if the checker fails, then `review` and a terminal state. `/stories` and the detail
+page show only the five UI statuses: Pending, Writing, Review, Ready and Closed. The 48-hour window
+is presentation only: rows leave both list pages, their filters, pagination and pending counts 48
+hours after the original detection time, but the Temporal histories remain and can still be
+described. No history is deleted.
+
+Budgets are layered and deterministic, not a new global quota. `SOURCE_CANDIDATE_BUDGET` (1-500,
+default 20) bounds new candidates per source per UTC day. Each candidate maps to at most one story
+forever. A story makes one `research_story` call, one `calculate_facts` call, at most two
+`draft_story` calls and at most two `critique_story` calls, with three attempts per activity and
+120 s / 30 s / 120 s / 120 s timeouts. Article HTTP is bounded by `RESEARCH_FETCH_TIMEOUT_S` (over 0
+and at most 60, default 10.0), `RESEARCH_MAX_RESPONSE_BYTES` (1024-4194304, default 524288) and
+`RESEARCH_MAX_REDIRECTS` (0-5, default 3), and context/evidence, facts and draft text have fixed
+limits. Review waits no longer than `min(review_timeout_seconds, story_created_at + 48 h - now)`.
+There is no story quota workflow, table or new setting.
+
+Operational logs are the fixed `story_generation.*` set: `started`, `status`,
+`research_completed`, `facts_completed`, `draft_completed`, `check_completed`, `revision`,
+`activity_failed`, `review_waiting`, `decision`, `ignored_signal` and `finished`. They are written
+only by the workflow through a pure guard; titles, URLs, summaries, prompts, article text, evidence,
+drafts, critiques, notes, emails and secrets cannot enter a record. Filter them with
+`grep story_generation`.
+
+Register and verify the nine search attributes with
+[search attributes](docs/runbooks/search-attributes.md), and operate recovery, budgets, retention
+and replay with the [stories runbook](docs/runbooks/stories.md). The deterministic end-to-end proof
+is `uv run pytest tests/test_story_generation_e2e.py -q`: it uses recorded HN, article, OWID and
+Anthropic fixtures, the real workflows, gateways, services and routes, and covers success,
+unsupported, failed-after-retry, critique revision, candidate rejection, story rejection and review
+expiry. For a short manual walkthrough, set `SOURCE_ENABLED=hn`, `SOURCE_CANDIDATE_BUDGET=5`,
+`SOURCE_POLL_INTERVAL_S=60` and `CANDIDATE_REVIEW_TIMEOUT_S=3600` in `.env`, then run `just dev`,
+`just ingest` and `just web`, approve a candidate at `/candidates`, follow `/stories` to Review, and
+approve the final story.
+
 ## Topic picking
 
 `ai_trend_pipeline.topic` provides the `TopicActivities.pick_topic` activity, which asks Claude to

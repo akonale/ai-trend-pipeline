@@ -169,3 +169,7 @@ inbox row. The demo uses the live LLM selector, so it may select zero fake stori
 selects none, the `ingestion_state` query and the `poll`/`selection` events show the fake source
 polled. The deterministic proof is the committed `start_local` two-source test; do not treat an
 empty demo inbox as a source failure.
+
+## Stories
+
+Approved candidates start exactly one story workflow; see [stories.md](stories.md).

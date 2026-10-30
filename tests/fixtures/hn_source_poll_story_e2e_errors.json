@@ -1,0 +1,35 @@
+{
+  "topstories": [4001, 4002, 4003],
+  "items": {
+    "4001": {
+      "by": "dave",
+      "descendants": 30,
+      "id": 4001,
+      "score": 150,
+      "time": 1760001000,
+      "title": "Life expectancy keeps rising",
+      "type": "story",
+      "url": "https://news.example/story"
+    },
+    "4002": {
+      "by": "erin",
+      "descendants": 12,
+      "id": 4002,
+      "score": 90,
+      "time": 1760001050,
+      "title": "Life expectancy keeps rising",
+      "type": "story",
+      "url": "https://news.example/story"
+    },
+    "4003": {
+      "by": "frank",
+      "descendants": 5,
+      "id": 4003,
+      "score": 40,
+      "time": 1760001100,
+      "title": "Life expectancy keeps rising",
+      "type": "story",
+      "url": "https://news.example/retry"
+    }
+  }
+}

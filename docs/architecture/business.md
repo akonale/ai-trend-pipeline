@@ -123,6 +123,25 @@ poll source ─▶ drop processed ids ─▶ deterministic prefilter ─▶ batc
   and must never be enabled in production. Google Trends is the next candidate connector once its
   API/provider access is chosen.
 
+### Story generation
+
+A candidate approval is the first of two human decisions; a final story approval is the second.
+
+- **Candidate approval starts generation.** It starts exactly one story for that candidate and does
+  not wait for it. There is no automatic generation and no second story for the same candidate.
+- **Final story approval marks the package `ready` and never publishes.** Reject closes it. The
+  first final decision wins; a review window that closes with no decision ends `expired`. Nothing
+  is posted, charted or rendered at any point.
+- A person sees only five statuses: Pending, Writing, Review, Ready and Closed. The internal steps
+  (research, analysis, writing, checking, review) stay inside those.
+- The status pages and pending counts show only the last 48 hours from the original detection time.
+  This is presentation retention, not deletion: the workflow history remains and can still be
+  inspected or described.
+- The budget envelope is the existing per-source candidate budget plus deterministic per-story
+  caps: one research call, one facts call, at most two drafts and two checks, three attempts per
+  activity, bounded article HTTP/context/facts/text, and a review wait capped at 48 hours. There is
+  no global or per-day story quota and no new setting to tune.
+
 ## 2. Charts
 
 ### Flow inside the workflow

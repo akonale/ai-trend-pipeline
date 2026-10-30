@@ -1,0 +1,35 @@
+{
+  "topstories": [3001, 3002, 3003],
+  "items": {
+    "3001": {
+      "by": "alice",
+      "descendants": 42,
+      "id": 3001,
+      "score": 210,
+      "time": 1760000000,
+      "title": "Life expectancy keeps rising",
+      "type": "story",
+      "url": "https://news.example/story"
+    },
+    "3002": {
+      "by": "bob",
+      "descendants": 8,
+      "id": 3002,
+      "score": 64,
+      "time": 1760000050,
+      "title": "Life expectancy keeps rising",
+      "type": "story",
+      "url": "https://news.example/missing"
+    },
+    "3003": {
+      "by": "carol",
+      "descendants": 1,
+      "id": 3003,
+      "score": 3,
+      "time": 1760000060,
+      "title": "Life expectancy is a myth",
+      "type": "story",
+      "url": "https://news.example/story"
+    }
+  }
+}

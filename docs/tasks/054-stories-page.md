@@ -1,6 +1,6 @@
 # 054: Unified stories status page with 48-hour retention
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -499,3 +499,4 @@ only pending badge, `/stories/{id}` is 055, and polling is 10 seconds.
 2. `src/ai_trend_pipeline/services/stories.py:218`: the Closed prefilter omits approved candidates, so a generation-start failure maps to Closed after collapse but never appears under `?filter=closed` (only All); add `CandidateStatus = 'approved'` to the predicate plus a test (spec amendment). Screenshots are otherwise clean.
 **verifier**: `just lint` clean (ruff, ruff format, pyright 0 errors); `just test` 914 passed with harness `ANTHROPIC_*` base-url vars unset (73 LLM tests fail with `anthropic.APIConnectionError` only while those are set). Next: reviewer.
 **reviewer**: Approved. Overflow tokens now re-scan from the request's starting cursor with seen ids, so the 46h Review row behind a 1h candidate is reachable with no duplicates or loops; Closed prefilter includes approved candidates while post-collapse filtering still hides one still starting within the grace. Both regression tests fail on the old code. Lint clean, 914 tests pass, `/tmp/stories-shots` unchanged (sw==iw at 360).
+**scribe**: Confirmed README and architecture docs cover the Stories nav, `/stories` + `/stories/rows`, `StoryStatusService`, the 48-hour cutoff, filters and active-row polling; committed the verifier/reviewer handoff. PR: https://github.com/akonale/ai-trend-pipeline/pull/61. Next: human merge.

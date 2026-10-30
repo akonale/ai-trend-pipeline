@@ -2,7 +2,7 @@
 
 import base64
 import binascii
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -19,6 +19,7 @@ from ai_trend_pipeline.story_candidate import (
     StoryCandidateResult,
     candidate_id_for,
 )
+from ai_trend_pipeline.story_status import STORY_UI_RETENTION
 
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100
@@ -138,7 +139,9 @@ class CandidateHandle(Protocol):
 class CandidateGateway(Protocol):
     async def start(self, candidate: StoryCandidate, review_timeout_seconds: int) -> None: ...
 
-    async def list_pending(self, request: ListCandidatesRequest) -> CandidatePage: ...
+    async def list_pending(
+        self, request: ListCandidatesRequest, *, cutoff: datetime
+    ) -> CandidatePage: ...
 
     def handle(self, candidate_id: str) -> CandidateHandle: ...
 
@@ -160,8 +163,12 @@ class CandidateService:
         await self._gateway.start(candidate, timeout)
         return StartCandidateResult(candidate_id=candidate_id)
 
-    async def list_pending(self, request: ListCandidatesRequest) -> CandidatePage:
-        return await self._gateway.list_pending(request)
+    async def list_pending(self, request: ListCandidatesRequest, *, now: datetime) -> CandidatePage:
+        if now.tzinfo is None or now.utcoffset() is None:
+            raise ValueError("now must be a timezone-aware datetime")
+        moment = now.astimezone(UTC)
+        cutoff = moment - STORY_UI_RETENTION
+        return await self._gateway.list_pending(request, cutoff=cutoff)
 
     async def show(self, candidate_id: str) -> CandidateReviewState:
         handle = self._gateway.handle(candidate_id)

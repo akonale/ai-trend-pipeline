@@ -43,6 +43,7 @@ from ai_trend_pipeline.story_candidate import (
     candidate_id_for,
 )
 from ai_trend_pipeline.story_selection import StorySelectionActivities
+from ai_trend_pipeline.story_status import STORY_UI_RETENTION
 from ai_trend_pipeline.temporal_client import ensure_candidate_search_attributes
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -145,7 +146,7 @@ async def ingestion_run() -> AsyncGenerator[
 
 async def wait_for_pending(service: CandidateService, count: int) -> None:
     for _ in range(500):
-        page = await service.list_pending(ListCandidatesRequest())
+        page = await service.list_pending(ListCandidatesRequest(), now=datetime.now(UTC))
         if len(page.candidates) >= count:
             return
         await asyncio.sleep(0.02)
@@ -163,7 +164,7 @@ async def stop_run(
 async def test_hn_fixture_becomes_a_pending_candidate_through_candidate_service() -> None:
     async with ingestion_run() as (_env, handle, service):
         await wait_for_pending(service, 1)
-        page = await service.list_pending(ListCandidatesRequest())
+        page = await service.list_pending(ListCandidatesRequest(), now=datetime.now(UTC))
         assert len(page.candidates) == 1
         summary = page.candidates[0]
         assert summary.source is SourceName.HN
@@ -182,7 +183,7 @@ async def test_hn_fixture_becomes_a_pending_candidate_through_candidate_service(
 async def test_ingestion_workflow_is_not_a_candidate_or_chart_run() -> None:
     async with ingestion_run() as (env, handle, service):
         await wait_for_pending(service, 1)
-        page = await service.list_pending(ListCandidatesRequest())
+        page = await service.list_pending(ListCandidatesRequest(), now=datetime.now(UTC))
         assert len(page.candidates) == 1
         executions = [
             execution
@@ -200,7 +201,7 @@ async def test_ingestion_workflow_is_not_a_candidate_or_chart_run() -> None:
             "someone", datetime(2020, 1, 1, tzinfo=UTC)
         )
         assert chart_runs == 0
-        query = pending_candidates_query()
+        query = pending_candidates_query(datetime.now(UTC) - STORY_UI_RETENTION)
         assert "StoryCandidateWorkflow" in query
         assert "SourceIngestionWorkflow" not in query
         result = await stop_run(handle)
@@ -211,9 +212,9 @@ async def test_ingestion_workflow_is_not_a_candidate_or_chart_run() -> None:
 async def test_end_to_end_run_stops_cleanly() -> None:
     async with ingestion_run() as (_env, handle, service):
         await wait_for_pending(service, 1)
-        before = await service.list_pending(ListCandidatesRequest())
+        before = await service.list_pending(ListCandidatesRequest(), now=datetime.now(UTC))
         result = await stop_run(handle)
         await asyncio.sleep(0.1)
-        after = await service.list_pending(ListCandidatesRequest())
+        after = await service.list_pending(ListCandidatesRequest(), now=datetime.now(UTC))
         assert len(after.candidates) == len(before.candidates) == 1
     assert result.reason == "stopped"

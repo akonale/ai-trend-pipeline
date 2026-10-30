@@ -1,6 +1,7 @@
 """Cross-page candidate navigation, badge, title and CSS consolidation tests."""
 
 import re
+from datetime import datetime
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -63,8 +64,11 @@ class FakeGateway:
         self.error = error
         self.requests: list[ListCandidatesRequest] = []
 
-    async def list_pending(self, request: ListCandidatesRequest) -> CandidatePage:
+    async def list_pending(
+        self, request: ListCandidatesRequest, *, cutoff: datetime
+    ) -> CandidatePage:
         self.requests.append(request)
+        _ = cutoff
         if self.error is not None:
             raise self.error
         return self.result
@@ -93,14 +97,26 @@ def current_labels(path: str) -> list[str]:
 
 def test_build_shell_nav_order_and_current_flags() -> None:
     shell = build_shell("/", None, "local")
-    assert [item.label for item in shell.nav] == ["Candidates", "New chart", "Your style"]
-    assert [item.href for item in shell.nav] == ["/candidates", "/", "/settings"]
+    assert [item.label for item in shell.nav] == [
+        "Stories",
+        "Candidates",
+        "New chart",
+        "Your style",
+    ]
+    assert [item.href for item in shell.nav] == [
+        "/stories",
+        "/candidates",
+        "/",
+        "/settings",
+    ]
 
     assert current_labels("/") == ["New chart"]
     assert current_labels("/new/style") == ["New chart"]
     assert current_labels("/runs/x") == ["New chart"]
     assert current_labels("/settings") == ["Your style"]
     assert current_labels("/health") == []
+    assert current_labels("/stories") == ["Stories"]
+    assert current_labels("/stories/story-v1-abc") == ["Stories"]
     assert current_labels("/candidates") == ["Candidates"]
     assert current_labels("/candidates/candidate-v1-abc") == ["Candidates"]
 

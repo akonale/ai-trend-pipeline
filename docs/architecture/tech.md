@@ -144,6 +144,7 @@ The message is the event value; the payload carries `event`, `source` and the li
 | `fetch_context` | `StoryResearchActivities` | `FetchContextInput` -> `FetchContextOutput` |
 | `match_owid_evidence` | `StoryResearchActivities` | `MatchEvidenceInput` -> `MatchEvidenceOutput` |
 | `research_story` | `StoryResearchActivities` | `ResearchInput` -> `ResearchOutput` |
+| `calculate_facts` | `FactActivities` | `FactInput` -> `FactSet` |
 
 Activity classes take their clients in `__init__` (httpx / Anthropic), so tests pass fakes with
 `MockTransport`.
@@ -183,6 +184,24 @@ three read-only, idempotent activities. `supported` requires a fetched original 
 300 characters; a dataset match alone cannot support a story, and a missing catalog match is only a
 note. OWID problems degrade to notes. The activities are not registered on any worker yet (053 owns
 registration and retry policies), and no LLM or new credential is involved.
+
+### Facts (`analysis/`)
+
+`analysis/models.py` holds versioned, frozen, `extra="forbid"` contracts (`Fact`, `FactSet`,
+`FactInput`, `SourceReference`, `CalculationLineage`, `FactDisplay`, enums and constants). Each fact
+carries a stable `fact-v1-<16 hex>` id, one source reference to the chosen dataset evidence,
+observation dates, period years, calculation lineage (formula, method, baseline, entity count and
+parameters), ordered caveats and compact locale-independent display values. `FactSet` ids are
+`fset-v1-<16 hex>`; both ids hash canonical JSON and contain no clock, retrieval time or list
+position. `analysis/calculations.py` is a pure builder over the first usable 050 `dataset` evidence:
+it emits first/latest/min/max/change/percent change per up to four entities, then latest-common-year
+comparison, ordinal ranking and Tukey IQR outliers, capped at 32 facts. Only dataset rows can produce
+a number; article prose never does. Unsupported research returns zero facts and a specific
+status/note; missing, duplicate, partial or insufficient data omits calculations instead of guessing,
+and units are never inferred. Identical `FactInput` yields byte-identical JSON and ids on every run
+(no clocks, randomness, dict-order dependence or locale formatting). `analysis/activities.py` exposes
+the sync, idempotent, read-only `calculate_facts` activity; it is not registered on any worker yet
+(053 owns wiring, an activity executor and a start-to-close timeout).
 
 ### Determinism, idempotency, replay
 

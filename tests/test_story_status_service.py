@@ -303,7 +303,8 @@ def test_visibility_query_covers_all_filters_and_the_cutoff() -> None:
     assert story_visibility_query(StoryFilter.CLOSED, cutoff) == (
         base
         + " AND (StoryStatus IN ('rejected','unsupported','failed','expired') "
-        + "OR CandidateStatus IN ('rejected','expired'))"
+        + "OR CandidateStatus IN ('rejected','expired') "
+        + "OR CandidateStatus = 'approved')"
     )
 
 
@@ -465,6 +466,74 @@ async def test_pagination_does_not_repeat_rows_across_pages() -> None:
     assert second.stories[0].detail_id == "story-v1-x"
     assert second.next_token is None
     assert all("StoryCreatedAt >" in query for query in client.queries)
+
+
+@pytest.mark.asyncio
+async def test_pagination_recovers_earlier_pages_after_overflow() -> None:
+    review = FakeExecution(
+        GENERATION_WORKFLOW_TYPE,
+        "story-v1-old",
+        candidate_id="cand-old",
+        status="review",
+        created_at=NOW - timedelta(hours=46),
+        updated_at=NOW - timedelta(hours=45),
+    )
+    fresh = FakeExecution(
+        CANDIDATE_WORKFLOW_TYPE,
+        "candidate-v1-new",
+        candidate_id="cand-new",
+        status="awaiting_review",
+        created_at=NOW - timedelta(hours=1),
+    )
+    gateway, _ = _gateway([[review], [fresh]])
+
+    first = await gateway.list_stories(ListStoriesRequest(limit=1), now=NOW, cutoff=CUTOFF)
+    assert [row.candidate_id for row in first.stories] == ["cand-new"]
+    assert first.next_token is not None
+    token = decode_story_page_token(first.next_token, filter=StoryFilter.ALL)
+    # The overflow re-scans from the request's starting cursor, so the 46h row on
+    # page 1 is still reachable even though the 1h row sorted above it.
+    assert token.raw is None
+    assert token.seen == ["cand-new"]
+
+    second = await gateway.list_stories(
+        ListStoriesRequest(limit=1, page_token=first.next_token), now=NOW, cutoff=CUTOFF
+    )
+    assert [row.candidate_id for row in second.stories] == ["cand-old"]
+    assert second.stories[0].status is PrimaryStoryStatus.REVIEW
+    assert second.next_token is None
+
+
+@pytest.mark.asyncio
+async def test_closed_filter_includes_generation_start_failures() -> None:
+    failed = FakeExecution(
+        CANDIDATE_WORKFLOW_TYPE,
+        "candidate-v1-failed",
+        candidate_id="cand-failed",
+        status="approved",
+        created_at=NOW - timedelta(hours=3),
+        updated_at=NOW - timedelta(minutes=2),
+        closed=True,
+    )
+    starting = FakeExecution(
+        CANDIDATE_WORKFLOW_TYPE,
+        "candidate-v1-starting",
+        candidate_id="cand-starting",
+        status="approved",
+        created_at=NOW - timedelta(hours=2),
+        updated_at=NOW - timedelta(seconds=10),
+        closed=False,
+    )
+    gateway, client = _gateway([[failed, starting]])
+
+    page = await gateway.list_stories(
+        ListStoriesRequest(filter=StoryFilter.CLOSED), now=NOW, cutoff=CUTOFF
+    )
+
+    assert "CandidateStatus = 'approved'" in client.queries[0]
+    assert [row.candidate_id for row in page.stories] == ["cand-failed"]
+    assert page.stories[0].status is PrimaryStoryStatus.CLOSED
+    assert page.stories[0].status_detail == STORY_START_FAILED_DETAIL
 
 
 def test_missing_metadata_is_dropped_or_uses_fallbacks() -> None:

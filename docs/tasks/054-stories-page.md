@@ -1,6 +1,6 @@
 # 054: Unified stories status page with 48-hour retention
 
-Status: built
+Status: needs-fix
 
 ## Goal
 
@@ -194,8 +194,9 @@ Filter predicates: All none; Pending
 `(StoryStatus IN ('approved','researching','analyzing','writing','checking') OR CandidateStatus =
 'approved')`; Review `StoryStatus = 'review'`; Ready `StoryStatus = 'ready'`; Closed
 `(StoryStatus IN ('rejected','unsupported','failed','expired') OR CandidateStatus IN
-('rejected','expired'))`. The service re-applies `matches_story_filter` after collapse; the query is
-only a prefilter.
+('rejected','expired') OR CandidateStatus = 'approved')`. Approved candidates are included because a
+generation-start failure collapses to Closed after the visibility read. The service re-applies
+`matches_story_filter` after collapse; the query is only a prefilter.
 
 ### Cutoff
 
@@ -240,11 +241,12 @@ scans up to `MAX_STORY_SCAN_PAGES` raw visibility pages of `page_size=request.li
 3. Collapse the accumulated rows by `StoryCandidateId`, apply `matches_story_filter`, sort.
 4. Stop when more than `limit` rows are available, the scan cap is reached, or visibility is
    exhausted.
-5. Emit the first `limit` rows. If more remain, `next_token = {filter, raw: <encoded cursor at the
-   start of the page that produced the overflow>, seen: token.seen + emitted candidate ids}`. A
-   re-scan of that page skips already-emitted ids, so the overflow and cross-page duplicates are
-   handled without a per-row query. If the scan cap is reached with exactly `limit` rows, the token
-   continues from the last raw cursor. If `seen` would exceed 500, omit the next token (bounded).
+5. Emit the first `limit` rows. If more remain, `next_token = {filter, raw: <the request's starting
+   raw cursor, i.e. the decoded token.raw or None>, seen: token.seen + emitted candidate ids}`. A
+   re-scan from that cursor skips already-emitted ids, so overflow rows from earlier pages that
+   sorted below the emitted page are still reachable without a per-row query. If the scan cap is
+   reached with exactly `limit` rows, the token continues from the next raw cursor. If `seen` would
+   exceed 500, omit the next token (bounded).
 6. The *current* page's token does not contain its own emitted ids, so the htmx refresh of that page
    can still see a newly started story replace its `approved` candidate placeholder.
 
@@ -489,3 +491,9 @@ only pending badge, `/stories/{id}` is 055, and polling is 10 seconds.
 **builder**: Also updated five existing test call sites outside the spec's file list because `list_pending` now requires `now`/`cutoff`; no production behaviour changed there.
 **builder**: Screenshots at 360/768/1280 light and dark in `/tmp/stories-shots` (not committed); no horizontal overflow, 3px focus outline on every stop, reduced motion has no row transition.
 **builder**: Unsure only about the count line sitting below the filter pills (required because the polling fragment must re-render it); everything else follows the spec.
+**builder** (fix loop): Closed prefilter now includes `CandidateStatus = 'approved'`, so generation-start failures appear under `?filter=closed`; regression test added.
+**builder** (fix loop): Overflow tokens now keep the request's starting raw cursor, so rows from earlier pages remain reachable; regression test covers a 46h Review row behind a 1h candidate.
+**builder** (fix loop): `just lint` and `just test` pass (914 tests); screenshots re-shot in `/tmp/stories-shots`, layout unchanged and no horizontal overflow.
+**verifier**: `just lint` clean (ruff, ruff format, pyright 0 errors) and `just test` 912 passed. Next: reviewer.
+**reviewer**: needs-fix (2). 1. `src/ai_trend_pipeline/services/temporal_gateway.py:442`: the overflow token re-scans from `page_start`, so rows from earlier scanned pages that sort below the emitted `limit` are dropped (repro: page 1 a generation row with inherited 46h `StoryCreatedAt`, page 2 a 1h candidate, `limit=1` -> page 1 emits the candidate, page 2 is empty, the 46h Review row is unreachable). Keep the request's starting cursor in the token and add a regression test.
+2. `src/ai_trend_pipeline/services/stories.py:218`: the Closed prefilter omits approved candidates, so a generation-start failure maps to Closed after collapse but never appears under `?filter=closed` (only All); add `CandidateStatus = 'approved'` to the predicate plus a test (spec amendment). Screenshots are otherwise clean.

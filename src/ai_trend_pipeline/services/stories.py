@@ -217,7 +217,8 @@ _FILTER_PREDICATES: dict[StoryFilter, str] = {
     StoryFilter.READY: "StoryStatus = 'ready'",
     StoryFilter.CLOSED: (
         "(StoryStatus IN ('rejected','unsupported','failed','expired') "
-        "OR CandidateStatus IN ('rejected','expired'))"
+        "OR CandidateStatus IN ('rejected','expired') "
+        "OR CandidateStatus = 'approved')"
     ),
 }
 

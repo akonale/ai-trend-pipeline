@@ -411,12 +411,14 @@ class TemporalStoryStatusGateway:
         seen = list(token.seen)
         seen_ids = set(seen)
         cursor = decode_page_token(token.raw) if token.raw is not None else None
+        # An overflow re-scans from where this request started, not from the page that
+        # produced it: rows from earlier pages can sort below rows on the current page.
+        scan_start = cursor
         accumulated: list[StoryVisibilityRow] = []
         try:
             pages_scanned = 0
             while pages_scanned < MAX_STORY_SCAN_PAGES:
                 pages_scanned += 1
-                page_start = cursor
                 iterator = self._client.list_workflows(
                     query, page_size=request.limit, next_page_token=cursor
                 )
@@ -439,7 +441,7 @@ class TemporalStoryStatusGateway:
                     emitted = matching[: request.limit]
                     return StoryListPage(
                         stories=[build_story_row(row) for row in emitted],
-                        next_token=_next_story_token(request.filter, page_start, seen, emitted),
+                        next_token=_next_story_token(request.filter, scan_start, seen, emitted),
                     )
                 if cursor is None:
                     return StoryListPage(stories=[build_story_row(row) for row in matching])

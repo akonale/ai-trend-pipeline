@@ -586,8 +586,11 @@ def _cross_entity_facts(
     minimum_name, minimum_value = pool[-1]
     names = (maximum_name, minimum_name)
     facts: list[Fact] = []
+    base_caveats: set[FactCaveatCode] = set()
+    if dataset.truncated:
+        base_caveats.add(FactCaveatCode.DATASET_TRUNCATED)
 
-    difference_caveats: set[FactCaveatCode] = set()
+    difference_caveats = set(base_caveats)
     if minimum_value <= 0:
         difference_caveats.add(FactCaveatCode.NON_POSITIVE_BASELINE)
     difference = _round(maximum_value - minimum_value)
@@ -620,7 +623,7 @@ def _cross_entity_facts(
                 dataset=dataset,
                 metric=metric,
                 formula=_FORMULA_RATIO,
-                caveats=set(),
+                caveats=set(base_caveats),
                 value_text=f"{ratio:.2f}x",
             )
         )
@@ -633,7 +636,7 @@ def _cross_entity_facts(
     for rank, (name, value) in enumerate(pool, start=1):
         if name not in selected_names:
             continue
-        caveats: set[FactCaveatCode] = set()
+        caveats: set[FactCaveatCode] = set(base_caveats)
         if value_counts[value] > 1:
             caveats.add(FactCaveatCode.TIED_VALUES)
         facts.append(
@@ -722,6 +725,9 @@ def _outlier_facts(
 
     facts: list[Fact] = []
     for name, value in candidates[:MAX_OUTLIER_FACTS]:
+        caveats = {FactCaveatCode.STATISTICAL_OUTLIER}
+        if dataset.truncated:
+            caveats.add(FactCaveatCode.DATASET_TRUNCATED)
         facts.append(
             _fact(
                 kind=FactKind.OUTLIER,
@@ -747,7 +753,7 @@ def _outlier_facts(
                     method=FactMethod.IQR_1_5,
                     parameters=dict(parameters),
                 ),
-                caveats={FactCaveatCode.STATISTICAL_OUTLIER},
+                caveats=caveats,
                 label=f"{metric}, outlier {name}, {year}",
                 value_text=format_number(value),
                 subject=name,

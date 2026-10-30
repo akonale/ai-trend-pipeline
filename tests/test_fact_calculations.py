@@ -320,6 +320,28 @@ def test_duplicate_entities_and_years_are_collapsed_deterministically() -> None:
     )
 
 
+def test_truncated_dataset_marks_every_fact_with_the_caveat() -> None:
+    evidence = make_dataset_evidence(
+        make_rows(
+            {
+                "Alpha": {2000: 10.0, 2010: 5.0},
+                "Beta": {2000: 9.0, 2010: 1.0},
+                "Gamma": {2000: 8.0, 2010: 2.0},
+                "Delta": {2000: 7.0, 2010: 3.0},
+                "Epsilon": {2000: 6.0, 2010: 4.0},
+                "Zeta": {2000: 5.0, 2010: 1000.0},
+            }
+        ),
+        truncated=True,
+    )
+    result = build_fact_set(make_fact_input([evidence]))
+
+    assert len(_facts(result, FactKind.COMPARISON)) == 2
+    assert len(_facts(result, FactKind.RANKING)) == 4
+    assert len(_facts(result, FactKind.OUTLIER)) == 1
+    assert all(FactCaveatCode.DATASET_TRUNCATED in fact.caveats for fact in result.facts)
+
+
 def test_missing_data_returns_empty_fact_sets_with_reasons() -> None:
     no_evidence = build_fact_set(make_fact_input([]))
     assert no_evidence.status is FactSetStatus.EMPTY

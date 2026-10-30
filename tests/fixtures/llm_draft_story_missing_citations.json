@@ -1,0 +1,37 @@
+{
+  "id": "msg_01DraftStoryMissingCitations",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-5-5",
+  "content": [
+    {"type": "text", "text": "Drafting the story from the supplied facts."},
+    {
+      "type": "tool_use",
+      "id": "toolu_01DraftStoryMissingCitations",
+      "name": "draft_story",
+      "input": {
+        "headline": "Life expectancy keeps rising",
+        "summary": "World life expectancy is higher than in earlier decades, according to the latest dataset.",
+        "body": "The latest dataset shows a higher world life expectancy than earlier decades.\n\nOnly one observation is available, so the comparison is limited.",
+        "key_points": [
+          {
+            "text": "World life expectancy is higher than in earlier decades.",
+            "fact_ids": []
+          }
+        ],
+        "source_links": [
+          {
+            "evidence_id": "ev-v1-042e326985660658",
+            "label": "Original report",
+            "url": "https://news.example/story"
+          }
+        ],
+        "caveats": ["Only one observation is available."],
+        "post_text": "Life expectancy is higher than in earlier decades."
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {"input_tokens": 1200, "output_tokens": 200}
+}

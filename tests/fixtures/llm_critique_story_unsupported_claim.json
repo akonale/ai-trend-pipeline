@@ -1,0 +1,30 @@
+{
+  "id": "msg_01CritiqueStoryUnsupportedClaim",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-5-5",
+  "content": [
+    {"type": "text", "text": "The body makes a claim the supplied facts do not support."},
+    {
+      "type": "tool_use",
+      "id": "toolu_01CritiqueStoryUnsupportedClaim",
+      "name": "critique_story",
+      "input": {
+        "passed": false,
+        "findings": [
+          {
+            "category": "unsupported_claim",
+            "severity": "blocking",
+            "message": "The body claims a long-run trend that the supplied facts do not support.",
+            "location": "body",
+            "fact_ids": []
+          }
+        ],
+        "revision_guidance": "Remove the trend claim and describe only the supplied observation."
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {"input_tokens": 1400, "output_tokens": 60}
+}

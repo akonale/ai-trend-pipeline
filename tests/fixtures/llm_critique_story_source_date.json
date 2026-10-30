@@ -1,0 +1,37 @@
+{
+  "id": "msg_01CritiqueStorySourceDate",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-5-5",
+  "content": [
+    {"type": "text", "text": "The source link and the date wording do not match the supplied evidence."},
+    {
+      "type": "tool_use",
+      "id": "toolu_01CritiqueStorySourceDate",
+      "name": "critique_story",
+      "input": {
+        "passed": false,
+        "findings": [
+          {
+            "category": "source_fidelity",
+            "severity": "blocking",
+            "message": "The source link points at an article that is not the supplied primary source.",
+            "location": "source_links",
+            "fact_ids": []
+          },
+          {
+            "category": "date_fidelity",
+            "severity": "blocking",
+            "message": "The draft attributes the figure to a date the evidence does not support.",
+            "location": "body",
+            "fact_ids": []
+          }
+        ],
+        "revision_guidance": "Use the supplied article link and the observation date from the facts."
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {"input_tokens": 1400, "output_tokens": 90}
+}

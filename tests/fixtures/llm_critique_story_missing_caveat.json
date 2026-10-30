@@ -1,0 +1,30 @@
+{
+  "id": "msg_01CritiqueStoryMissingCaveat",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-5-5",
+  "content": [
+    {"type": "text", "text": "The draft drops a caveat carried by the fact."},
+    {
+      "type": "tool_use",
+      "id": "toolu_01CritiqueStoryMissingCaveat",
+      "name": "critique_story",
+      "input": {
+        "passed": false,
+        "findings": [
+          {
+            "category": "missing_caveat",
+            "severity": "blocking",
+            "message": "The draft does not carry the single-observation caveat from the fact.",
+            "location": "caveats",
+            "fact_ids": []
+          }
+        ],
+        "revision_guidance": "Add the single-observation caveat to the caveats list."
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {"input_tokens": 1400, "output_tokens": 60}
+}

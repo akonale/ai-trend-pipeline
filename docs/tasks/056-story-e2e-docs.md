@@ -1,6 +1,6 @@
 # 056: Story-generation end-to-end hardening and docs
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -334,3 +334,5 @@ Pyright and the full suite pass (harness `ANTHROPIC_*` vars unset). Next: verifi
 `tests/test_story_generation_e2e.py` green in 5/5 repeated runs. Next: reviewer.
 
 **reviewer**: approved. `just lint` clean; full suite 1001 passed; `tests/test_story_generation_e2e.py` 3 passed. Notes: `stories.md` 503 row names `StoryStatusUnavailable` for `/candidates`, which actually raises `CandidateUnavailable`; e2e view-model count asserts pass empty pages (service-level assertions carry retention). Next: scribe.
+
+**scribe**: fixed the `/candidates` 503 row to `CandidateUnavailable`, recorded the 050-056 phase in `docs/history.md`, and left README/architecture unchanged where 056 already documented them. PR: https://github.com/akonale/ai-trend-pipeline/pull/63. Next: human merge.

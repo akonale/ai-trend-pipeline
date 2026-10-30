@@ -1,6 +1,6 @@
 # 053: StoryGenerationWorkflow and approval handoff
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -498,3 +498,5 @@ needed; register the story attributes)
   Temporal test fixtures to `datetime.now(UTC)` and two stale "not registered" worker assertions
   (new 48h cap and story registration); all other scope as specced. Lint and full tests green with
   harness `ANTHROPIC_*` unset. Next: verifier.
+- **verifier**: `just lint` (Ruff + Pyright strict) and `just test` pass; the full suite is green with harness `ANTHROPIC_*` unset only because its base URL/token produce `anthropic.APIConnectionError` in every LLM test with them set (881 passed). Next: reviewer.
+- **reviewer**: Approved. State machine, determinism, handoff patch, visibility and registration match the spec; focused story tests (138), Ruff and strict Pyright are green. The four `datetime.now(UTC)` fixture updates and two worker assertion flips are justified by the 48h cap and story registration, not weakened. Non-blocking: `_checker_failure_detail` has two branches returning the same detail; `worker.py` opens a second OWID client for the story worker.

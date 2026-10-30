@@ -130,7 +130,8 @@ Story research adds five more: `RESEARCH_FETCH_TIMEOUT_S` (over 0 and at most 60
 `RESEARCH_MAX_RESPONSE_BYTES` (1024-4194304, default 524288), `RESEARCH_MAX_REDIRECTS` (0-5,
 default 3), `RESEARCH_USER_AGENT` (stripped 1-200, default `ai-trend-pipeline-research/0.1`) and
 `RESEARCH_EXTRA_CONTEXT_HOSTS` (comma-separated exact host names for approved extra context; empty
-or `none` disables it). The research activities are not wired into any workflow or worker yet.
+or `none` disables it). The `research_story` activity runs on the story-generation worker as part of
+`StoryGenerationWorkflow`.
 
 ## Hacker News
 
@@ -151,6 +152,15 @@ selected story candidate (task queue `story-candidate-task-queue`), with a `revi
 Approve/Reject signals. `services/candidates.py` and the Temporal candidate gateway start
 candidates idempotently, list pending ones with pagination and send decisions. The web app lists
 pending candidates at `/candidates` and shows and decides one at `/candidates/<id>`.
+
+Approving a candidate starts one deterministic child `StoryGenerationWorkflow`
+(`story-generation-task-queue`) without waiting for it and records its id as `story_workflow_id` in
+the candidate query and result. The story runs `researching → analyzing → writing → checking` with at
+most one revision, then waits for a final Approve/Reject in `review` and ends `ready`, `rejected`,
+`unsupported`, `failed` or `expired`. Both candidate and story review windows are capped at 48 hours
+from the candidate's original detection time, and seven shared `Story*` search attributes expose
+bounded metadata for the list pages. `ready` only means the package was approved; nothing publishes
+or renders.
 
 `ai_trend_pipeline.source_ingestion` provides `SourceIngestionWorkflow`: one long-running workflow
 per enabled source on `source-ingestion-task-queue` that polls through the source activity on a
@@ -193,8 +203,8 @@ Filter worker output with `grep candidate_ingestion`. To see two sources feed on
 fake source is test-only and never belongs in `.env.prod`.
 
 Runbooks: [ingestion](docs/runbooks/ingestion.md) (ensure, enable/disable, recover, replay and the
-two-source demo) and [search attributes](docs/runbooks/search-attributes.md) (register and verify
-`CandidateStatus` / `CandidateSource`).
+two-source demo) and [search attributes](docs/runbooks/search-attributes.md) (register and verify the two
+`Candidate*` and seven shared `Story*` attributes).
 
 ## Topic picking
 

@@ -179,6 +179,7 @@ class StoryResearchActivities:
         failures: list[ResearchFailure] = []
         notes: list[ResearchNoteCode] = []
         seen_urls: set[str] = set()
+        primary_context: StoryContext | None = None
 
         if story.url is None:
             failures.append(_failure(ResearchFailureCode.NO_SOURCE_URL))
@@ -186,6 +187,7 @@ class StoryResearchActivities:
             primary = await self._fetcher.fetch(str(story.url))
             notes.extend(primary.notes)
             if primary.context is not None:
+                primary_context = primary.context
                 contexts.append(primary.context)
                 seen_urls.add(str(primary.context.url))
             elif primary.failure is not None:
@@ -247,7 +249,10 @@ class StoryResearchActivities:
         if matched.evidence is not None and len(evidence) < MAX_EVIDENCE:
             evidence.append(matched.evidence)
 
-        supported = any(len(context.text) >= MIN_CONTEXT_TEXT_CHARS for context in contexts)
+        # Only the original article can support a story; extras and OWID are supplementary.
+        supported = (
+            primary_context is not None and len(primary_context.text) >= MIN_CONTEXT_TEXT_CHARS
+        )
         if not supported:
             failures.append(_failure(ResearchFailureCode.INSUFFICIENT_EVIDENCE))
 

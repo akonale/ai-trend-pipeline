@@ -16,7 +16,12 @@ from ai_trend_pipeline.research import (
     ResearchNoteCode,
 )
 from ai_trend_pipeline.research.activities import make_research_client
-from ai_trend_pipeline.research.fetch import SafeFetcher, normalize_html, normalize_plain_text
+from ai_trend_pipeline.research.fetch import (
+    RetryableFetchError,
+    SafeFetcher,
+    normalize_html,
+    normalize_plain_text,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures" / "research"
 PUBLIC_IP = "93.184.216.34"
@@ -372,10 +377,15 @@ async def test_fetch_5xx_408_425_429_timeouts_and_transport_errors_propagate() -
         return httpx.Response(int(httpx.URL(str(request.url)).params["status"]))
 
     for status in (500, 502, 503, 408, 425, 429):
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(RetryableFetchError) as caught:
             await run_fetch(
                 make_fetcher(status_handler), f"https://example.com/story?status={status}"
             )
+        assert caught.value.status_code == status
+        message = str(caught.value)
+        assert "example.com" not in message
+        assert "status=" not in message
+        assert "?" not in message
 
     def timeout_handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ReadTimeout("timed out", request=request)
@@ -392,6 +402,20 @@ async def test_fetch_5xx_408_425_429_timeouts_and_transport_errors_propagate() -
     dns = make_fetcher(explode, failing_resolver(socket.gaierror("no such host")))
     with pytest.raises(httpx.ConnectError):
         await run_fetch(dns, "https://example.com/story")
+
+
+@pytest.mark.asyncio
+async def test_fetch_retryable_status_error_message_is_sanitized() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503)
+
+    with pytest.raises(RetryableFetchError) as caught:
+        await run_fetch(make_fetcher(handler), "https://example.com/private?token=SECRETVALUE")
+    message = str(caught.value)
+    assert message == "retryable upstream status 503"
+    assert "SECRETVALUE" not in message
+    assert "https://" not in message
+    assert "example.com" not in message
 
 
 @pytest.mark.asyncio

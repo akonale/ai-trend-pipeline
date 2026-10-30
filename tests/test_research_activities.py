@@ -214,6 +214,29 @@ async def test_dataset_match_alone_cannot_support_a_story() -> None:
 
 
 @pytest.mark.asyncio
+async def test_readable_extra_context_cannot_replace_a_missing_primary_article() -> None:
+    settings = load_settings({"RESEARCH_EXTRA_CONTEXT_HOSTS": "allowed.example"})
+    calls: list[str] = []
+    routes = {
+        "news.example/story": httpx.Response(404),
+        "allowed.example/context": html_response(article_body()),
+    }
+    output = await run_research(
+        build_activities(routes, settings=settings, calls=calls),
+        make_story(),
+        extra_context_urls=["https://allowed.example/context"],
+    )
+    assert output.status is ResearchStatus.UNSUPPORTED
+    assert codes(output) >= {
+        ResearchFailureCode.MISSING_ARTICLE,
+        ResearchFailureCode.INSUFFICIENT_EVIDENCE,
+    }
+    assert len(output.contexts) == 1
+    assert output.contexts[0].publisher == "allowed.example"
+    assert calls == ["news.example/story", "allowed.example/context"]
+
+
+@pytest.mark.asyncio
 async def test_insufficient_evidence_is_unsupported() -> None:
     routes = {"news.example/story": html_response(article_body("article_short.html"))}
     output = await run_research(build_activities(routes), make_story())

@@ -114,6 +114,14 @@ class NormalizedContent:
     truncated: bool
 
 
+class RetryableFetchError(httpx.HTTPError):
+    """A transient upstream status; the message never contains a URL or query string."""
+
+    def __init__(self, status_code: int) -> None:
+        super().__init__(f"retryable upstream status {status_code}")
+        self.status_code = status_code
+
+
 async def default_host_resolver(host: str) -> Sequence[str]:
     """Resolve a host to its IP strings for the pre-connect policy check."""
     loop = asyncio.get_running_loop()
@@ -384,7 +392,7 @@ class SafeFetcher:
                 if status in (404, 410):
                     return _failure(requested, ResearchFailureCode.MISSING_ARTICLE, current)
                 if status in (408, 425, 429) or 500 <= status <= 599:
-                    response.raise_for_status()
+                    raise RetryableFetchError(status)
                 if status >= 300:
                     return _failure(requested, ResearchFailureCode.FETCH_FAILED, current)
 

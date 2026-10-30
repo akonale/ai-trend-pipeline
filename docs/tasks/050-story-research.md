@@ -360,3 +360,15 @@ no multi-megabyte fixture is committed.
   `RESEARCH_*` settings; fixtures/tests and the architecture/README notes. Research modules import
   no workflow/worker code and `worker.py` is untouched. 761 tests pass with `just lint` clean.
   Next: verifier. Unsure: added a narrow httpx access-log filter so URLs/queries cannot leak.
+- **verifier**: `just lint` (Ruff, format, strict Pyright) and `just test` pass on `task/050-story-research` (755 passed). First test run showed 54 `anthropic.APIConnectionError` failures from harness `ANTHROPIC_*` base-url vars; rerun with those unset is fully green. Next: reviewer.
+- **reviewer**: Needs fix (2). 1. `research/activities.py:250`: `supported` is computed over all
+  contexts, so a 404 primary plus a readable allowlisted extra returns `supported` with
+  `missing_article`; base support only on the primary article context (repo with a test).
+- 2. `research/fetch.py:387`: `raise_for_status()` puts the full final URL and query string into the
+  exception message Temporal records; raise a retryable error with a sanitized constant message.
+- SSRF pre-connect and per-hop checks otherwise hold (literal/octal/IPv6-mapped/reserved blocked,
+  redirects re-validated, TOCTOU documented). Next: builder fixes, then verifier.
+- **builder**: Fixed both. Support now depends only on the primary article context (regression test
+  with a 404 primary plus readable allowlisted extra). Retryable statuses raise
+  `RetryableFetchError(status)` with a constant sanitized message and no URL/query (tests assert
+  both). Lint and the full suite pass. Next: verifier.

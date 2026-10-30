@@ -357,7 +357,7 @@ not registered.
 | `src/ai_trend_pipeline/web/app.py` | `create_app(settings)` factory: wires routes, templates, static files | Business logic |
 | `src/ai_trend_pipeline/web/routes/` | One module per page (`home.py`, `runs.py`, `candidates.py`, `settings.py`, `health.py`). Parse input, call one service, render a template | Call Temporal or the LLM directly |
 | `src/ai_trend_pipeline/web/templates/` | Jinja templates; `partials/` for htmx fragments | Logic beyond loops and ifs |
-| `src/ai_trend_pipeline/web/view_models.py` | Pydantic models shaped for templates (`HomeView`, `RunView`, `SettingsView`, `CandidateDetailView`, `MetricChip`, `build_*_view`) | I/O |
+| `src/ai_trend_pipeline/web/view_models.py` | Pydantic models shaped for templates (`HomeView`, `RunView`, `SettingsView`, `CandidateDetailView`, `StoryListView`, `StoryDetailView`, `MetricChip`, `build_*_view`) | I/O |
 | `src/ai_trend_pipeline/config.py` | One `Settings` model read from env vars, passed in, not imported as a global | Read env vars anywhere else |
 
 - Routes get services and settings through FastAPI dependencies, so tests swap in fakes. Route tests
@@ -370,9 +370,10 @@ not registered.
 
 `get_settings`, `get_templates` (read `app.state`), `get_style_store` (builds one
 `PostgresStyleStore` per process, no I/O), `get_style_service`, `get_chart_service`,
-`get_candidate_service`, `get_story_status_service` (both connect to Temporal once, share the
-client cached on `app.state`, and map connect-time `RPCError`/`OSError`/`RuntimeError` to their
-typed unavailable error), `optional_user`, `current_user`, `build_request_shell`, `shell_context`.
+`get_candidate_service`, `get_story_status_service`, `get_story_detail_service` (the story services
+connect to Temporal once, share the client cached on `app.state`, and map connect-time
+`RPCError`/`OSError`/`RuntimeError` to their typed unavailable error), `optional_user`,
+`current_user`, `build_request_shell`, `shell_context`.
 
 `optional_user` returns `CurrentUser(email=DEV_USER_EMAIL)` in local mode and, in cloudflare mode, the
 lower-cased header email or `None` when it is missing or blank. `build_request_shell(request, *,
@@ -397,6 +398,9 @@ helper does I/O, and the badge is built only from an already-fetched `CandidateP
 | POST | `/runs/{id}/decision` | Send approve/reject, 303 to `?sent=1` | uses `current_user`; 400 bad value, 409 not awaiting, 404 unknown |
 | GET | `/stories` | Unified story status ledger | `?filter=` accepts only `all`, `pending`, `writing`, `review`, `ready`, `closed`; `?page=` is an opaque forward cursor carrying the filter and seen candidate ids; 400 friendly notice on an invalid token, 503 full-shell unavailable page; only the last 48 hours are visible |
 | GET | `/stories/rows` | htmx fragment for the results region | 200 for both success and a service failure (so htmx swaps and stops); no filter bar or heading in the response |
+| GET | `/stories/{id}` | Story detail for a candidate or generation workflow | `?decided=` allow-listed notice; 404 missing/unknown, 410 past the 48-hour cutoff, 502 malformed typed result, 503 service outage; one status stamp and either the package with final Approve/Reject, the read-only approved package, or one closed reason |
+| GET | `/stories/{id}/status` | htmx fragment for `#story-detail` | always 200; polls only while pending or writing; typed failures swap in a neutral non-polling line |
+| POST | `/stories/{id}/decide` | Final approve/reject for a `story-v1-` workflow in `review` | uses `current_user`; 400 invalid decision; 303 with `?decided=approved\|rejected\|closed#story-notice`; 404/410/502/503 pages; the first decision wins and nothing publishes |
 | GET | `/candidates` | Story candidate inbox | same 48-hour cutoff as `/stories`; `?page=` is an opaque forward cursor; `?notice=` accepts only `approved`, `rejected` or `closed`; 400 with a friendly notice when the token is invalid, 503 full-shell unavailable page; the header badge shows `N` (or `N+` with a next page) only on a successful first page |
 | GET | `/candidates/{id}` | Candidate detail and decision form | 404 not-available page for a missing candidate, 410 status-specific page for approved/rejected/expired; renders only an `http`/`https` source link |
 | POST | `/candidates/{id}/decide` | Approve or reject, 303 to the inbox | uses `current_user`; 400 invalid decision re-renders the detail with an error; repeated/raced decisions 303 with `notice=closed`; 404 unknown |
@@ -461,6 +465,23 @@ while Postgres is down.
   and metric chips, with a two-form `.candidate-decisions` rail. Copy, metric labels, the safe URL
   check, the notice allow-list and the 404/410 copy all live in `web/view_models.py`; the decision
   route calls only `CandidateService.decide`.
+- `StoryDetailService` (`services/stories.py`): `show(detail_id, *, now)` and
+  `decide(request, *, now)` require an aware clock and apply the same strict 48-hour cutoff before
+  any result read or signal. It resolves the versioned `candidate-v1-`/`story-v1-` id, reads open
+  workflows through `review_state`/`story_state`, reads terminal workflows through typed `result()`
+  values, follows an approved candidate's `story_workflow_id`, and validates the typed result
+  against the query. Errors: `StoryDetailNotFound`, `StoryDetailExpired`, `StoryNotReviewable`,
+  `StoryDetailMalformed`, `StoryDetailUnavailable`.
+- `TemporalStoryDetailGateway` (`services/temporal_gateway.py`): typed candidate/story queries,
+  results and approve/reject signals; maps gRPC `NOT_FOUND` to `StoryDetailNotFound`, other
+  `RPCError` to `StoryDetailUnavailable`, and result-decode `ValidationError`/`ValueError`/
+  `TypeError` to `StoryDetailMalformed`. It never calls `fetch_history`.
+- `story_detail.html` / `partials/story_detail_body.html` / `story_not_available.html` backed by
+  `build_story_detail_view`, `story_package_view`,
+  `build_story_detail_problem_view` and `build_story_not_available_view`: a 62ch reading galley
+  with footnote-style fact citations and safe evidence links, a 17rem decision/approved rail at
+  `min-width: 48rem`, one `.badge` status stamp and one closed reason. Only pending/writing carry
+  `hx-get` on `#story-detail`; the decision forms are plain POST forms.
 - `StyleService` / `StyleStore` protocol (`services/styles.py`); `PostgresStyleStore`
   (`services/postgres_style_store.py`): psycopg 3, one short connection per call, schema and table
   created on first use and retried if setup fails; `psycopg.Error` or `OSError` become

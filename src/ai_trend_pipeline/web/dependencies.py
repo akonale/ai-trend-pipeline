@@ -12,6 +12,8 @@ from ai_trend_pipeline.services.candidates import CandidateService, CandidateUna
 from ai_trend_pipeline.services.charts import ChartService
 from ai_trend_pipeline.services.postgres_style_store import PostgresStyleStore
 from ai_trend_pipeline.services.stories import (
+    StoryDetailService,
+    StoryDetailUnavailable,
     StoryStatusService,
     StoryStatusUnavailable,
 )
@@ -19,7 +21,14 @@ from ai_trend_pipeline.services.styles import StyleService, StyleStore
 from ai_trend_pipeline.services.temporal_gateway import (
     TemporalCandidateGateway,
     TemporalChartRunGateway,
+    TemporalStoryDetailGateway,
     TemporalStoryStatusGateway,
+)
+from ai_trend_pipeline.story_candidate import CandidateReviewState, StoryCandidateResult
+from ai_trend_pipeline.story_generation import (
+    FinalStoryDecision,
+    StoryGenerationResult,
+    StoryGenerationState,
 )
 from ai_trend_pipeline.web.view_models import NavBadge, ShellView, build_shell
 
@@ -96,6 +105,46 @@ async def get_story_status_service(
             raise StoryStatusUnavailable() from exc
         request.app.state.temporal_client = client
     return StoryStatusService(TemporalStoryStatusGateway(client))
+
+
+class _UnavailableDetailGateway:
+    """A gateway whose first call fails, so a connect outage surfaces through the route."""
+
+    async def candidate_state(self, workflow_id: str) -> CandidateReviewState:
+        _ = workflow_id
+        raise StoryDetailUnavailable()
+
+    async def candidate_result(self, workflow_id: str) -> StoryCandidateResult:
+        _ = workflow_id
+        raise StoryDetailUnavailable()
+
+    async def story_state(self, workflow_id: str) -> StoryGenerationState:
+        _ = workflow_id
+        raise StoryDetailUnavailable()
+
+    async def story_result(self, workflow_id: str) -> StoryGenerationResult:
+        _ = workflow_id
+        raise StoryDetailUnavailable()
+
+    async def decide(
+        self, workflow_id: str, decision: FinalStoryDecision, *, approve: bool
+    ) -> None:
+        _, _ = workflow_id, decision
+        _ = approve
+        raise StoryDetailUnavailable()
+
+
+async def get_story_detail_service(
+    request: Request, settings: Settings = Depends(get_settings)
+) -> StoryDetailService:
+    client = getattr(request.app.state, "temporal_client", None)
+    if not isinstance(client, Client):
+        try:
+            client = await temporal_client.connect(settings)
+        except (RPCError, OSError, RuntimeError):
+            return StoryDetailService(_UnavailableDetailGateway())
+        request.app.state.temporal_client = client
+    return StoryDetailService(TemporalStoryDetailGateway(client))
 
 
 def optional_user(

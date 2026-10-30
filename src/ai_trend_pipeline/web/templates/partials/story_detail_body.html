@@ -1,0 +1,103 @@
+<div id="{{ view.region_id }}"{% if view.polling %} hx-get="{{ view.polling_href }}" hx-trigger="{{ view.polling_trigger }}" hx-swap="outerHTML"{% endif %}>
+{% if view.state == "problem" %}
+<p class="meta story-detail__problem" role="status">{{ view.problem_message }}</p>
+{% else %}
+<article class="story-detail">
+  <p class="candidate-source">
+    <span class="badge source-badge"><span class="visually-hidden">Source: </span>{{ view.source_label }}</span>
+    {% if view.created_iso %}<time datetime="{{ view.created_iso }}">{{ view.created_text }}</time>{% endif %}
+  </p>
+  <h1 class="story-detail__title">{{ view.title }}</h1>
+  <div class="story-detail__status">
+    <span class="badge {{ view.status_class }}">{{ view.status_label }}</span>
+    {% if view.progress %}<span class="story-detail__progress">{{ view.progress }}</span>{% endif %}
+    {% if view.polling %}<span class="meta">{{ view.polling_hint }}</span>{% endif %}
+  </div>
+  {% if view.state == "closed" %}
+  <section class="story-closed">
+    <h2>{{ view.closed_heading }}</h2>
+    <p>{{ view.closed_body }}</p>
+    {% if view.closed_note %}<p class="meta story-closed__note">{{ view.closed_note }}</p>{% endif %}
+  </section>
+  {% elif view.package or view.state == "review" or view.state == "ready" %}
+  <div class="story-detail__layout">
+    <div class="story-detail__reading">
+      {% if view.package %}
+      <p class="story-summary">{{ view.package.summary }}</p>
+      <div class="story-body">{% for paragraph in view.package.body_paragraphs %}<p>{{ paragraph }}</p>{% endfor %}</div>
+      {% if view.package.key_points %}
+      <section class="candidate-section">
+        <h2>{{ view.package.key_points_label }}</h2>
+        <ul class="story-points">
+          {% for point in view.package.key_points %}
+          <li>{{ point.text }}{% if point.citations %}<span class="story-citations">{% for citation in point.citations %}<a class="story-citation" href="{{ citation.href }}">{{ citation.label }}</a>{% endfor %}</span>{% endif %}</li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+      {% if view.package.evidence %}
+      <section class="candidate-section">
+        <h2>{{ view.package.evidence_label }}</h2>
+        <ul class="story-evidence">
+          {% for link in view.package.evidence %}
+          <li>{% if link.available %}<a href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.label }}<span class="visually-hidden"> {{ link.hint }}</span></a>{% else %}{{ link.label }} <span class="story-evidence__unavailable">{{ link.hint }}</span>{% endif %}</li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+      {% if view.package.fact_references %}
+      <section class="candidate-section">
+        <h2>{{ view.package.facts_label }}</h2>
+        <ul class="story-facts">
+          {% for reference in view.package.fact_references %}
+          <li id="{{ reference.anchor }}">{{ reference.label }}</li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+      {% if view.package.caveats %}
+      <section class="candidate-section">
+        <h2>{{ view.package.caveats_label }}</h2>
+        <ul class="story-caveats">
+          {% for caveat in view.package.caveats %}
+          <li>{{ caveat }}</li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+      {% if view.package.post_text %}
+      <section class="candidate-section">
+        <h2>{{ view.package.post_text_label }}</h2>
+        <p class="story-post-text">{{ view.package.post_text }}</p>
+      </section>
+      {% endif %}
+      {% endif %}
+    </div>
+    {% if view.state == "review" %}
+    <aside class="card candidate-actions story-rail">
+      <h2>{{ view.decision_heading }}</h2>
+      <p class="meta">{{ view.decision_note }}</p>
+      <div class="candidate-decisions">
+        <form class="decision" method="post" action="{{ view.decision_action }}">
+          <input type="hidden" name="decision" value="approve">
+          <button class="btn btn--primary" type="submit">{{ view.approve_label }}</button>
+        </form>
+        <form class="decision" method="post" action="{{ view.decision_action }}">
+          <input type="hidden" name="decision" value="reject">
+          <button class="btn btn--danger-outline" type="submit">{{ view.reject_label }}</button>
+        </form>
+      </div>
+    </aside>
+    {% elif view.state == "ready" %}
+    <aside class="card story-rail">
+      <h2>{{ view.approved_heading }}</h2>
+      <p>{{ view.approved_body }}</p>
+      {% if view.approved_by %}<p class="meta">{{ view.approved_by }}</p>{% endif %}
+      {% if view.approved_at %}<p class="meta">{{ view.approved_at }}</p>{% endif %}
+    </aside>
+    {% endif %}
+  </div>
+  {% endif %}
+</article>
+{% endif %}
+</div>

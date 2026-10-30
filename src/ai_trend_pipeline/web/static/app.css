@@ -811,3 +811,74 @@ main {
     align-items: start;
   }
 }
+
+/* Story detail: a flat reading galley with one stamped final-review rail */
+.story-detail { margin-top: var(--space-5); }
+.story-detail__title { max-width: 24ch; margin-top: var(--space-3); }
+.story-detail__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: var(--space-3) 0 var(--space-4);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+.story-detail__progress { font-weight: 700; }
+.story-summary {
+  max-width: 62ch;
+  margin-bottom: var(--space-5);
+  font-weight: 600;
+  line-height: 1.6;
+}
+.story-body p { max-width: 62ch; margin: 0 0 var(--space-4); line-height: 1.65; }
+.story-points,
+.story-evidence,
+.story-facts,
+.story-caveats { list-style: none; margin: 0; padding: 0; }
+.story-points { display: flex; flex-direction: column; gap: var(--space-3); }
+.story-points > li { max-width: 62ch; line-height: 1.6; }
+.story-citations { display: inline-flex; gap: var(--space-1); margin-left: var(--space-1); }
+.story-citation {
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+.story-evidence > li,
+.story-facts > li,
+.story-caveats > li { max-width: 62ch; }
+.story-evidence > li { margin-bottom: var(--space-2); }
+.story-facts {
+  margin-top: var(--space-3);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+.story-caveats {
+  padding-left: var(--space-3);
+  border-left: var(--border-thin) solid var(--color-muted);
+  color: var(--color-muted);
+}
+.story-caveats > li { margin-bottom: var(--space-2); }
+.story-detail__layout { margin-top: var(--space-5); }
+.story-detail__reading { min-width: 0; }
+.story-rail { margin-bottom: 0; }
+.story-rail h2 { font-size: var(--text-lg); margin-bottom: var(--space-2); }
+.story-rail .candidate-decisions { flex-direction: column; gap: var(--space-3); }
+.story-rail .candidate-decisions .btn { width: 100%; }
+.story-closed { max-width: 62ch; margin-top: var(--space-5); }
+.story-closed h2 {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 800;
+  line-height: 1.2;
+}
+.story-detail__problem { margin-top: var(--space-4); }
+@media (min-width: 48rem) {
+  .story-detail__layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 17rem;
+    gap: var(--space-5);
+    align-items: start;
+  }
+}

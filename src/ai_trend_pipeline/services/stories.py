@@ -16,7 +16,22 @@ from ai_trend_pipeline.services.candidates import (
     InvalidPageToken,
     decode_page_token,
 )
-from ai_trend_pipeline.story_candidate import STORY_EXPIRED_DETAIL
+from ai_trend_pipeline.story_candidate import (
+    CANDIDATE_ID_PREFIX,
+    STORY_EXPIRED_DETAIL,
+    CandidateReviewState,
+    CandidateStatus,
+    DecidedByText,
+    StoryCandidateResult,
+)
+from ai_trend_pipeline.story_drafting.models import StoryPackage
+from ai_trend_pipeline.story_generation import (
+    STORY_ID_PREFIX,
+    FinalStoryDecision,
+    StoryGenerationResult,
+    StoryGenerationState,
+    StoryGenerationStatus,
+)
 from ai_trend_pipeline.story_status import (
     STORY_UI_RETENTION,
     PrimaryStoryStatus,
@@ -26,6 +41,7 @@ from ai_trend_pipeline.story_visibility import bounded_detail
 
 CANDIDATE_WORKFLOW_TYPE = "StoryCandidateWorkflow"
 GENERATION_WORKFLOW_TYPE = "StoryGenerationWorkflow"
+MAX_DETAIL_ID_CHARS = 128
 
 DEFAULT_STORY_PAGE_SIZE = 20
 MAX_STORY_PAGE_SIZE = 100
@@ -356,8 +372,339 @@ class StoryStatusService:
         return await self._gateway.list_stories(request, now=moment, cutoff=cutoff)
 
 
+class StoryDetailKind(StrEnum):
+    CANDIDATE = "candidate"
+    GENERATION = "generation"
+
+
+def story_detail_kind(detail_id: str) -> StoryDetailKind:
+    """Resolve the deterministic versioned workflow id; anything else does not exist."""
+    if not detail_id or len(detail_id) > MAX_DETAIL_ID_CHARS:
+        raise StoryDetailNotFound(detail_id)
+    if detail_id.startswith(CANDIDATE_ID_PREFIX):
+        return StoryDetailKind.CANDIDATE
+    if detail_id.startswith(STORY_ID_PREFIX):
+        return StoryDetailKind.GENERATION
+    raise StoryDetailNotFound(detail_id)
+
+
+class StoryDetailError(Exception):
+    """Base class for story detail service errors."""
+
+
+class StoryDetailNotFound(StoryDetailError):
+    def __init__(self, detail_id: str) -> None:
+        super().__init__(f"story detail {detail_id} not found")
+        self.detail_id = detail_id
+
+
+class StoryDetailExpired(StoryDetailError):
+    def __init__(self, detail_id: str) -> None:
+        super().__init__(f"story detail {detail_id} is past the 48-hour cutoff")
+        self.detail_id = detail_id
+
+
+class StoryNotReviewable(StoryDetailError):
+    def __init__(self, detail_id: str) -> None:
+        super().__init__(f"story {detail_id} is not awaiting a final decision")
+        self.detail_id = detail_id
+
+
+class StoryDetailMalformed(StoryDetailError):
+    def __init__(self, detail_id: str) -> None:
+        super().__init__(f"story detail {detail_id} violates its typed contract")
+        self.detail_id = detail_id
+
+
+class StoryDetailUnavailable(StoryDetailError):
+    def __init__(self, message: str = "story detail service unavailable") -> None:
+        super().__init__(message)
+
+
+class StoryDetail(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    detail_id: str
+    workflow_id: str
+    candidate_id: str
+    kind: StoryDetailKind
+    title: str
+    source: str
+    created_at: datetime
+    status: PrimaryStoryStatus
+    internal_status: str
+    status_detail: str | None = None
+    package: StoryPackage | None = None
+    decided_by: str | None = None
+    decided_at: datetime | None = None
+    note: str = ""
+
+
+class DecideStoryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    detail_id: str = Field(min_length=1, max_length=MAX_DETAIL_ID_CHARS)
+    decision: Literal["approve", "reject"]
+    decided_by: DecidedByText | None = None
+
+
+class StoryDecisionResult(BaseModel):
+    workflow_id: str
+    status: Literal["ready", "rejected", "unsupported", "failed", "expired"]
+    decided_by: str | None = None
+    decided_at: datetime | None = None
+
+
+_STORY_OPEN_STATUSES = frozenset(
+    {
+        StoryGenerationStatus.RESEARCHING,
+        StoryGenerationStatus.ANALYZING,
+        StoryGenerationStatus.WRITING,
+        StoryGenerationStatus.CHECKING,
+        StoryGenerationStatus.REVIEW,
+    }
+)
+_STORY_TERMINAL_VALUES = frozenset({"ready", "rejected", "unsupported", "failed", "expired"})
+
+
+def _aware_moment(now: datetime) -> datetime:
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("now must be a timezone-aware datetime")
+    return now.astimezone(UTC)
+
+
+def _bounded_note(value: str) -> str:
+    return bounded_detail(value) or ""
+
+
+class StoryDetailGateway(Protocol):
+    async def candidate_state(self, workflow_id: str) -> CandidateReviewState: ...
+
+    async def candidate_result(self, workflow_id: str) -> StoryCandidateResult: ...
+
+    async def story_state(self, workflow_id: str) -> StoryGenerationState: ...
+
+    async def story_result(self, workflow_id: str) -> StoryGenerationResult: ...
+
+    async def decide(
+        self, workflow_id: str, decision: FinalStoryDecision, *, approve: bool
+    ) -> None: ...
+
+
+class StoryDetailService:
+    """Read one candidate or story through queries and typed results; never parse history."""
+
+    def __init__(self, gateway: StoryDetailGateway) -> None:
+        self._gateway = gateway
+
+    async def show(self, detail_id: str, *, now: datetime) -> StoryDetail:
+        cutoff = _aware_moment(now) - STORY_UI_RETENTION
+        kind = story_detail_kind(detail_id)
+        if kind is StoryDetailKind.CANDIDATE:
+            return await self._candidate_detail(detail_id, cutoff)
+        return await self._generation_detail(detail_id, cutoff=cutoff)
+
+    async def decide(self, request: DecideStoryRequest, *, now: datetime) -> StoryDecisionResult:
+        cutoff = _aware_moment(now) - STORY_UI_RETENTION
+        kind = story_detail_kind(request.detail_id)
+        if kind is not StoryDetailKind.GENERATION:
+            raise StoryNotReviewable(request.detail_id)
+        state = await self._gateway.story_state(request.detail_id)
+        if state.story_created_at is None:
+            raise StoryDetailMalformed(request.detail_id)
+        self._retain(request.detail_id, state.story_created_at, cutoff)
+        if state.status is not StoryGenerationStatus.REVIEW:
+            raise StoryNotReviewable(request.detail_id)
+        decision = FinalStoryDecision(decided_by=request.decided_by)
+        await self._gateway.decide(
+            request.detail_id, decision, approve=request.decision == "approve"
+        )
+        result = await self._gateway.story_result(request.detail_id)
+        if result.status == "ready" and result.package is None:
+            raise StoryDetailMalformed(request.detail_id)
+        if result.status not in _STORY_TERMINAL_VALUES:
+            raise StoryDetailMalformed(request.detail_id)
+        return StoryDecisionResult(
+            workflow_id=request.detail_id,
+            status=result.status,
+            decided_by=result.decided_by,
+            decided_at=result.decided_at,
+        )
+
+    def _retain(self, detail_id: str, created_at: datetime, cutoff: datetime) -> datetime:
+        if not retained(created_at, cutoff):
+            raise StoryDetailExpired(detail_id)
+        return _as_utc(created_at)
+
+    async def _candidate_detail(self, detail_id: str, cutoff: datetime) -> StoryDetail:
+        state = await self._gateway.candidate_state(detail_id)
+        candidate = state.candidate
+        created = self._retain(detail_id, candidate.observed_at, cutoff)
+        if state.status is CandidateStatus.AWAITING_REVIEW:
+            return StoryDetail(
+                detail_id=detail_id,
+                workflow_id=detail_id,
+                candidate_id=detail_id,
+                kind=StoryDetailKind.CANDIDATE,
+                title=candidate.title,
+                source=candidate.source.value,
+                created_at=created,
+                status=PrimaryStoryStatus.PENDING,
+                internal_status=state.status.value,
+                package=None,
+            )
+        if state.status is CandidateStatus.APPROVED:
+            return await self._approved_candidate(detail_id, state, created, cutoff)
+        if state.status in (CandidateStatus.REJECTED, CandidateStatus.EXPIRED):
+            result = await self._gateway.candidate_result(detail_id)
+            if result.status == "approved":
+                return await self._approved_candidate(detail_id, state, created, cutoff)
+            if result.status not in ("rejected", "expired"):
+                raise StoryDetailMalformed(detail_id)
+            return StoryDetail(
+                detail_id=detail_id,
+                workflow_id=detail_id,
+                candidate_id=detail_id,
+                kind=StoryDetailKind.CANDIDATE,
+                title=result.candidate.title,
+                source=result.candidate.source.value,
+                created_at=created,
+                status=PrimaryStoryStatus.CLOSED,
+                internal_status=result.status,
+                package=None,
+                decided_by=result.decided_by,
+                decided_at=result.decided_at,
+                note=_bounded_note(result.note),
+            )
+        raise StoryDetailMalformed(detail_id)
+
+    async def _approved_candidate(
+        self,
+        detail_id: str,
+        state: CandidateReviewState,
+        created: datetime,
+        cutoff: datetime,
+    ) -> StoryDetail:
+        title = state.candidate.title
+        source = state.candidate.source.value
+        workflow_id = state.story_workflow_id
+        if workflow_id:
+            try:
+                return await self._generation_detail(
+                    workflow_id,
+                    cutoff=cutoff,
+                    alias_detail_id=detail_id,
+                    metadata=(title, source),
+                )
+            except StoryDetailNotFound:
+                # The child may not be visible yet; the list shows it as still starting too.
+                pass
+        return StoryDetail(
+            detail_id=detail_id,
+            workflow_id=workflow_id or detail_id,
+            candidate_id=detail_id,
+            kind=StoryDetailKind.GENERATION,
+            title=title,
+            source=source,
+            created_at=created,
+            status=PrimaryStoryStatus.WRITING,
+            internal_status=CandidateStatus.APPROVED.value,
+            status_detail=GENERATION_STARTING_DETAIL,
+            package=None,
+        )
+
+    async def _generation_detail(
+        self,
+        workflow_id: str,
+        *,
+        cutoff: datetime,
+        alias_detail_id: str | None = None,
+        metadata: tuple[str, str] | None = None,
+    ) -> StoryDetail:
+        requested_id = alias_detail_id or workflow_id
+        state = await self._gateway.story_state(workflow_id)
+        if state.story_created_at is None:
+            raise StoryDetailMalformed(requested_id)
+        created = self._retain(requested_id, state.story_created_at, cutoff)
+        title, source = metadata if metadata is not None else ("", "")
+        if metadata is None and state.candidate_id:
+            try:
+                review = await self._gateway.candidate_state(state.candidate_id)
+            except StoryDetailNotFound:
+                pass
+            else:
+                title = review.candidate.title
+                source = review.candidate.source.value
+
+        if state.status in _STORY_OPEN_STATUSES:
+            return StoryDetail(
+                detail_id=requested_id,
+                workflow_id=workflow_id,
+                candidate_id=state.candidate_id,
+                kind=StoryDetailKind.GENERATION,
+                title=title,
+                source=source,
+                created_at=created,
+                status=primary_story_status(state.status.value),
+                internal_status=state.status.value,
+                status_detail=bounded_detail(state.status_detail),
+                package=(state.package if state.status is StoryGenerationStatus.REVIEW else None),
+            )
+
+        if state.status not in (
+            StoryGenerationStatus.READY,
+            StoryGenerationStatus.REJECTED,
+            StoryGenerationStatus.UNSUPPORTED,
+            StoryGenerationStatus.FAILED,
+            StoryGenerationStatus.EXPIRED,
+        ):
+            raise StoryDetailMalformed(requested_id)
+
+        result = await self._gateway.story_result(workflow_id)
+        if (
+            result.story_id != state.story_id
+            or result.candidate_id != state.candidate_id
+            or result.status != state.status.value
+        ):
+            raise StoryDetailMalformed(requested_id)
+        created = self._retain(requested_id, result.story_created_at, cutoff)
+        if result.status == "ready" and result.package is None:
+            raise StoryDetailMalformed(requested_id)
+        return StoryDetail(
+            detail_id=requested_id,
+            workflow_id=workflow_id,
+            candidate_id=state.candidate_id,
+            kind=StoryDetailKind.GENERATION,
+            title=title,
+            source=source,
+            created_at=created,
+            status=primary_story_status(result.status),
+            internal_status=result.status,
+            status_detail=bounded_detail(result.status_detail),
+            package=result.package if result.status == "ready" else None,
+            decided_by=result.decided_by,
+            decided_at=result.decided_at,
+            note=_bounded_note(result.note),
+        )
+
+
 __all__ = [
     "CANDIDATE_WORKFLOW_TYPE",
+    "CANDIDATE_ID_PREFIX",
+    "DecideStoryRequest",
+    "MAX_DETAIL_ID_CHARS",
+    "STORY_ID_PREFIX",
+    "StoryDecisionResult",
+    "StoryDetail",
+    "StoryDetailError",
+    "StoryDetailExpired",
+    "StoryDetailGateway",
+    "StoryDetailKind",
+    "StoryDetailMalformed",
+    "StoryDetailNotFound",
+    "StoryDetailService",
+    "StoryDetailUnavailable",
+    "StoryNotReviewable",
     "GENERATION_STARTING_DETAIL",
     "GENERATION_WORKFLOW_TYPE",
     "InvalidStoryPageToken",
@@ -383,5 +730,6 @@ __all__ = [
     "retained",
     "sort_story_rows",
     "story_filter",
+    "story_detail_kind",
     "story_visibility_query",
 ]

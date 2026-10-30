@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}{{ view.page_title }} - {{ shell.brand }}{% endblock %}
+{% block content %}
+<p class="candidate-back"><a href="{{ view.back_href }}">{{ view.back_label }}</a></p>
+<h1>{{ view.heading }}</h1>
+<p>{{ view.body }}</p>
+{% if view.retry_href %}<p><a class="btn btn--secondary" href="{{ view.retry_href }}">{{ view.retry_label }}</a></p>{% endif %}
+{% endblock %}

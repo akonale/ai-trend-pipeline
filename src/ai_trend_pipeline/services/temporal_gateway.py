@@ -3,6 +3,7 @@
 from collections.abc import Awaitable
 from datetime import UTC, datetime
 
+from pydantic import ValidationError
 from temporalio.client import (
     Client,
     WorkflowExecution,
@@ -39,6 +40,10 @@ from ai_trend_pipeline.services.stories import (
     MAX_SEEN_CANDIDATES,
     MAX_STORY_SCAN_PAGES,
     ListStoriesRequest,
+    StoryDetailError,
+    StoryDetailMalformed,
+    StoryDetailNotFound,
+    StoryDetailUnavailable,
     StoryFilter,
     StoryListPage,
     StoryPageToken,
@@ -74,6 +79,12 @@ from ai_trend_pipeline.story_candidate import (
     candidate_id_for,
     candidate_memo,
     candidate_search_attributes,
+)
+from ai_trend_pipeline.story_generation import (
+    FinalStoryDecision,
+    StoryGenerationResult,
+    StoryGenerationState,
+    StoryGenerationWorkflow,
 )
 from ai_trend_pipeline.story_visibility import (
     STORY_CANDIDATE_ID_ATTRIBUTE,
@@ -336,6 +347,55 @@ def _next_story_token(
         return None
     raw_token = encode_page_token(raw) if raw is not None else None
     return encode_story_page_token(StoryPageToken(filter=filter, raw=raw_token, seen=deduped))
+
+
+def _detail_rpc_error(workflow_id: str, exc: RPCError) -> StoryDetailError:
+    if exc.status == RPCStatusCode.NOT_FOUND:
+        return StoryDetailNotFound(workflow_id)
+    return StoryDetailUnavailable()
+
+
+async def _detail_call[T](workflow_id: str, call: Awaitable[T]) -> T:
+    try:
+        return await call
+    except RPCError as exc:
+        raise _detail_rpc_error(workflow_id, exc) from exc
+    except (ValidationError, ValueError, TypeError) as exc:
+        raise StoryDetailMalformed(workflow_id) from exc
+
+
+class TemporalStoryDetailGateway:
+    """Queries and typed results for one candidate or story; it never reads history."""
+
+    def __init__(self, client: Client) -> None:
+        self._client = client
+
+    async def candidate_state(self, workflow_id: str) -> CandidateReviewState:
+        handle = self._client.get_workflow_handle_for(StoryCandidateWorkflow.run, workflow_id)
+        return await _detail_call(workflow_id, handle.query(StoryCandidateWorkflow.review_state))
+
+    async def candidate_result(self, workflow_id: str) -> StoryCandidateResult:
+        handle = self._client.get_workflow_handle_for(StoryCandidateWorkflow.run, workflow_id)
+        return await _detail_call(workflow_id, handle.result())
+
+    async def story_state(self, workflow_id: str) -> StoryGenerationState:
+        handle = self._client.get_workflow_handle_for(StoryGenerationWorkflow.run, workflow_id)
+        return await _detail_call(workflow_id, handle.query(StoryGenerationWorkflow.story_state))
+
+    async def story_result(self, workflow_id: str) -> StoryGenerationResult:
+        handle = self._client.get_workflow_handle_for(StoryGenerationWorkflow.run, workflow_id)
+        return await _detail_call(workflow_id, handle.result())
+
+    async def decide(
+        self, workflow_id: str, decision: FinalStoryDecision, *, approve: bool
+    ) -> None:
+        handle = self._client.get_workflow_handle_for(StoryGenerationWorkflow.run, workflow_id)
+        if approve:
+            await _detail_call(
+                workflow_id, handle.signal(StoryGenerationWorkflow.approve, decision)
+            )
+        else:
+            await _detail_call(workflow_id, handle.signal(StoryGenerationWorkflow.reject, decision))
 
 
 class TemporalStoryStatusGateway:

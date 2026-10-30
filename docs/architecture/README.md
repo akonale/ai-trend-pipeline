@@ -92,7 +92,9 @@ detection time. `story_status.primary_story_status` maps every internal state to
 statuses (`pending`, `writing`, `review`, `ready`, `closed`). `StoryStatusService` reads both
 workflow types in one visibility query for `GET /stories`, de-duplicates the candidate-to-story
 handoff by `StoryCandidateId`, and hides anything at or past 48 hours. `/candidates` keeps its own
-pending query but applies the same cutoff. Task 055 adds the story detail page.
+pending query but applies the same cutoff. `GET /stories/{id}` shows one workflow's detail through
+`StoryDetailService`: queries while open, typed results when terminal, one final Approve/Reject
+signal at `review`, and the same 48-hour cutoff.
 
 Pre-053 candidate histories still replay: the new terminal upsert and child start sit behind
 `workflow.patched("story-generation-handoff-v1")`, and the new input, query and result fields are

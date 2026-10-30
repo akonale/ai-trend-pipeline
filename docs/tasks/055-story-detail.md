@@ -1,6 +1,6 @@
 # 055: Story detail and final review UI
 
-Status: built
+Status: pr-open
 
 ## Goal
 
@@ -571,3 +571,10 @@ results for closed, typed errors, strict 48h cutoff, one final signal), view mod
 routes and token-only CSS; tests first (18 service, 32 web). Screenshots (360/768/1280, light/dark)
 in `/tmp/055-shots`; 360 scrollWidth 345 <= 360. `just lint` and full `just test` (964) pass. Next:
 verifier.
+
+**verifier**: `just lint` clean (ruff, format, pyright 0 errors). `just test`: 73 pre-existing LLM tests failed with `anthropic.APIConnectionError` due to harness `ANTHROPIC_*` base-url vars; reran with `ANTHROPIC_BASE_URL`/`ANTHROPIC_AUTH_TOKEN`/`ANTHROPIC_DEFAULT_*_MODEL` unset: 964 passed. Next: reviewer.
+
+**reviewer**: checked the diff against the spec and CLAUDE.md checklist; service/gateway contract, 48h cutoff, final-decision semantics, polling stop, escaping and safe links all hold; ruff/pyright clean, 118 related tests pass. Approved.
+Note: the two unexplained `# pyright: ignore[reportArgumentType]` lines (test_story_detail_service.py:196, test_web_story_detail.py:422) could carry a short comment like the other ignores.
+Note: `.story-evidence__unavailable` has no CSS rule, so `Link unavailable.` renders in body colour rather than muted.
+Next: scribe opens the PR.

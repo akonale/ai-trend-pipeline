@@ -372,6 +372,9 @@ no multi-megabyte fixture is committed.
   with a 404 primary plus readable allowlisted extra). Retryable statuses raise
   `RetryableFetchError(status)` with a constant sanitized message and no URL/query (tests assert
   both). Lint and the full suite pass. Next: verifier.
+- **builder**: Stabilized the two pre-existing `test_ingestion_starter.py` visibility tests by
+  polling `list_workflows` until the expected count or a 10 s timeout; assertions unchanged. The
+  file passed 20/20 repeated runs, and `just lint` / full `just test` are green. Next: verifier.
 - **verifier**: Re-verify after fix loop 1: `just lint` (Ruff, format, strict Pyright) clean and `just test` 757 passed on `task/050-story-research`. First run had 54 `anthropic.APIConnectionError` failures from harness `ANTHROPIC_*` vars; rerun with those unset was fully green. Both review fixes confirmed (primary-only support, sanitized retry error). Next: reviewer.
 - **reviewer**: Approved. Support now depends only on the primary article context, matching
   the spec, and the new 404-primary-plus-readable-extra test fails on the old code. Retryable

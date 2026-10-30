@@ -1,9 +1,10 @@
 """Tests for the operator-facing ensure command and the real ingestion gateway."""
 
+import asyncio
 from typing import cast
 
 import pytest
-from temporalio.client import Client
+from temporalio.client import Client, WorkflowExecution
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.testing import WorkflowEnvironment
 
@@ -18,6 +19,8 @@ from ai_trend_pipeline.source_ingestion import (
 from ai_trend_pipeline.sources import SourceName
 
 INGESTION_QUERY = "WorkflowType = 'SourceIngestionWorkflow'"
+VISIBILITY_TIMEOUT_S = 10.0
+VISIBILITY_POLL_S = 0.05
 
 
 async def start_env() -> WorkflowEnvironment:
@@ -25,6 +28,23 @@ async def start_env() -> WorkflowEnvironment:
     return await WorkflowEnvironment.start_local(  # pyright: ignore[reportUnknownMemberType]
         data_converter=pydantic_data_converter
     )
+
+
+async def wait_for_workflows(
+    client: Client,
+    query: str,
+    *,
+    expected: int,
+    timeout_s: float = VISIBILITY_TIMEOUT_S,
+) -> list[WorkflowExecution]:
+    """Poll visibility until the expected count appears; it is eventually consistent in CI."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_s
+    while True:
+        executions = [execution async for execution in client.list_workflows(query)]
+        if len(executions) >= expected or loop.time() >= deadline:
+            return executions
+        await asyncio.sleep(VISIBILITY_POLL_S)
 
 
 class FakeClient:
@@ -49,7 +69,7 @@ async def test_gateway_starts_one_workflow_per_enabled_source() -> None:
     async with await start_env() as env:
         service = SourceIngestionService(TemporalSourceIngestionGateway(env.client), Settings())
         result = await service.ensure()
-        executions = [execution async for execution in env.client.list_workflows(INGESTION_QUERY)]
+        executions = await wait_for_workflows(env.client, INGESTION_QUERY, expected=1)
     assert result.workflow_ids == (source_ingestion_workflow_id(SourceName.HN),)
     assert len(executions) == 1
     execution = executions[0]
@@ -67,7 +87,7 @@ async def test_gateway_is_idempotent() -> None:
         first_run_id = (await handle.describe()).run_id
         second = await service.ensure()
         second_run_id = (await handle.describe()).run_id
-        executions = [execution async for execution in env.client.list_workflows(INGESTION_QUERY)]
+        executions = await wait_for_workflows(env.client, INGESTION_QUERY, expected=1)
     expected = (source_ingestion_workflow_id(SourceName.HN),)
     assert first.workflow_ids == second.workflow_ids == expected
     assert first_run_id == second_run_id

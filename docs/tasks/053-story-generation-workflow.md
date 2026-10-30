@@ -1,6 +1,6 @@
 # 053: StoryGenerationWorkflow and approval handoff
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -500,3 +500,4 @@ needed; register the story attributes)
   harness `ANTHROPIC_*` unset. Next: verifier.
 - **verifier**: `just lint` (Ruff + Pyright strict) and `just test` pass; the full suite is green with harness `ANTHROPIC_*` unset only because its base URL/token produce `anthropic.APIConnectionError` in every LLM test with them set (881 passed). Next: reviewer.
 - **reviewer**: Approved. State machine, determinism, handoff patch, visibility and registration match the spec; focused story tests (138), Ruff and strict Pyright are green. The four `datetime.now(UTC)` fixture updates and two worker assertion flips are justified by the 48h cap and story registration, not weakened. Non-blocking: `_checker_failure_detail` has two branches returning the same detail; `worker.py` opens a second OWID client for the story worker.
+- **scribe**: Updated README for the story workflow/handoff and stale research wiring; architecture docs and search-attribute runbook already covered states, queue, visibility, five-status mapping and 48h deadlines. Opened PR https://github.com/akonale/ai-trend-pipeline/pull/60. Next: human review and merge.

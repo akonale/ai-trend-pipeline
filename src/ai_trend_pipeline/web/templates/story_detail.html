@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}{{ view.page_title }} - {{ shell.brand }}{% endblock %}
+{% block content %}
+<p class="candidate-back"><a href="{{ view.back_href }}">{{ view.back_label }}</a></p>
+{% if view.notice %}<p class="notice candidate-flash" id="story-notice" tabindex="-1" role="status">{{ view.notice }}</p>{% endif %}
+{% if view.error %}<p class="error candidate-flash" role="alert">{{ view.error }}</p>{% endif %}
+{% include "partials/story_detail_body.html" %}
+{% endblock %}

@@ -66,12 +66,22 @@ badge.
 
 `/stories` is the status ledger for everything detected in the last 48 hours. Each row shows the
 title, source, one of five status stamps (Pending, Writing, Review, Ready, Closed), an optional
-one-line status detail, the updated time and a link to `/stories/<id>` (the detail page arrives in
-task 055). The six filter pills reset pagination; `?page=` is an opaque forward cursor that keeps
-the filter. It is plain server HTML: no JavaScript is needed to filter, page or open a row. While a
-visible row is Pending, Writing or Review the results region refreshes with htmx every 10 seconds;
-a Ready/Closed-only, empty or unavailable view stops polling. Invalid page links get a friendly
-notice and unavailable pages keep the shared shell.
+one-line status detail, the updated time and a link to `/stories/<id>`. The six filter pills reset
+pagination; `?page=` is an opaque forward cursor that keeps the filter. It is plain server HTML: no
+JavaScript is needed to filter, page or open a row. While a visible row is Pending, Writing or
+Review the results region refreshes with htmx every 10 seconds; a Ready/Closed-only, empty or
+unavailable view stops polling. Invalid page links get a friendly notice and unavailable pages keep
+the shared shell.
+
+`/stories/<id>` is the detail and final-review page for one candidate or generation workflow. Pending
+and writing show the title, source, one status stamp and one short progress line, and refresh only
+that region every 10 seconds; review renders the full approved-for-review story package (headline,
+summary, body, key points with footnote citations, evidence links limited to `http`/`https`,
+caveats and optional post text) with a Final review rail; ready renders the same package read-only
+with approval metadata; closed shows one Closed stamp and the rejected, unsupported, failed or
+expired reason. Final Approve/Reject is available only at review, the first decision wins, nothing is
+published, and reading or deciding needs no JavaScript. Missing details are 404, anything past the
+48-hour cutoff is 410, unreadable typed results are 502 and a service outage is 503.
 
 `/candidates` is the pending-action inbox: a plain server-rendered list of pending candidates
 (no JavaScript needed), paged with `?page=` and showing a full-shell notice if the candidate

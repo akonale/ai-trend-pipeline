@@ -19,9 +19,16 @@ from ai_trend_pipeline.post_options import (
     PostOptions,
 )
 from ai_trend_pipeline.services.candidates import CandidatePage, CandidateSummary
-from ai_trend_pipeline.services.stories import StoryFilter, StoryListPage, StoryRow
+from ai_trend_pipeline.services.stories import (
+    StoryDetail,
+    StoryDetailKind,
+    StoryFilter,
+    StoryListPage,
+    StoryRow,
+)
 from ai_trend_pipeline.sources import SourceName
 from ai_trend_pipeline.story_candidate import CandidateReviewState, candidate_id_for
+from ai_trend_pipeline.story_drafting.models import StoryPackage
 from ai_trend_pipeline.story_status import PrimaryStoryStatus
 from ai_trend_pipeline.story_visibility import bounded_detail
 from ai_trend_pipeline.style import (
@@ -1188,3 +1195,351 @@ def build_story_unavailable_view(
         unavailable=True,
         polling_href=_story_rows_href(filter, None),
     )
+
+
+STORY_DETAIL_HREF = "/stories"
+STORY_DETAIL_BACK_LABEL = "Back to stories"
+STORY_DETAIL_REGION_ID = "story-detail"
+STORY_DETAIL_POLLING_TRIGGER = "every 10s"
+STORY_DETAIL_POLLING_HINT = "Updating while the story is in progress."
+STORY_DETAIL_STOPPED_MESSAGE = "This story is no longer updating."
+STORY_DETAIL_STATUS_UNAVAILABLE_MESSAGE = "Status is unavailable. Check again."
+STORY_DETAIL_TITLE_FALLBACK = "Untitled story"
+
+PENDING_PROGRESS = "Waiting for the candidate review."
+WRITING_PROGRESS = "Writing and checking the story."
+REVIEW_PROGRESS = "Ready for your final review."
+READY_PROGRESS = "Approved and ready. Nothing was published."
+
+FINAL_REVIEW_HEADING = "Final review"
+FINAL_DECISION_NOTE = "Approving marks this story ready. Nothing is published."
+APPROVE_FINAL_LABEL = "Approve final story"
+REJECT_FINAL_LABEL = "Reject final story"
+APPROVED_HEADING = "Approved"
+APPROVED_BODY = "This is the final package. Nothing was published."
+
+KEY_POINTS_LABEL = "Key points"
+EVIDENCE_LABEL = "Evidence"
+FACTS_LABEL = "Fact references"
+CAVEATS_LABEL = "Caveats"
+POST_TEXT_LABEL = "Post text"
+LINK_UNAVAILABLE = "Link unavailable."
+
+CANDIDATE_REJECTED_HEADING = "This story was rejected"
+CANDIDATE_REJECTED_BODY = "A person rejected the candidate. Nothing was published."
+STORY_REJECTED_HEADING = "This story was rejected at final review"
+STORY_REJECTED_BODY = "A person rejected the story package. Nothing was published."
+UNSUPPORTED_HEADING = "This story could not be supported"
+UNSUPPORTED_FALLBACK = "There was not enough evidence to support this story."
+FAILED_HEADING = "Story generation failed"
+FAILED_FALLBACK = "Story generation failed."
+EXPIRED_HEADING = "This story expired"
+EXPIRED_BODY = "The review window closed before anyone decided. Nothing was published."
+UNKNOWN_CLOSED_HEADING = "This story is closed"
+UNKNOWN_CLOSED_BODY = "It is no longer available for review. Nothing was published."
+
+NOT_AVAILABLE_DETAIL: dict[str, tuple[str, str]] = {
+    "missing": (
+        "This story is not available",
+        "It may have been removed, or the link may be wrong. "
+        "The stories page is the best place to start.",
+    ),
+    "expired": (
+        "This story is no longer available",
+        "Stories leave this page 48 hours after they were first detected. Nothing was published.",
+    ),
+    "malformed": (
+        "This story can't be shown right now",
+        "Something in the story record could not be read. Nothing was published.",
+    ),
+    "unavailable": (
+        "This story is unavailable",
+        "We couldn't reach the story service. Nothing is lost.",
+    ),
+}
+
+STORY_DETAIL_NOTICES: dict[str, str] = {
+    "approved": "Approved: the story is ready. Nothing was published.",
+    "rejected": "Rejected: the story is closed. Nothing was published.",
+    "closed": "That story was already decided or has expired. Nothing changed.",
+}
+
+MAX_PACKAGE_CITATIONS = 20
+
+DetailState = Literal["pending", "writing", "review", "ready", "closed", "problem"]
+NotAvailableKind = Literal["missing", "expired", "malformed", "unavailable"]
+
+_STORY_DETAIL_STATES: dict[PrimaryStoryStatus, DetailState] = {
+    PrimaryStoryStatus.PENDING: "pending",
+    PrimaryStoryStatus.WRITING: "writing",
+    PrimaryStoryStatus.REVIEW: "review",
+    PrimaryStoryStatus.READY: "ready",
+    PrimaryStoryStatus.CLOSED: "closed",
+}
+
+
+class StoryCitation(BaseModel):
+    label: str
+    href: str
+    fact_id: str
+
+
+class StoryKeyPointView(BaseModel):
+    text: str
+    citations: list[StoryCitation] = Field(default_factory=lambda: [])
+
+
+class StoryFactReference(BaseModel):
+    anchor: str
+    label: str
+    fact_id: str
+
+
+class StoryEvidenceLink(BaseModel):
+    label: str
+    url: str | None
+    available: bool
+    hint: str
+
+
+class StoryPackageView(BaseModel):
+    headline: str
+    summary: str
+    body_paragraphs: list[str] = Field(default_factory=lambda: [])
+    key_points: list[StoryKeyPointView] = Field(default_factory=lambda: [])
+    evidence: list[StoryEvidenceLink] = Field(default_factory=lambda: [])
+    fact_references: list[StoryFactReference] = Field(default_factory=lambda: [])
+    caveats: list[str] = Field(default_factory=lambda: [])
+    post_text: str | None = None
+    key_points_label: str = KEY_POINTS_LABEL
+    evidence_label: str = EVIDENCE_LABEL
+    facts_label: str = FACTS_LABEL
+    caveats_label: str = CAVEATS_LABEL
+    post_text_label: str = POST_TEXT_LABEL
+
+
+def split_story_body(body: str) -> list[str]:
+    """Split on blank lines; single newlines inside a paragraph collapse to spaces."""
+    normalized = body.replace("\r\n", "\n").replace("\r", "\n")
+    paragraphs: list[str] = []
+    for chunk in re.split(r"\n[ \t]*\n", normalized):
+        text = " ".join(line.strip() for line in chunk.split("\n") if line.strip())
+        if text:
+            paragraphs.append(text)
+    return paragraphs
+
+
+def _citation_map(package: StoryPackage) -> dict[str, int]:
+    numbering: dict[str, int] = {}
+    for point in package.key_points:
+        for fact_id in point.fact_ids:
+            if fact_id not in numbering and len(numbering) < MAX_PACKAGE_CITATIONS:
+                numbering[fact_id] = len(numbering) + 1
+    return numbering
+
+
+def story_package_view(package: StoryPackage) -> StoryPackageView:
+    """Every package label, citation, fact anchor and safe evidence link. Pure: no I/O."""
+    numbering = _citation_map(package)
+    key_points: list[StoryKeyPointView] = []
+    for point in package.key_points:
+        citations: list[StoryCitation] = []
+        for fact_id in point.fact_ids:
+            number = numbering.get(fact_id)
+            if number is None:
+                continue
+            citations.append(
+                StoryCitation(
+                    label=f"[{number}]",
+                    href=f"#story-fact-{number}",
+                    fact_id=fact_id,
+                )
+            )
+        key_points.append(StoryKeyPointView(text=point.text, citations=citations))
+    evidence: list[StoryEvidenceLink] = []
+    for link in package.source_links:
+        url = safe_source_url(link.url)
+        evidence.append(
+            StoryEvidenceLink(
+                label=link.label,
+                url=url,
+                available=url is not None,
+                hint=SOURCE_LINK_HINT if url is not None else LINK_UNAVAILABLE,
+            )
+        )
+    fact_references = [
+        StoryFactReference(
+            anchor=f"story-fact-{number}",
+            label=f"[{number}] {fact_id}",
+            fact_id=fact_id,
+        )
+        for fact_id, number in numbering.items()
+    ]
+    return StoryPackageView(
+        headline=package.headline,
+        summary=package.summary,
+        body_paragraphs=split_story_body(package.body),
+        key_points=key_points,
+        evidence=evidence,
+        fact_references=fact_references,
+        caveats=list(package.caveats),
+        post_text=package.post_text,
+    )
+
+
+class StoryDetailView(BaseModel):
+    page_title: str = ""
+    detail_id: str = ""
+    workflow_id: str = ""
+    back_href: str = STORY_DETAIL_HREF
+    back_label: str = STORY_DETAIL_BACK_LABEL
+    notice: str = ""
+    error: str = ""
+    state: DetailState = "problem"
+    title: str = ""
+    source_label: str = ""
+    created_iso: str = ""
+    created_text: str = ""
+    status_label: str = ""
+    status_class: str = ""
+    progress: str = ""
+    polling: bool = False
+    polling_href: str = ""
+    polling_trigger: str = STORY_DETAIL_POLLING_TRIGGER
+    polling_hint: str = STORY_DETAIL_POLLING_HINT
+    region_id: str = STORY_DETAIL_REGION_ID
+    package: StoryPackageView | None = None
+    decision_heading: str = FINAL_REVIEW_HEADING
+    decision_note: str = FINAL_DECISION_NOTE
+    decision_action: str = ""
+    approve_label: str = APPROVE_FINAL_LABEL
+    reject_label: str = REJECT_FINAL_LABEL
+    approved_heading: str = ""
+    approved_body: str = ""
+    approved_by: str = ""
+    approved_at: str = ""
+    closed_heading: str = ""
+    closed_body: str = ""
+    closed_note: str = ""
+    problem_message: str = ""
+
+
+def _story_progress(detail: StoryDetail) -> str:
+    if detail.status is PrimaryStoryStatus.PENDING:
+        return PENDING_PROGRESS
+    if detail.status is PrimaryStoryStatus.WRITING:
+        return detail.status_detail or WRITING_PROGRESS
+    if detail.status is PrimaryStoryStatus.REVIEW:
+        return REVIEW_PROGRESS
+    if detail.status is PrimaryStoryStatus.READY:
+        return READY_PROGRESS
+    return ""
+
+
+def _story_closed_copy(detail: StoryDetail) -> tuple[str, str]:
+    if detail.internal_status == "rejected":
+        if detail.kind is StoryDetailKind.CANDIDATE:
+            return CANDIDATE_REJECTED_HEADING, CANDIDATE_REJECTED_BODY
+        return STORY_REJECTED_HEADING, STORY_REJECTED_BODY
+    if detail.internal_status == "unsupported":
+        return UNSUPPORTED_HEADING, detail.status_detail or UNSUPPORTED_FALLBACK
+    if detail.internal_status == "failed":
+        return FAILED_HEADING, detail.status_detail or FAILED_FALLBACK
+    if detail.internal_status == "expired":
+        return EXPIRED_HEADING, EXPIRED_BODY
+    return UNKNOWN_CLOSED_HEADING, UNKNOWN_CLOSED_BODY
+
+
+def build_story_detail_view(
+    detail: StoryDetail,
+    *,
+    now: datetime,
+    refresh_id: str | None = None,
+    notice: str = "",
+    error: str = "",
+) -> StoryDetailView:
+    """All detail labels, fallbacks, citations, URLs and actions. Pure: no I/O."""
+    package = story_package_view(detail.package) if detail.package is not None else None
+    title = (
+        package.headline
+        if package is not None
+        else detail.title.strip() or STORY_DETAIL_TITLE_FALLBACK
+    )
+    source = detail.source.strip()
+    relative = relative_time(detail.created_at, now)
+    closed = detail.status is PrimaryStoryStatus.CLOSED
+    closed_heading, closed_body = _story_closed_copy(detail) if closed else ("", "")
+    ready = detail.status is PrimaryStoryStatus.READY
+    return StoryDetailView(
+        page_title=title,
+        detail_id=detail.detail_id,
+        workflow_id=detail.workflow_id,
+        back_href=STORY_DETAIL_HREF,
+        back_label=STORY_DETAIL_BACK_LABEL,
+        notice=notice,
+        error=error,
+        state=_STORY_DETAIL_STATES[detail.status],
+        title=title,
+        source_label=UNKNOWN_SOURCE_LABEL if not source else source_label(source),
+        created_iso=_as_utc(detail.created_at).isoformat(),
+        created_text=f"Detected {relative}" if relative else "",
+        status_label=STORY_STATUS_LABELS[detail.status],
+        status_class=STORY_STATUS_BADGE_CLASSES[detail.status],
+        progress=_story_progress(detail),
+        polling=detail.status in (PrimaryStoryStatus.PENDING, PrimaryStoryStatus.WRITING),
+        polling_href=f"/stories/{quote(refresh_id or detail.detail_id, safe='')}/status",
+        package=package,
+        decision_action=f"/stories/{quote(detail.workflow_id, safe='')}/decide",
+        approved_heading=APPROVED_HEADING if ready else "",
+        approved_body=APPROVED_BODY if ready else "",
+        approved_by=(f"Approved by {detail.decided_by}" if ready and detail.decided_by else ""),
+        approved_at=(
+            f"Approved {relative_time(detail.decided_at, now)}"
+            if ready and detail.decided_at is not None
+            else ""
+        ),
+        closed_heading=closed_heading,
+        closed_body=closed_body,
+        closed_note=f"Note: {detail.note}" if closed and detail.note else "",
+    )
+
+
+def build_story_detail_problem_view(detail_id: str, *, message: str) -> StoryDetailView:
+    """The non-polling neutral line an htmx fragment swaps in after a typed failure."""
+    return StoryDetailView(
+        detail_id=detail_id,
+        workflow_id=detail_id,
+        state="problem",
+        problem_message=message,
+        polling=False,
+    )
+
+
+class StoryNotAvailableView(BaseModel):
+    page_title: str
+    heading: str
+    body: str
+    retry_href: str | None
+    retry_label: str
+    back_href: str = STORY_DETAIL_HREF
+    back_label: str = STORY_DETAIL_BACK_LABEL
+
+
+def build_story_not_available_view(
+    kind: NotAvailableKind, *, detail_id: str
+) -> StoryNotAvailableView:
+    """Neutral 404/410/502/503 copy; only a transient failure offers a retry."""
+    heading, body = NOT_AVAILABLE_DETAIL[kind]
+    retry = kind in ("malformed", "unavailable")
+    return StoryNotAvailableView(
+        page_title=heading,
+        heading=heading,
+        body=body,
+        retry_href=f"/stories/{quote(detail_id, safe='')}" if retry else None,
+        retry_label=RETRY_LABEL,
+    )
+
+
+def story_decision_notice(token: str) -> str:
+    """Allow-listed detail notice text; unknown tokens render nothing."""
+    return STORY_DETAIL_NOTICES.get(token.strip(), "")

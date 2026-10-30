@@ -384,3 +384,7 @@ no multi-megabyte fixture is committed.
 - **scribe**: Updated README/architecture docs (research package, evidence models, safe-fetch and
   SSRF rules, five `RESEARCH_*` settings) and opened https://github.com/akonale/ai-trend-pipeline/pull/57.
   Next: human merges the PR.
+- **verifier**: Re-verify after test-stability fix. `just lint` clean (Ruff, format, strict Pyright); `just test` 757 passed with harness `ANTHROPIC_*` vars unset (54 `anthropic.APIConnectionError` failures with them set). `tests/test_ingestion_starter.py` passed 5/5 repeated runs. Next: human merges PR.
+- **scribe**: Pushed test-stability fix f5b9756 so CI re-runs on
+  https://github.com/akonale/ai-trend-pipeline/pull/57; status back to pr-open. Next: human merges
+  the PR once CI is green.

@@ -54,11 +54,75 @@ Contents: [1 Temporal](#1-temporal) | [2 Web app](#2-web-app) | [3 Infra](#3-inf
   `id_conflict_policy=USE_EXISTING` and `id_reuse_policy=REJECT_DUPLICATE`, and treats
   `WorkflowAlreadyStartedError` as success, so one source/external id always has one run.
 - Search attributes: keyword `CandidateStatus` and `CandidateSource`, both set at start
-  (`awaiting_review`, `source.value`); the terminal transition upserts the final status. Pending
-  candidates are a visibility query (`WorkflowType = 'StoryCandidateWorkflow' AND CandidateStatus =
-  'awaiting_review'`); list rows read title, proposed angle and observed time from workflow memo.
-- `temporal_client.ensure_candidate_search_attributes(client)` registers both attributes and
-  ignores `ALREADY_EXISTS`; the worker calls it once after connecting.
+  (`awaiting_review`, `source.value`); the terminal transition upserts the final status. The same
+  start call also writes the seven shared story keys below. Pending candidates are a visibility
+  query (`WorkflowType = 'StoryCandidateWorkflow' AND CandidateStatus = 'awaiting_review'`); list
+  rows read title, proposed angle and observed time from workflow memo.
+- `temporal_client.ensure_story_search_attributes(client)` registers the two candidate and seven
+  story attributes and ignores `ALREADY_EXISTS`; `ensure_candidate_search_attributes` remains a
+  thin wrapper. The worker calls the story variant once after connecting.
+- Approval handoff: on a terminal decision (or expiry) the workflow executes exactly one
+  `workflow.patched("story-generation-handoff-v1")` check. On `True` it performs one shared
+  visibility upsert (`CandidateStatus`, `StoryStatus`, `StoryUpdatedAt`, plus `StoryCreatedAt`,
+  `StoryTitle`, `StorySource` and `StoryCandidateId` so older open candidates gain metadata). On
+  approval it then starts one `StoryGenerationWorkflow` child with id
+  `story_id_for(candidate_id)`, `STORY_TASK_QUEUE`, `ParentClosePolicy.ABANDON` and
+  `REJECT_DUPLICATE`, sets `story_workflow_id` in the query state and result, and does not await it.
+  `WorkflowAlreadyStartedError` is logged and keeps the deterministic id; other start errors
+  propagate so the workflow task retries. On `False` (closed 042-049 histories) the workflow runs
+  exactly the old candidate-status-only upsert, starts no story and returns
+  `story_workflow_id=None`. The new input, query and result fields are optional with defaults.
+- Review deadlines: the effective wait is
+  `min(review_timeout_seconds, candidate.observed_at + 48h - workflow.now())`, floored at zero; a
+  candidate at or past the UI cutoff expires without scheduling a timer. The same 48-hour cutoff
+  caps the story review below. This is presentation retention, not deletion.
+
+### Story generation workflow (`story_generation.py`)
+
+`StoryGenerationWorkflow.run(StoryGenerationInput) -> StoryGenerationResult`, task queue
+`STORY_TASK_QUEUE = "story-generation-task-queue"`. The workflow imports no activity module and
+schedules the four activities by their contract names with `result_type=` and a cast (the
+string-name overload returns `Any`).
+
+```
+researching ─▶ analyzing ─▶ writing ─▶ checking ─┬─ passed ─▶ review ─┬─ approve ─▶ ready
+                    ▲          │         │        │                   ├─ reject  ─▶ rejected
+                    │          └ one revision ──┘                   └─ 48 h cutoff ─▶ expired
+                    └──────── activity error / invalid draft / second failed check ─▶ failed
+```
+
+- `StoryGenerationInput` (frozen, `extra="forbid"`): `candidate_id` 1-128, a 050 `StoryInput`
+  whose `candidate_id` must match, `story_created_at` equal to `story.observed_at` (inherited,
+  never reset), and `review_timeout_seconds` 1-604800 (default 172800). `FinalStoryDecision` strips
+  `note` (0-500) and `decided_by` (1-320, blank becomes `None`). Query
+  `story_state() -> StoryGenerationState` never carries prompts, contexts or evidence; signals
+  `approve`/`reject` are ignored unless the status is `review` and no decision exists.
+- Story id: `story_id_for(candidate_id)` = `story-v1-` + the first 16 hex chars of SHA-256 over the
+  candidate workflow id, so one candidate maps to one story forever. A future rewrite uses
+  `story-v2-`.
+- States: `researching`, `analyzing`, `writing`, `checking`, `review` and the terminal `ready`,
+  `rejected`, `unsupported`, `failed`, `expired`. Every transition upserts `StoryStatus` and
+  `StoryUpdatedAt`; terminal states also set the optional sanitized `StoryStatusDetail` (fixed
+  English sentences only, never exception text, prompts, URLs or untrusted text).
+- Activities: `research_story` 120 s / 3 attempts, `calculate_facts` 30 s / 3 attempts,
+  `draft_story` 120 s / 3, `critique_story` 120 s / 3. Facts are requested with
+  `fact_input_for(...).model_copy(update={"max_facts": 16})`. Any `ActivityError` after retries is
+  terminal `failed`; cancellation is re-raised. The four non-retryable draft/checker error types
+  fail immediately without another attempt.
+- One revision only: a failed round-0 critique builds `RevisionRequest(round=1)`, drafts once more
+  and checks once at round 1. A second failed check is terminal `failed`; the workflow never loops
+  and never enters review with a failed draft.
+- `unsupported` is decided after research (or from an unexpected unsupported `FactSet`) and before
+  any writing. The detail maps the first `ResearchFailure.code` to one fixed sentence.
+- Review: `review_deadline = story_created_at + 48h`; effective timeout is
+  `min(review_timeout_seconds, deadline - workflow.now())`. A story at or past its cutoff expires
+  before any activity, and a cutoff reached during research/writing/checking expires rather than
+  entering a hidden wait. `ready` and `rejected` both carry the package and critique; the other
+  terminal states carry neither. Nothing publishes or renders.
+- Search attributes: the child start sets `StoryStatus=researching`, `StoryTitle`, `StorySource`,
+  `StoryCandidateId`, `StoryCreatedAt` (inherited) and `StoryUpdatedAt`; transitions upsert status
+  and time, and terminal states may add the bounded detail. Full text, evidence, prompts and URLs
+  never enter visibility.
 
 ### Source ingestion workflow (`source_ingestion.py`)
 
@@ -149,7 +213,10 @@ The message is the event value; the payload carries `event`, `source` and the li
 | `critique_story` | `StoryCritiqueActivities` | `CritiqueInput` -> `CritiqueOutput` |
 
 Activity classes take their clients in `__init__` (httpx / Anthropic), so tests pass fakes with
-`MockTransport`.
+`MockTransport`. The story worker registers only `research_story`, `calculate_facts`, `draft_story`
+and `critique_story`; `fetch_context` and `match_owid_evidence` stay unregistered because
+`research_story` calls their logic directly. No chart, render or publishing activity is registered
+on the story queue.
 
 ### Sources (`sources/`)
 
@@ -184,8 +251,8 @@ parser. `httpx` resolves again at connect time, so a DNS-rebinding time-of-check
 pre-connect checks are the mitigation, not an absolute guarantee. `research/activities.py` exposes
 three read-only, idempotent activities. `supported` requires a fetched original article of at least
 300 characters; a dataset match alone cannot support a story, and a missing catalog match is only a
-note. OWID problems degrade to notes. The activities are not registered on any worker yet (053 owns
-registration and retry policies), and no LLM or new credential is involved.
+note. OWID problems degrade to notes. The story worker registers `research_story`; `fetch_context` and
+`match_owid_evidence` stay unregistered because `research_story` invokes their logic directly.
 
 ### Facts (`analysis/`)
 
@@ -202,8 +269,8 @@ a number; article prose never does. Unsupported research returns zero facts and 
 status/note; missing, duplicate, partial or insufficient data omits calculations instead of guessing,
 and units are never inferred. Identical `FactInput` yields byte-identical JSON and ids on every run
 (no clocks, randomness, dict-order dependence or locale formatting). `analysis/activities.py` exposes
-the sync, idempotent, read-only `calculate_facts` activity; it is not registered on any worker yet
-(053 owns wiring, an activity executor and a start-to-close timeout).
+the sync, idempotent, read-only `calculate_facts` activity; the story worker registers it and uses an
+activity executor because the activity is synchronous.
 
 ### Story drafting and critique (`story_drafting/`)
 
@@ -235,8 +302,11 @@ and both result models are written with `schema_version=1`. The checker returns 
 when those findings already block (no LLM call), otherwise calls `critique_story`, validates returned
 fact IDs, merges findings and recomputes `passed`. Anthropic 4xx/429/5xx/timeout/connection errors
 propagate so Temporal retries them. Neither activity imports workflows, services, web, charts,
-publishing or worker code, and neither logs prompts, responses or URLs; 053 owns orchestration, the
-single revision loop and worker registration.
+publishing or worker code, and neither logs prompts, responses or URLs; the story worker registers
+both as read-only activities, and `StoryGenerationWorkflow` owns orchestration and the single
+revision loop. The maximal-input prompt ceiling is `MAX_DRAFT_PROMPT_CHARS = 100_000`; the story
+workflow caps drafting at 16 facts, and both writer and checker prompts are tested under the
+ceiling.
 
 ### Determinism, idempotency, replay
 
@@ -249,20 +319,27 @@ single revision loop and worker registration.
   `already_posted=True` if it exists, otherwise uploads the blob and `createRecord`s with that key.
 - Replay compatibility: new fields on workflow inputs and state must be optional with defaults
   (`requested_by`, `style`, `options`, `option_notes`, `decided_by` all are), so open runs from older
-  code still replay.
+  code still replay. `StoryCandidateWorkflow`'s story handoff and shared terminal upsert sit behind
+  `workflow.patched("story-generation-handoff-v1")`; a pre-053 closed history replays the old
+  candidate-status-only upsert and returns `story_workflow_id=None`. The captured
+  `tests/fixtures/histories/story_candidate_v1_approved.json` proves it, and the new
+  `StoryGenerationInput`, query and result fields are optional with defaults.
 - Pydantic everywhere: `temporal_client.connect(settings)` uses `pydantic_data_converter`.
 
 ### Worker (`worker.py`)
 
-`main()` loads settings, connects with retry (30 s), registers the candidate search attributes,
-builds the Anthropic, HN, OWID and Bluesky clients and runs four workers: `hello-task-queue`
-(`HelloWorkflow`, `say_hello`), the daily chart queue (`DailyChartWorkflow` and the seven
-activities from `daily_chart_activities`), `story-candidate-task-queue` (`CANDIDATE_WORKFLOWS =
-[StoryCandidateWorkflow]`, no activities), and `source-ingestion-task-queue` (`INGESTION_WORKFLOWS =
-[SourceIngestionWorkflow]`, with `poll_hn_source`, `poll_fake_source` and
-`select_story_candidates` from `ingestion_activities`). It exits at startup if `ANTHROPIC_API_KEY`,
-`BLUESKY_HANDLE` or `BLUESKY_APP_PASSWORD` is missing. Worker startup does not start ingestion;
-`just ingest` does. `DraftChartWorkflow` (in `chart_loop.py`) is not registered.
+`main()` loads settings, connects with retry (30 s), registers the candidate and story search
+attributes, builds the Anthropic, HN, OWID, Bluesky and research clients and runs five workers:
+`hello-task-queue` (`HelloWorkflow`, `say_hello`), the daily chart queue (`DailyChartWorkflow` and
+the seven activities from `daily_chart_activities`), `story-candidate-task-queue`
+(`CANDIDATE_WORKFLOWS = [StoryCandidateWorkflow]`, no activities), `source-ingestion-task-queue`
+(`INGESTION_WORKFLOWS = [SourceIngestionWorkflow]`, with `poll_hn_source`, `poll_fake_source` and
+`select_story_candidates` from `ingestion_activities`), and `story-generation-task-queue`
+(`STORY_WORKFLOWS = [StoryGenerationWorkflow]`, with the four activities from `story_activities`
+and `activity_executor=ThreadPoolExecutor(max_workers=4)` for the sync fact activity). It exits at
+startup if `ANTHROPIC_API_KEY`, `BLUESKY_HANDLE` or `BLUESKY_APP_PASSWORD` is missing. Worker
+startup does not start ingestion; `just ingest` does. `DraftChartWorkflow` (in `chart_loop.py`) is
+not registered.
 
 ## 2. Web app
 

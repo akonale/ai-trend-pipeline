@@ -200,7 +200,9 @@ class TemporalCandidateGateway:
                 task_queue=CANDIDATE_TASK_QUEUE,
                 id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,
                 id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
-                search_attributes=candidate_search_attributes(candidate),
+                search_attributes=candidate_search_attributes(
+                    candidate, updated_at=datetime.now(UTC)
+                ),
                 memo=candidate_memo(candidate),
             )
         except WorkflowAlreadyStartedError:

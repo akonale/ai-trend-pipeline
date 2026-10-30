@@ -58,7 +58,7 @@ FAKE_SELECTION = "llm_select_story_candidates_fake_source.json"
 HN_TITLE = "Show HN: Normal story"
 FAKE_TITLE = DEFAULT_FAKE_ITEMS[0].title or ""
 FAKE_ANGLE = "What the pilot changes for daily commuters."
-OBSERVED = datetime(2026, 10, 9, 12, 0, tzinfo=UTC)
+OBSERVED = datetime.now(UTC)
 IngestionHandle = WorkflowHandle[SourceIngestionWorkflow, SourceIngestionResult]
 PollActivity = Callable[[SourcePollInput], Awaitable[SourcePollOutput]]
 

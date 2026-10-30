@@ -54,7 +54,7 @@ from ai_trend_pipeline.story_selection import (
 from ai_trend_pipeline.temporal_client import ensure_candidate_search_attributes
 
 FIXTURES = Path(__file__).parent / "fixtures"
-OBSERVED = datetime(2026, 10, 9, 12, 0, tzinfo=UTC)
+OBSERVED = datetime.now(UTC)
 SelectActivity = Callable[[SelectStoryCandidatesInput], Awaitable[SelectStoryCandidatesOutput]]
 StateHandle = WorkflowHandle[SourceIngestionWorkflow, SourceIngestionResult]
 

@@ -460,7 +460,7 @@ def test_research_modules_do_not_import_workflow_or_worker_modules() -> None:
     assert bad == []
 
     worker = Path(__file__).parents[1] / "src" / "ai_trend_pipeline" / "worker.py"
-    assert "StoryResearchActivities" not in worker.read_text()
+    assert "StoryResearchActivities" in worker.read_text()
 
 
 def test_context_id_is_derived_from_the_normalized_final_url() -> None:

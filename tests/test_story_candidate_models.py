@@ -24,6 +24,16 @@ from ai_trend_pipeline.story_candidate import (
     candidate_memo,
     candidate_search_attributes,
 )
+from ai_trend_pipeline.story_status import DEFAULT_STORY_REVIEW_TIMEOUT_S
+from ai_trend_pipeline.story_visibility import (
+    STORY_CANDIDATE_ID_ATTRIBUTE,
+    STORY_CREATED_AT_ATTRIBUTE,
+    STORY_SOURCE_ATTRIBUTE,
+    STORY_STATUS_ATTRIBUTE,
+    STORY_STATUS_DETAIL_ATTRIBUTE,
+    STORY_TITLE_ATTRIBUTE,
+    STORY_UPDATED_AT_ATTRIBUTE,
+)
 
 OBSERVED = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
 
@@ -164,3 +174,39 @@ def test_candidate_memo_helper_has_only_the_three_compact_keys() -> None:
     assert memo["candidate_title"] == candidate.title
     assert memo["candidate_proposed_angle"] == candidate.proposed_angle
     assert memo["candidate_observed_at"] == OBSERVED.isoformat()
+
+
+def test_candidate_search_attributes_include_the_shared_story_attributes() -> None:
+    candidate = make_candidate()
+    attributes = candidate_search_attributes(candidate)
+    assert attributes.get(CANDIDATE_STATUS_ATTRIBUTE) == "awaiting_review"
+    assert attributes.get(CANDIDATE_SOURCE_ATTRIBUTE) == "hn"
+    assert attributes.get(STORY_STATUS_ATTRIBUTE) == "awaiting_review"
+    assert attributes.get(STORY_TITLE_ATTRIBUTE) == candidate.title
+    assert attributes.get(STORY_SOURCE_ATTRIBUTE) == "hn"
+    assert attributes.get(STORY_CANDIDATE_ID_ATTRIBUTE) == candidate_id_for(
+        candidate.source, candidate.external_id
+    )
+    assert attributes.get(STORY_CREATED_AT_ATTRIBUTE) == OBSERVED
+    assert attributes.get(STORY_UPDATED_AT_ATTRIBUTE) == OBSERVED
+    assert attributes.get(STORY_STATUS_DETAIL_ATTRIBUTE) == ""
+    assert (
+        candidate_search_attributes(candidate, updated_at=OBSERVED).get(STORY_UPDATED_AT_ATTRIBUTE)
+        == OBSERVED
+    )
+
+
+def test_story_review_timeout_default_and_bounds() -> None:
+    assert DEFAULT_STORY_REVIEW_TIMEOUT_S == 172800
+    data = StoryCandidateInput(candidate=make_candidate())
+    assert data.story_review_timeout_seconds == DEFAULT_STORY_REVIEW_TIMEOUT_S
+    for timeout in (1, 604800):
+        assert (
+            StoryCandidateInput(
+                candidate=make_candidate(), story_review_timeout_seconds=timeout
+            ).story_review_timeout_seconds
+            == timeout
+        )
+    for timeout in (0, 604801):
+        with pytest.raises(ValidationError):
+            StoryCandidateInput(candidate=make_candidate(), story_review_timeout_seconds=timeout)

@@ -118,7 +118,8 @@ per-story caps above are code constants, not runtime settings.
 | Story stuck in research/analyze/write/check | worker output, `story_generation.activity_failed`, `workflow describe`, Anthropic/HTTP health | Fix the upstream dependency; activity retries finish on their own or the story ends `failed` |
 | Story ends `failed` after retries | `story_generation.finished`, `status_detail` | Terminal. Fix the upstream cause and start a new candidate; a `failed` story is not retried |
 | Story ends `unsupported` | `story_generation.research_completed` and the detail | Expected evidence gap (missing article, unsafe URL, too little text). Terminal; no writing runs |
-| `/stories` or `/candidates` returns 503 | `just web`, Temporal connectivity, `StoryStatusUnavailable` | Restart the web process or restore Temporal; no history is lost |
+| `/stories` returns 503 | `just web`, Temporal connectivity, `StoryStatusUnavailable` | Restart the web process or restore Temporal; no history is lost |
+| `/candidates` returns 503 | `just web`, Temporal connectivity, `CandidateUnavailable` | Restart the web process or restore Temporal; no history is lost |
 | Duplicate story suspected | `dev-temporal workflow list --query 'StoryCandidateId = "candidate-v1-..."'` | There must be exactly two workflows (candidate and story). The deterministic id makes a third impossible |
 | Review expired | `story_generation.finished` with `status=expired` | Terminal; there is no reopen. Start a new candidate if the story still matters |
 

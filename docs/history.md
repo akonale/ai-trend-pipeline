@@ -76,6 +76,22 @@ PRs are on GitHub. Merge dates are UTC, taken from the PR list.
 | 048 | Continuous HN ingestion: one `SourceIngestionWorkflow` per enabled source, cursor and processed ids, timers, continue-as-new, `just ingest` | #54 | 2026-10-29 |
 | 049 | Hardening and docs: per-source UTC-day candidate budget, structured `candidate_ingestion.*` logs, fake second source and two-source proof, operator runbooks | #55 | — |
 
+## Phase 10: Story generation end to end
+
+The milestone landed: a person-approved candidate becomes a bounded, evidence-backed story package
+that waits for a second human decision and never publishes on its own.
+
+| Task | What was done | PR | Merged |
+| --- | --- | --- | --- |
+| 050 | Bounded story research: Pydantic contracts, safe bounded HTTP fetch, OWID evidence matching, `research_story` with explicit `supported`/`unsupported` | #57 | 2026-10-30 |
+| 051 | Deterministic facts: versioned `Fact`/`FactSet`, pure `build_fact_set` and the `calculate_facts` activity | #58 | 2026-10-30 |
+| 052 | Story drafting: `StoryPackage` contract, `draft_story` writer and `critique_story` checker, with fact ids, numbers and URLs validated in code | #59 | 2026-10-30 |
+| 053 | `StoryGenerationWorkflow`: research → facts → draft → check with one revision, final review, deterministic candidate handoff, seven shared visibility attributes, five-status mapping and 48-hour caps | #60 | 2026-10-30 |
+| 054 | `/stories` ledger: five statuses, filters, forward paging, rolling 48-hour cutoff and an htmx refresh only while a row is active | #61 | 2026-10-30 |
+| 055 | `/stories/{id}` detail: progress while active, full package with final Approve/Reject at review, read-only at ready and clear closed reasons | #62 | 2026-10-30 |
+| 056 | Story generation end to end: recorded-fixture e2e over the real workflows, gateways, services and routes; sanitized `story_generation.*` logs; budget and doc guards; stories runbook | — | — |
+
+
 ## Chores
 
 | Change | PR | Merged |
@@ -169,4 +185,27 @@ Story candidates and ingestion
   are `ABANDON`ed and stay reviewable and decidable.
 - Operational logs are the fixed `candidate_ingestion.*` set. The helper rejects source text and
   secrets, so titles, URLs, summaries, angles, prompts, payloads and credentials never reach them.
-- Google Trends remains a follow-up connector until its API/provider access is chosen.
+
+Story generation
+- There are two human decisions. Candidate approval starts exactly one deterministic
+  `story-v1-<hash>` story and never a second; final story approval marks the package `ready` and
+  still publishes nothing. The first decision wins, and a closed review window ends `expired`
+  (terminal). Nothing is posted, charted or rendered on the story path.
+- Users see only five statuses (`pending`, `writing`, `review`, `ready`, `closed`). Internal states
+  such as `researching` live in `StoryStatus` for operators and are never shown as UI badges.
+- The 48-hour window is presentation only. At `StoryCreatedAt + 48 h`, rows leave `/stories`,
+  `/candidates`, filters, pagination and pending counts, but workflow histories remain and
+  `describe`/`show` still answer. There is no cleanup timer and no history deletion.
+- Budgets are layered in existing code: the per-source UTC-day `SOURCE_CANDIDATE_BUDGET`, one story
+  per candidate forever, one research and one facts call, at most two drafts and two critiques,
+  three attempts per activity, fixed timeouts, bounded article HTTP/context/facts/text, and a review
+  wait capped at 48 hours. There is no global story quota, table or new setting. Changing ingestion
+  budgets requires stopping the source workflow and re-running `just ingest`.
+- Logs are the fixed `story_generation.*` set, written only by the workflow through the pure
+  `story_logging.py` guard. Titles, URLs, summaries, prompts, article text, drafts, critiques, notes,
+  emails and secrets never reach a record; filter with `grep story_generation`.
+- The deterministic proof is `uv run pytest tests/test_story_generation_e2e.py -q` (`start_local`,
+  recorded HN/OWID/Anthropic fixtures, real services and routes, no live calls). Operate and
+  troubleshoot with `docs/runbooks/stories.md`.
+
+Google Trends remains a follow-up connector until its API/provider access is chosen.

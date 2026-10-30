@@ -1,6 +1,6 @@
 # 056: Story-generation end-to-end hardening and docs
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -328,3 +328,9 @@ Next: human approval, then builder (tests first). No UI/CSS work; existing pages
 set into `StoryGenerationWorkflow`, and added the four test modules, five fixtures, `stories.md` and
 the README/architecture/runbook updates. E2E uses start_local with recorded fixtures; lint, strict
 Pyright and the full suite pass (harness `ANTHROPIC_*` vars unset). Next: verifier.
+
+**verifier**: `just lint` clean (ruff, format, strict Pyright); `just test` 1001 passed with harness
+`ANTHROPIC_*` vars unset (set, 73 pre-existing LLM tests fail with `anthropic.APIConnectionError`).
+`tests/test_story_generation_e2e.py` green in 5/5 repeated runs. Next: reviewer.
+
+**reviewer**: approved. `just lint` clean; full suite 1001 passed; `tests/test_story_generation_e2e.py` 3 passed. Notes: `stories.md` 503 row names `StoryStatusUnavailable` for `/candidates`, which actually raises `CandidateUnavailable`; e2e view-model count asserts pass empty pages (service-level assertions carry retention). Next: scribe.

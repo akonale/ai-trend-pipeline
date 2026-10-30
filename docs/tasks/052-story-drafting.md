@@ -1,6 +1,6 @@
 # 052: Story drafting and critique activities
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -591,3 +591,4 @@ Fixtures are Messages API JSON responses loaded through `httpx2.MockTransport`, 
   validates returned fact IDs and recomputes `passed`. Lint is clean; 830 tests pass with harness `ANTHROPIC_*` unset (env-set
   failures are the pre-existing base-URL fixture issue in `test_story_selection.py`). Note for 053: `MAX_DRAFT_PROMPT_CHARS` is
   fixture-sized only — a maximal valid `DraftInput` measured ~41.6k chars. Next: scribe updates docs and opens the PR.
+- **scribe**: Documented `story_drafting/` in `docs/architecture/README.md` and `tech.md` (contracts, validation/fail-closed rules, activity rows, error types); no README change since there is no new command or setting. Opened PR #59. Next: human review and merge.

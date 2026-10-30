@@ -578,3 +578,7 @@ verifier.
 Note: the two unexplained `# pyright: ignore[reportArgumentType]` lines (test_story_detail_service.py:196, test_web_story_detail.py:422) could carry a short comment like the other ignores.
 Note: `.story-evidence__unavailable` has no CSS rule, so `Link unavailable.` renders in body colour rather than muted.
 Next: scribe opens the PR.
+
+**scribe**: refreshed `README.md`, `docs/architecture/README.md` and `docs/architecture/tech.md` for the
+`/stories/{id}` page, states, final review, 48h cutoff and typed errors; pushed the branch and opened
+https://github.com/akonale/ai-trend-pipeline/pull/62. Next: human review and merge.

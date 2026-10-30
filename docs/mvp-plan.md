@@ -108,8 +108,9 @@ added later without changing the candidate workflow or UI.
 
 **Done when:** an enabled source polls near real time, a bounded batch of new events is evaluated by
 an LLM editorial selector, only selected stories appear in a polished but minimal web inbox, and
-Approve/Reject decisions are stored entirely in Temporal. Approval means only "this candidate is
-approved"; it does not generate media, create a chart, or publish anything.
+Approve/Reject decisions are stored entirely in Temporal. Within tasks 042-049, approval means only
+"this candidate is approved"; it does not yet generate a story, media, or chart, or publish anything.
+Tasks 050-056 below add the subsequent story-generation handoff.
 
 **Order:** 042 → 043 → 044 → 045 → 046 → 047 → 048 → 049. Tasks 042 and 043 may be built in
 parallel, but 043 must not be wired into a workflow until 044 and 048. The UI tasks are sequential:
@@ -174,6 +175,112 @@ Web → Temporal visibility (list) → workflow query (detail) → signal (decis
 | 047 | Candidate UI navigation and visual polish: integrate Candidates into the shared header as the primary destination with an active state, retain New chart and Your style, and add a small pending-count badge only when it can be obtained without an extra per-row workflow query. Add reusable candidate-specific CSS for list rows/cards, source badges, metric chips, detail sections, decision buttons, empty/error states, and flash messages using existing design tokens. Add a Back to candidates link and sensible page titles. Keep normal page loads and POST redirects; no auto-refresh, framework, or build step. Update web architecture docs and README screenshots or route descriptions | Every page has working navigation and the correct active state; inbox/detail/empty/error/success screens share one coherent visual language; light/dark contrast, focus order, keyboard operation, reduced motion, and 360px/768px/1280px layouts pass; no unused duplicate candidate CSS remains; existing chart route tests pass and the planner documents any intentional visible-text changes | no |
 | 048 | Continuous HN ingestion: add one long-running `SourceIngestionWorkflow` per enabled source. It polls through the 042 activity, keeps cursor and bounded processed-ID state, prefilters new events, calls the 043 batch selector, and starts 044 candidate workflows only for selected events. Sleep with Temporal timers, use workflow time, and continue-as-new after a bounded number of polls or before history grows too large. Expected candidate already-started conflicts are ignored. Add worker startup or an explicit idempotent operator command to ensure configured source workflows exist; document the chosen mechanism in the task spec | Time-skipping tests cover multiple polls, empty selections, repeated top-story IDs, no re-evaluation of bounded processed events, duplicate candidate suppression, selection caps, activity retry, cursor/state preservation across continue-as-new, and shutdown/cancellation; no I/O or wall-clock calls occur in workflow code; HN fixtures produce an end-to-end pending candidate visible through the 045-047 UI service boundary without live HTTP or LLM calls; existing chart runs are not counted as or confused with candidate workflows | no |
 | 049 | Candidate-inbox hardening and docs: add a per-source candidate budget and structured operational logs for polls, normalized events, LLM selections, duplicates, candidate starts, and failures without logging secrets or full source text. Add runbooks for registering Temporal search attributes, enabling/disabling sources, ensuring ingestion workflows, recovering a failed source, and handling replay/continue-as-new upgrades. Prove pluggability by running the fake second source through the complete poll → select → inbox → review flow with unchanged candidate workflow and UI. Update `README.md`, architecture docs, and history; remove the outdated statement that nothing starts runs automatically only where candidate ingestion is concerned | The full local stack demonstrates two sources feeding the same minimal inbox, source disablement stops new polling without affecting pending reviews, budgets and failure logs are tested, duplicate polls create no duplicate inbox rows, the UI remains usable when only some sources fail, Ruff/Pyright/full pytest pass, and a fresh operator can configure and operate the feature using only the committed docs. Google Trends remains a follow-up connector until its API/provider access is chosen | no |
+
+### Evidence-backed story generation and status tracking
+
+**Goal:** turn an approved candidate into a review-ready, evidence-backed textual story, while giving
+the user one minimal page to track candidates and stories through every stage. This milestone does
+not add infographics, animation, video, chart generation, or publishing.
+
+**Done when:** approving a candidate starts exactly one `StoryGenerationWorkflow`; the UI groups
+internal progress into five primary statuses; a second human approval produces a `ready`
+StoryPackage; and every user-facing story list is a rolling 48-hour view. Unsupported and failed
+stories stop with useful explanations. All story state and list metadata remain in Temporal.
+
+**Order:** 050 → 051 → 052 → 053 → 054 → 055 → 056. Tasks 050-052 build standalone activities and
+contracts without changing candidate approval behaviour. Task 053 enables the automatic handoff.
+Tasks 054 and 055 add status tracking and final story review; 056 verifies the complete flow.
+
+**Target flow:**
+
+```
+StoryCandidateWorkflow
+  → approved
+  → start story-v1-<candidate-hash> without waiting for completion
+  → candidate result includes the story workflow ID
+
+StoryGenerationWorkflow
+  → researching: gather bounded source context and supporting data
+  → analyzing: calculate facts and preserve evidence lineage
+  → writing: draft a structured story from context and facts
+  → checking: verify claims and allow at most one bounded revision
+  → review: wait for final human Approve/Reject
+  → ready / rejected
+
+Alternative terminal states: unsupported / failed / expired
+```
+
+**User-facing status contract:** Temporal keeps the detailed internal states above, but list and
+detail pages expose only these five primary badges:
+
+| UI status | Internal states and meaning |
+| --- | --- |
+| `pending` | `awaiting_review`: the candidate awaits the first human decision |
+| `writing` | `approved`, queued, `researching`, `analyzing`, `writing`, and `checking`; candidate approval moves directly into this status |
+| `review` | The generated story awaits final human approval |
+| `ready` | The exact StoryPackage is approved; nothing is published |
+| `closed` | `rejected`, `unsupported`, `failed`, or `expired`; the detail page gives the sanitized reason |
+
+`approved` is an internal transition and audit event, not a separate UI badge. The detail page may
+show one short progress explanation such as "Checking supporting facts," but it must not expose the
+full internal state machine as additional badges or a lifecycle diagram.
+
+**48-hour UI retention:**
+- `/stories`, `/candidates`, status filters, pagination, and pending counts include only stories
+  whose original candidate detection time is less than 48 hours old. This applies to active and
+  terminal stories alike; at the 48-hour boundary they vanish from the UI.
+- Add bounded `StoryCreatedAt` visibility metadata from the original candidate detection time. The
+  generation workflow inherits it unchanged, so the candidate-to-story handoff never resets the
+  clock. `StoryUpdatedAt` remains sorting/progress metadata and is not used for retention.
+- Candidate and final-review deadlines must not extend beyond the story's 48-hour UI cutoff, so an
+  item cannot remain awaiting a hidden decision. The web service computes the cutoff; workflows do
+  not need cleanup timers for UI retention.
+- This is presentation retention, not deletion. Do not delete workflow histories or add a cleanup
+  database/workflow; Temporal history remains subject to the namespace's normal retention policy.
+
+**Rules for 050-056:**
+- Temporal remains the system of record; do not add a story, research, fact, draft, or status table.
+  Open workflow state comes from queries, closed results come from workflow results, and list rows
+  come from Temporal visibility.
+- Add shared, bounded visibility attributes to candidate and story workflows: `StoryStatus`,
+  `StoryTitle`, `StorySource`, `StoryCandidateId`, `StoryCreatedAt`, `StoryUpdatedAt`, and an
+  optional short sanitized `StoryStatusDetail`. Full story text and raw evidence stay out of search
+  attributes.
+- The status service de-duplicates the candidate-to-story handoff by `StoryCandidateId`, preferring
+  the generation workflow once it exists. An approved candidate maps to `writing` while generation
+  starts; a generation-start failure maps to `closed` with a sanitized failure reason.
+- New candidate workflow fields are optional with defaults. Version-gate new commands and visibility
+  upserts where required so histories created by tasks 042-049 still replay.
+- A story workflow ID is deterministic and versioned as `story-v1-<candidate-hash>`. The candidate
+  workflow starts it once after approval and does not wait for it; duplicate approvals cannot create
+  duplicate stories.
+- Research and writing I/O is activity-only. Bound fetched bytes, context length, evidence items,
+  facts, draft length, redirects, and processing time. Validate HTTP URLs, redirects, content types,
+  and destination networks so source links cannot reach local or internal services.
+- Facts used for quantitative claims are calculated in deterministic code and carry stable fact IDs,
+  source references, observation dates, and calculation lineage. The LLM may select and explain
+  facts but cannot create new fact IDs or unsupported numerical claims.
+- The story writer returns a versioned StoryPackage containing headline, summary, body, key points
+  with fact IDs, source links, caveats, and optional post text. Validate all IDs and URLs in code.
+  Source and research text remain untrusted data, never instructions.
+- Evidence-insufficient stories end as `unsupported` before writing. Critique failures end as
+  `failed` after at most one revision; do not loop indefinitely. Final Approve/Reject is separate
+  from candidate approval, and only the first final decision wins.
+- UI status labels and colours come from one view-model mapping over the five primary statuses, not
+  workflow-specific conditionals scattered through templates. Show sanitized status detail, never
+  stack traces, prompts, secrets, or raw LLM responses. No status automatically means published.
+- HTTP and LLM tests use recorded fixtures. Workflow tests use time-skipping and replay checks.
+  Existing `DailyChartWorkflow`, candidate histories, chart rendering, and publishing stay unchanged.
+
+| # | Task | Done when | Your approval? |
+| --- | --- | --- | --- |
+| 050 | Story research and evidence contracts: add bounded Pydantic models for StoryInput, StoryContext, EvidenceSource, ResearchInput/Output, and research failures. Implement activities that gather the original source context, optionally retrieve additional approved context, match supporting data, and return explicit `supported` / `unsupported` outcomes. Reuse OWID access where it fits, but do not force every candidate into the catalog. Add safe HTTP fetching and compact normalization for article/context text; keep credentials and model/provider configuration in `config.py` | Fixtures cover a supported story, missing article, irrelevant dataset, insufficient evidence, malformed content, oversized response, unsafe URL/redirect, and source prompt injection; internal-network requests are blocked; outputs stay within limits; no workflow behaviour changes yet; Ruff/Pyright/tests pass | no |
+| 051 | Deterministic fact foundation: add versioned Fact and FactSet models plus a pure analysis library and activity that calculate changes, comparisons, first/latest/min/max, rankings, and relevant outliers from the 050 evidence. Every fact includes a stable ID, source references, observation dates, calculation lineage, and caveats. Omit unsupported calculations rather than guessing. Add compact per-fact display values for later writing and critique | Unit tests verify every calculation and lineage field against fixed datasets; missing data, duplicate entities, partial series, and empty results are handled; serialization is bounded and deterministic; an LLM-free fixture produces identical FactSets across runs; unsupported stories cannot produce fabricated fallback facts | no |
+| 052 | Story drafting and critique activities: define the versioned StoryPackage, DraftInput/Output, CritiqueInput/Output, and bounded critique result. Implement a structured-tool LLM writer that receives only the approved candidate, compact research context, and FactSet, then returns headline, summary, body, key points with fact IDs, source links, caveats, and optional post text. Implement a separate checker for unsupported claims, numerical fidelity, headline overstatement, missing caveats, and source/date fidelity. Validate all returned fact IDs and URLs in code | Recorded LLM fixtures cover a clean draft, one useful critique, unsupported numbers, invented fact IDs, malformed output, missing citations, and injected instructions in research text; invalid outputs fail closed; the activities do not start workflows or publish; retry and non-retryable behaviour matches existing LLM policy | no |
+| 053 | `StoryGenerationWorkflow` and approval handoff: orchestrate 050-052 through `researching → analyzing → writing → checking → review`, with one bounded revision and terminal `ready / rejected / unsupported / failed / expired` handling. Add story review queries and final Approve/Reject signals, activity retry policies, worker registration, and deterministic story IDs. After candidate approval, start the story workflow once without waiting and include its ID in the candidate result. Add the shared visibility attributes and five-status mapping to both workflow types, inherit the original detection timestamp, cap review deadlines at the 48-hour cutoff, and preserve old candidate replay | Time-skipping tests cover every internal state and all five UI mappings, unsupported before writing, critique revision, exhausted failure, final approve/reject, review expiry at the UI cutoff, first-decision-wins, duplicate candidate approval, duplicate story start, and handoff de-duplication metadata; old candidate and chart histories replay; exactly one story starts per approved candidate; nothing publishes | no |
+| 054 | Unified `/stories` status page with 48-hour retention: add a new page and `StoryStatusService` that lists candidate and generation workflows through shared visibility attributes. Each row shows title, source, one of the five primary status badges, an optional short status detail, updated time, and a detail link. Provide simple filters for All, Pending, Writing, Review, Ready, and Closed. Make Stories the primary nav destination; keep `/candidates` as the pending-action inbox. Apply the same rolling 48-hour cutoff to both pages, all filters, pagination, and pending counts. Add empty/error states and a light htmx fragment refresh only while visible rows are active | Fake-clock/gateway tests cover all internal-to-UI mappings, handoff de-duplication, generation-start failure, filters, pagination, stale metadata, unsafe text, and service failure; an item is visible at 47:59:59 and absent at 48:00:00 for active and terminal states; generation never resets `StoryCreatedAt`; old items leave pending counts; no per-row query renders the list; active polling stops for terminal-only pages; responsive light/dark screenshots pass | no |
+| 055 | Story detail and final review UI: add `/stories/{id}` for candidate or generation workflows. While active, show the primary status and one short progress explanation; at `review`, render the StoryPackage with headline, summary, body, key points, clickable fact/evidence references, caveats, and final Approve/Reject actions; at `ready`, show the approved package read-only. Show one `closed` badge with clear rejected, unsupported, failed, or expired reason text. Open workflows use queries and closed workflows use typed results through the service; no arbitrary history parsing or detailed lifecycle graphic in templates | Route tests cover all five primary states and each closed reason, missing, already-decided, repeated decision, malformed result, source-link safety, and the 48-hour cutoff; final approval does not publish; active detail updates via htmx without a JavaScript build; keyboard/focus behaviour, long body text, citations, mobile/desktop layouts, and existing candidate/chart tests pass | no |
+| 056 | Story-generation end-to-end hardening and docs: exercise HN candidate → approval → internal research/analysis/writing/checking → review → ready using recorded HTTP/LLM fixtures and the real Temporal service/gateway/UI boundaries. Verify that the UI shows only Pending, Writing, Review, Ready, or Closed throughout. Add bounded budgets, sanitized operational logs, failure-recovery runbooks, search-attribute setup, five-status semantics, and 48-hour UI retention to architecture docs and README. Document the two human decisions explicitly: candidate approval starts generation; story approval marks the package ready and never publishes | The full local stack demonstrates success, unsupported, failed-after-retry, critique-revision, candidate rejection, story rejection, and review expiry; no duplicate rows or story workflows appear across the handoff; terminal stories remain visible only until 48 hours after original detection; hidden items leave no pending counts or filters; no histories are deleted; old replay suites, Ruff, strict Pyright, and full pytest pass; a fresh operator can run and troubleshoot the feature from committed docs alone | no |
 
 ## Web architecture (rules for every Topic Studio task)
 

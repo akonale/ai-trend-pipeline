@@ -1,6 +1,6 @@
 # 051: Deterministic fact foundation
 
-Status: needs-fix
+Status: reviewed
 
 ## Goal
 
@@ -459,3 +459,9 @@ No `README.md` change: this task adds no user-facing behaviour or configuration.
 
 - **reviewer**: One real caveat gap: cross-entity facts (comparison difference/ratio, ranking, outlier) from a `DatasetEvidence.truncated` dataset omit `dataset_truncated`; the spec says all facts from a truncated dataset carry it.
 - Fix in `src/ai_trend_pipeline/analysis/calculations.py`: add `FactCaveatCode.DATASET_TRUNCATED` to the caveat sets in `_cross_entity_facts` (both comparisons, rankings) and `_outlier_facts`, and add a truncated-dataset test. Otherwise scope, determinism, Pyright and the test list are clean. Next: builder fixes, then re-review.
+- **verifier (re-verify after fix loop 1)**: `just lint` clean (Ruff, format check, strict Pyright: 0 errors).
+- `just test` with harness `ANTHROPIC_*` base-url/token vars unset: 788 passed.
+  With those vars set, 54 pre-existing LLM tests fail with `anthropic.APIConnectionError` (env artifact, not this branch).
+- All checks pass. Next: reviewer re-review.
+- **reviewer (re-review after fix loop 1)**: Approved. `dataset_truncated` now reaches comparison difference/ratio, ranking and outlier facts; every fact construction site passes it. Regression test covers a truncated 6-entity dataset and all fact kinds.
+- Fact tests (31) pass; `just lint` clean (Ruff, format, strict Pyright 0 errors). No scope creep; only `calculations.py`, one test, and this file changed. Next: scribe.

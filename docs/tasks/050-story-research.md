@@ -1,6 +1,6 @@
 # 050: Story research and evidence contracts
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -372,3 +372,9 @@ no multi-megabyte fixture is committed.
   with a 404 primary plus readable allowlisted extra). Retryable statuses raise
   `RetryableFetchError(status)` with a constant sanitized message and no URL/query (tests assert
   both). Lint and the full suite pass. Next: verifier.
+- **verifier**: Re-verify after fix loop 1: `just lint` (Ruff, format, strict Pyright) clean and `just test` 757 passed on `task/050-story-research`. First run had 54 `anthropic.APIConnectionError` failures from harness `ANTHROPIC_*` vars; rerun with those unset was fully green. Both review fixes confirmed (primary-only support, sanitized retry error). Next: reviewer.
+- **reviewer**: Approved. Support now depends only on the primary article context, matching
+  the spec, and the new 404-primary-plus-readable-extra test fails on the old code. Retryable
+  statuses raise `RetryableFetchError` with a constant message; tests assert no URL/query.
+  No other exception or log path leaks URLs or content (DNS errors are constant strings).
+  Scope unchanged, lint clean, 757 tests pass.

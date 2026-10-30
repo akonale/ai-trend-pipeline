@@ -170,8 +170,8 @@ are unchanged.
 
 `research/models.py` holds the frozen, `extra="forbid"` contracts (`StoryInput`, `StoryContext`,
 `EvidenceSource`, `ResearchInput`, `ResearchOutput`, failures and notes) with bounded text, at most
-3 contexts, 4 evidence items, 8 failures/notes and 16 000 characters of context text. `research/
-fetch.py` is the safe fetcher: it accepts only `http`/`https`, no userinfo, ports `80`/`443`, and
+3 contexts, 4 evidence items, 8 failures/notes and 16 000 characters of context text.
+`research/fetch.py` is the safe fetcher: it accepts only `http`/`https`, no userinfo, ports `80`/`443`, and
 rejects `localhost`, single-label and local/internal host names. It resolves every hop through an
 injectable resolver and rejects any non-global destination (private, loopback, link-local,
 multicast, reserved, unspecified, carrier-grade NAT and IPv4-mapped IPv6), follows at most

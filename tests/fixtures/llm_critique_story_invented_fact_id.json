@@ -1,0 +1,30 @@
+{
+  "id": "msg_01CritiqueStoryInventedFactId",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-5-5",
+  "content": [
+    {"type": "text", "text": "The draft needs a citation for a fact I invented."},
+    {
+      "type": "tool_use",
+      "id": "toolu_01CritiqueStoryInventedFactId",
+      "name": "critique_story",
+      "input": {
+        "passed": false,
+        "findings": [
+          {
+            "category": "missing_citation",
+            "severity": "blocking",
+            "message": "The draft should cite the fact for this claim.",
+            "location": "body",
+            "fact_ids": ["fact-v1-0123456789abcdef"]
+          }
+        ],
+        "revision_guidance": "Cite the supplied fact for the claim."
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {"input_tokens": 1400, "output_tokens": 60}
+}

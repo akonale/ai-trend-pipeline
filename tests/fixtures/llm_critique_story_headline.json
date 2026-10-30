@@ -1,0 +1,30 @@
+{
+  "id": "msg_01CritiqueStoryHeadline",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-5-5",
+  "content": [
+    {"type": "text", "text": "The headline claims more than the single observation supports."},
+    {
+      "type": "tool_use",
+      "id": "toolu_01CritiqueStoryHeadline",
+      "name": "critique_story",
+      "input": {
+        "passed": false,
+        "findings": [
+          {
+            "category": "headline_overstatement",
+            "severity": "blocking",
+            "message": "The headline implies a longer trend than the single observation supports.",
+            "location": "headline",
+            "fact_ids": []
+          }
+        ],
+        "revision_guidance": "Soften the headline so it matches a single observation."
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {"input_tokens": 1400, "output_tokens": 60}
+}

@@ -145,6 +145,8 @@ The message is the event value; the payload carries `event`, `source` and the li
 | `match_owid_evidence` | `StoryResearchActivities` | `MatchEvidenceInput` -> `MatchEvidenceOutput` |
 | `research_story` | `StoryResearchActivities` | `ResearchInput` -> `ResearchOutput` |
 | `calculate_facts` | `FactActivities` | `FactInput` -> `FactSet` |
+| `draft_story` | `StoryDraftActivities` | `DraftInput` -> `DraftOutput` |
+| `critique_story` | `StoryCritiqueActivities` | `CritiqueInput` -> `CritiqueOutput` |
 
 Activity classes take their clients in `__init__` (httpx / Anthropic), so tests pass fakes with
 `MockTransport`.
@@ -202,6 +204,37 @@ and units are never inferred. Identical `FactInput` yields byte-identical JSON a
 (no clocks, randomness, dict-order dependence or locale formatting). `analysis/activities.py` exposes
 the sync, idempotent, read-only `calculate_facts` activity; it is not registered on any worker yet
 (053 owns wiring, an activity executor and a start-to-close timeout).
+
+### Story drafting and critique (`story_drafting/`)
+
+`story_drafting/models.py` holds frozen, bounded, `extra="forbid"` contracts: `StoryDraftContent`
+(the writer tool schema, with no IDs or version), versioned `StoryPackage`, `DraftContext`,
+`DraftEvidence`, `DraftInput`/`DraftOutput`, the bounded `RevisionRequest` (exactly round 1),
+`CritiqueAssessment` (the checker tool schema), `CritiqueOutput`, `CritiqueFinding`, enums and
+constants. Text is cleaned and capped (headline 160, summary 600, body 6000, five key points, four
+source links, five caveats); free text rejects URLs so links exist only in `source_links`; the
+tool-facing models never expose `story_id` or `schema_version`, which the activities derive in code.
+`DraftInput` rejects unsupported or mismatched facts, missing article context/evidence and
+oversized inputs. The pure `draft_input_for` maps 050 research and a 051 `FactSet` into the only
+supported bounded input: contexts are truncated to 4000 characters each and 8000 total, evidence is
+deduplicated and capped at four, and dataset rows are never copied.
+
+`story_drafting/validation.py` is LLM-free: every fact ID must exist in the `FactSet`; every source
+link must match an article evidence URL; URLs in prose are rejected; numbers are canonicalised and
+checked against the cited facts or the approved candidate/evidence years; available facts must be
+cited. Deterministic findings come first, messages contain only fixed English plus fact/evidence
+IDs, and results are deduplicated and capped at eight.
+
+`story_drafting/writing.py` and `story_drafting/critique.py` are read-only, idempotent,
+unregistered activities that take an `anthropic.AsyncAnthropic` client and `DEFAULT_MODEL`. Both
+build deterministic prompts from compact JSON sections and fence all untrusted text as data. The
+writer calls `draft_story` once and fails closed with a non-retryable `ApplicationError` on missing
+or malformed tool output or any blocking deterministic finding. The checker returns deterministically
+when those findings already block (no LLM call), otherwise calls `critique_story`, validates returned
+fact IDs, merges findings and recomputes `passed`. Anthropic 4xx/429/5xx/timeout/connection errors
+propagate so Temporal retries them. Neither activity imports workflows, services, web, charts,
+publishing or worker code, and neither logs prompts, responses or URLs; 053 owns orchestration, the
+single revision loop and worker registration.
 
 ### Determinism, idempotency, replay
 

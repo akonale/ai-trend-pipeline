@@ -1,6 +1,6 @@
 # 051: Deterministic fact foundation
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -465,3 +465,5 @@ No `README.md` change: this task adds no user-facing behaviour or configuration.
 - All checks pass. Next: reviewer re-review.
 - **reviewer (re-review after fix loop 1)**: Approved. `dataset_truncated` now reaches comparison difference/ratio, ranking and outlier facts; every fact construction site passes it. Regression test covers a truncated 6-entity dataset and all fact kinds.
 - Fact tests (31) pass; `just lint` clean (Ruff, format, strict Pyright 0 errors). No scope creep; only `calculations.py`, one test, and this file changed. Next: scribe.
+- **scribe**: Architecture docs already describe `analysis/`, the fact contracts, calculations, lineage and caveats; no `README.md` change (no user-facing behaviour or config).
+- Opened https://github.com/akonale/ai-trend-pipeline/pull/58. Status: `pr-open`. Next: human merges.

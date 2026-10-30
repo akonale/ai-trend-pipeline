@@ -229,7 +229,9 @@ IDs, and results are deduplicated and capped at eight.
 unregistered activities that take an `anthropic.AsyncAnthropic` client and `DEFAULT_MODEL`. Both
 build deterministic prompts from compact JSON sections and fence all untrusted text as data. The
 writer calls `draft_story` once and fails closed with a non-retryable `ApplicationError` on missing
-or malformed tool output or any blocking deterministic finding. The checker returns deterministically
+or malformed tool output or any blocking deterministic finding; the error types are
+`StoryDraftToolMissing`/`StoryDraftInvalid` and `StoryCritiqueToolMissing`/`StoryCritiqueInvalid`,
+and both result models are written with `schema_version=1`. The checker returns deterministically
 when those findings already block (no LLM call), otherwise calls `critique_story`, validates returned
 fact IDs, merges findings and recomputes `passed`. Anthropic 4xx/429/5xx/timeout/connection errors
 propagate so Temporal retries them. Neither activity imports workflows, services, web, charts,

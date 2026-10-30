@@ -1,6 +1,6 @@
 # 052: Story drafting and critique activities
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -582,3 +582,12 @@ Fixtures are Messages API JSON responses loaded through `httpx2.MockTransport`, 
   exclude IDs/versions; fact IDs, numbers and source URLs are validated in code and blocking output
   fails closed with a non-retryable `ApplicationError` while API errors propagate. Lint, Pyright and
   the full suite pass. Next: verifier runs `just lint`/`just test`.
+- **verifier**: `just lint` clean (Ruff, format, Pyright strict). `just test`: 830 passed
+  with harness `ANTHROPIC_*` vars unset; with them set, 73 tests fail only with
+  `anthropic.APIConnectionError` (pre-existing LLM fixture tests, unrelated to 052). All
+  story_drafting tests pass. Next: reviewer checks the diff.
+- **reviewer**: Approved. Tool schemas exclude `story_id`/`schema_version`; fact IDs, URLs and numbers are validated in code;
+  blocking writer output fails closed non-retryable while API errors propagate; the checker validates deterministically first, then
+  validates returned fact IDs and recomputes `passed`. Lint is clean; 830 tests pass with harness `ANTHROPIC_*` unset (env-set
+  failures are the pre-existing base-URL fixture issue in `test_story_selection.py`). Note for 053: `MAX_DRAFT_PROMPT_CHARS` is
+  fixture-sized only — a maximal valid `DraftInput` measured ~41.6k chars. Next: scribe updates docs and opens the PR.

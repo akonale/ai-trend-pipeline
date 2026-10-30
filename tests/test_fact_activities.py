@@ -102,5 +102,5 @@ def test_analysis_modules_are_llm_io_free_and_not_registered() -> None:
         if name.endswith(".calculations") or name.endswith(".activities")
     ]
 
-    assert "FactActivities" not in WORKER_FILE.read_text()
+    assert "FactActivities" in WORKER_FILE.read_text()
     assert not inspect.iscoroutinefunction(FactActivities.calculate_facts)

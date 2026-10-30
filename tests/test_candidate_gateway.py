@@ -39,7 +39,7 @@ from ai_trend_pipeline.story_candidate import (
 )
 from ai_trend_pipeline.temporal_client import ensure_candidate_search_attributes
 
-OBSERVED = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
+OBSERVED = datetime.now(UTC)
 
 
 def make_candidate(external_id: str = "1") -> StoryCandidate:

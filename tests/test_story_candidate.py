@@ -4,7 +4,7 @@ import asyncio
 import time
 import uuid
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -38,18 +38,19 @@ from ai_trend_pipeline.story_candidate import (
 )
 from ai_trend_pipeline.temporal_client import ensure_candidate_search_attributes
 
-OBSERVED = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
+OBSERVED = datetime.now(UTC)
 
 
-def make_candidate() -> StoryCandidate:
+def make_candidate(observed_at: datetime | None = None) -> StoryCandidate:
+    observed = OBSERVED if observed_at is None else observed_at
     return StoryCandidate.model_validate(
         {
             "source": SourceName.HN,
             "external_id": "123",
             "title": "A story",
             "url": "https://example.com/story",
-            "published_at": datetime(2026, 10, 1, 9, 0, tzinfo=UTC),
-            "observed_at": OBSERVED,
+            "published_at": observed - timedelta(hours=3),
+            "observed_at": observed,
             "summary": "A short summary",
             "proposed_angle": "Why it matters",
             "selection_reason": "Novel and useful",
@@ -83,12 +84,15 @@ def make_worker(env: WorkflowEnvironment) -> Worker:
 
 
 async def start_workflow(
-    env: WorkflowEnvironment, review_timeout_seconds: int = 3600
+    env: WorkflowEnvironment,
+    review_timeout_seconds: int = 3600,
+    observed_at: datetime | None = None,
 ) -> WorkflowHandle[StoryCandidateWorkflow, StoryCandidateResult]:
     return await env.client.start_workflow(
         StoryCandidateWorkflow.run,
         StoryCandidateInput(
-            candidate=make_candidate(), review_timeout_seconds=review_timeout_seconds
+            candidate=make_candidate(observed_at),
+            review_timeout_seconds=review_timeout_seconds,
         ),
         id=f"wf-{uuid.uuid4()}",
         task_queue=CANDIDATE_TASK_QUEUE,
@@ -289,3 +293,27 @@ async def test_visibility_status_changes_from_awaiting_to_terminal() -> None:
 
     assert CANDIDATE_STATUS_ATTRIBUTE.name == CANDIDATE_STATUS_ATTRIBUTE_NAME
     assert CANDIDATE_SOURCE_ATTRIBUTE.name == CANDIDATE_SOURCE_ATTRIBUTE_NAME
+
+
+@pytest.mark.asyncio
+async def test_candidate_review_expires_at_the_ui_cutoff_not_the_configured_timeout() -> None:
+    async with await start_env() as env:
+        async with make_worker(env):
+            now = await env.get_current_time()
+            handle = await start_workflow(
+                env,
+                review_timeout_seconds=604800,
+                observed_at=now - timedelta(hours=47, minutes=59),
+            )
+            await env.sleep(timedelta(hours=2))
+            result = await handle.result()
+    assert result.status == "expired"
+    assert result.story_workflow_id is None
+
+
+def test_review_state_and_result_default_story_workflow_id_to_none() -> None:
+    candidate = make_candidate()
+    state = CandidateReviewState(status=CandidateStatus.APPROVED, candidate=candidate)
+    result = StoryCandidateResult(status="approved", candidate=candidate)
+    assert state.story_workflow_id is None
+    assert result.story_workflow_id is None

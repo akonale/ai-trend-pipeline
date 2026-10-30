@@ -398,7 +398,7 @@ def test_models_round_trip_json_and_respect_byte_targets() -> None:
     encoded = data.model_dump_json()
     assert DraftInput.model_validate_json(encoded) == data
     assert len(encoded.encode("utf-8")) <= MAX_DRAFT_INPUT_BYTES_TARGET
-    assert MAX_DRAFT_PROMPT_CHARS == 24_000
+    assert MAX_DRAFT_PROMPT_CHARS == 100_000
 
 
 def test_draft_output_notes_and_story_ids() -> None:

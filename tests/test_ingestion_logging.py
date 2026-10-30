@@ -64,7 +64,7 @@ from ai_trend_pipeline.temporal_client import ensure_candidate_search_attributes
 FIXTURES = Path(__file__).parent / "fixtures"
 HN_FIXTURE = "hn_source_poll.json"
 SENTINEL_KEY = "sk-ant-sentinel-do-not-log-me"
-OBSERVED = datetime(2026, 10, 9, 12, 0, tzinfo=UTC)
+OBSERVED = datetime.now(UTC)
 PollActivity = Callable[[SourcePollInput], Awaitable[SourcePollOutput]]
 SelectActivity = Callable[[SelectStoryCandidatesInput], Awaitable[SelectStoryCandidatesOutput]]
 StateHandle = WorkflowHandle[SourceIngestionWorkflow, SourceIngestionResult]

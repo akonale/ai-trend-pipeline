@@ -507,7 +507,9 @@ class SourceIngestionWorkflow:
                     task_queue=CANDIDATE_TASK_QUEUE,
                     parent_close_policy=workflow.ParentClosePolicy.ABANDON,
                     id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
-                    search_attributes=candidate_search_attributes(candidate),
+                    search_attributes=candidate_search_attributes(
+                        candidate, updated_at=workflow.now()
+                    ),
                     memo=candidate_memo(candidate),
                 )
             except WorkflowAlreadyStartedError:

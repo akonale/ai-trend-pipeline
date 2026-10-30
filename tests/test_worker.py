@@ -1,21 +1,29 @@
 """Tests for worker wiring."""
 
+import inspect
 from pathlib import Path
 
 import anthropic
 import httpx
 
 from ai_trend_pipeline.bluesky import BlueskyCredentials
+from ai_trend_pipeline.config import Settings
 from ai_trend_pipeline.source_ingestion import (
     SOURCE_INGESTION_TASK_QUEUE,
     SourceIngestionWorkflow,
 )
 from ai_trend_pipeline.story_candidate import CANDIDATE_TASK_QUEUE, StoryCandidateWorkflow
+from ai_trend_pipeline.story_generation import (
+    STORY_TASK_QUEUE,
+    StoryGenerationWorkflow,
+)
 from ai_trend_pipeline.worker import (
     CANDIDATE_WORKFLOWS,
     INGESTION_WORKFLOWS,
+    STORY_WORKFLOWS,
     daily_chart_activities,
     ingestion_activities,
+    story_activities,
 )
 
 
@@ -68,3 +76,32 @@ def test_worker_startup_does_not_start_ingestion() -> None:
         "ensure_ingestion",
     ):
         assert forbidden not in text, forbidden
+
+
+def test_story_workflow_and_activities_registered_on_story_queue() -> None:
+    assert STORY_WORKFLOWS == [StoryGenerationWorkflow]
+    assert STORY_TASK_QUEUE == "story-generation-task-queue"
+    activities = story_activities(
+        anthropic.AsyncAnthropic(api_key="test"),
+        httpx.AsyncClient(),
+        httpx.AsyncClient(),
+        Settings(),
+    )
+    assert sorted(activity.__name__ for activity in activities) == [
+        "calculate_facts",
+        "critique_story",
+        "draft_story",
+        "research_story",
+    ]
+
+
+def test_story_worker_uses_an_activity_executor_and_no_publishing_activity() -> None:
+    source = Path(__file__).resolve().parent.parent / "src" / "ai_trend_pipeline" / "worker.py"
+    text = source.read_text(encoding="utf-8")
+    worker_block = text[text.index("story_worker = Worker(") : text.index("await asyncio.gather")]
+    assert "activity_executor=ThreadPoolExecutor" in worker_block
+    assert "post_chart_to_bluesky" not in worker_block
+    assert "render_chart_png" not in worker_block
+    story_source = inspect.getsource(story_activities)
+    assert "post_chart_to_bluesky" not in story_source
+    assert "render_chart_png" not in story_source

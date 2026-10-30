@@ -3,10 +3,17 @@
 import hashlib
 from datetime import datetime, timedelta
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from temporalio import workflow
-from temporalio.common import SearchAttributeKey, SearchAttributePair, TypedSearchAttributes
+from temporalio.common import (
+    SearchAttributeKey,
+    SearchAttributePair,
+    SearchAttributeUpdate,
+    TypedSearchAttributes,
+    WorkflowIDReusePolicy,
+)
+from temporalio.exceptions import WorkflowAlreadyStartedError
 
 with workflow.unsafe.imports_passed_through():
     from pydantic import (
@@ -17,6 +24,7 @@ with workflow.unsafe.imports_passed_through():
         field_validator,
     )
 
+    from ai_trend_pipeline.research.models import StoryInput
     from ai_trend_pipeline.sources.models import (
         MAX_EXTERNAL_ID_LENGTH,
         MAX_METRICS,
@@ -27,6 +35,28 @@ with workflow.unsafe.imports_passed_through():
         SourceName,
         ensure_aware_utc,
     )
+    from ai_trend_pipeline.story_generation import (
+        STORY_TASK_QUEUE,
+        StoryGenerationInput,
+        StoryGenerationStatus,
+        StoryGenerationWorkflow,
+        story_id_for,
+    )
+    from ai_trend_pipeline.story_status import (
+        DEFAULT_STORY_REVIEW_TIMEOUT_S,
+        STORY_UI_RETENTION,
+    )
+    from ai_trend_pipeline.story_visibility import (
+        STORY_CANDIDATE_ID_ATTRIBUTE,
+        STORY_CREATED_AT_ATTRIBUTE,
+        STORY_SOURCE_ATTRIBUTE,
+        STORY_STATUS_ATTRIBUTE,
+        STORY_STATUS_DETAIL_ATTRIBUTE,
+        STORY_TITLE_ATTRIBUTE,
+        STORY_UPDATED_AT_ATTRIBUTE,
+        bounded_detail,
+        story_start_attributes,
+    )
 
 CANDIDATE_TASK_QUEUE = "story-candidate-task-queue"
 CANDIDATE_ID_PREFIX = "candidate-v1-"
@@ -36,6 +66,9 @@ MIN_CANDIDATE_REVIEW_TIMEOUT_S = 1
 MAX_CANDIDATE_REVIEW_TIMEOUT_S = 604800
 MAX_CANDIDATE_TEXT_LENGTH = 500
 MAX_DECIDED_BY_LENGTH = 320
+MAX_STORY_WORKFLOW_ID_LENGTH = 128
+STORY_HANDOFF_PATCH = "story-generation-handoff-v1"
+STORY_EXPIRED_DETAIL = "The review window closed."
 
 CANDIDATE_STATUS_ATTRIBUTE_NAME = "CandidateStatus"
 CANDIDATE_SOURCE_ATTRIBUTE_NAME = "CandidateSource"
@@ -75,6 +108,28 @@ def _upsert_status_attribute(status: CandidateStatus) -> None:
     )
 
 
+def _shared_terminal_updates(
+    status: CandidateStatus, candidate: "StoryCandidate", updated_at: datetime
+) -> list[SearchAttributeUpdate[Any]]:
+    """One upsert for a decided candidate: its own keys plus the shared story metadata."""
+    # The update type is generic per value type; this list deliberately mixes keyword and datetime.
+    updates: list[SearchAttributeUpdate[Any]] = [
+        CANDIDATE_STATUS_ATTRIBUTE.value_set(status.value),
+        STORY_STATUS_ATTRIBUTE.value_set(status.value),
+        STORY_UPDATED_AT_ATTRIBUTE.value_set(updated_at),
+        STORY_CREATED_AT_ATTRIBUTE.value_set(candidate.observed_at),
+        STORY_TITLE_ATTRIBUTE.value_set(candidate.title),
+        STORY_SOURCE_ATTRIBUTE.value_set(candidate.source.value),
+        STORY_CANDIDATE_ID_ATTRIBUTE.value_set(
+            candidate_id_for(candidate.source, candidate.external_id)
+        ),
+    ]
+    detail = bounded_detail(STORY_EXPIRED_DETAIL if status is CandidateStatus.EXPIRED else None)
+    if detail is not None:
+        updates.append(STORY_STATUS_DETAIL_ATTRIBUTE.value_set(detail))
+    return updates
+
+
 class StoryCandidate(BaseModel):
     """Compact normalized story candidate; untrusted text stays data, never instructions."""
 
@@ -102,13 +157,41 @@ class StoryCandidate(BaseModel):
         return None if value is None else ensure_aware_utc(value)
 
 
-def candidate_search_attributes(candidate: StoryCandidate) -> TypedSearchAttributes:
-    """The attributes every started candidate must carry so the inbox can list it."""
+def candidate_search_attributes(
+    candidate: StoryCandidate, updated_at: datetime | None = None
+) -> TypedSearchAttributes:
+    """The candidate keys plus the seven shared story keys the list pages read."""
+    stamp = candidate.observed_at if updated_at is None else ensure_aware_utc(updated_at)
+    candidate_id = candidate_id_for(candidate.source, candidate.external_id)
     return TypedSearchAttributes(
         [
             SearchAttributePair(CANDIDATE_STATUS_ATTRIBUTE, CandidateStatus.AWAITING_REVIEW.value),
             SearchAttributePair(CANDIDATE_SOURCE_ATTRIBUTE, candidate.source.value),
+            SearchAttributePair(STORY_STATUS_ATTRIBUTE, CandidateStatus.AWAITING_REVIEW.value),
+            SearchAttributePair(STORY_TITLE_ATTRIBUTE, candidate.title),
+            SearchAttributePair(STORY_SOURCE_ATTRIBUTE, candidate.source.value),
+            SearchAttributePair(STORY_CANDIDATE_ID_ATTRIBUTE, candidate_id),
+            SearchAttributePair(STORY_CREATED_AT_ATTRIBUTE, candidate.observed_at),
+            SearchAttributePair(STORY_UPDATED_AT_ATTRIBUTE, stamp),
+            SearchAttributePair(STORY_STATUS_DETAIL_ATTRIBUTE, ""),
         ]
+    )
+
+
+def story_input_for(candidate: StoryCandidate) -> StoryInput:
+    """Pure mapping from the compact candidate to the research/writing contract."""
+    return StoryInput(
+        candidate_id=candidate_id_for(candidate.source, candidate.external_id),
+        source=candidate.source,
+        external_id=candidate.external_id,
+        title=candidate.title,
+        url=candidate.url,
+        published_at=candidate.published_at,
+        observed_at=candidate.observed_at,
+        summary=candidate.summary,
+        proposed_angle=candidate.proposed_angle,
+        selection_reason=candidate.selection_reason,
+        metrics=dict(candidate.metrics),
     )
 
 
@@ -129,6 +212,11 @@ class StoryCandidateInput(BaseModel):
         default=DEFAULT_CANDIDATE_REVIEW_TIMEOUT_S,
         ge=MIN_CANDIDATE_REVIEW_TIMEOUT_S,
         le=MAX_CANDIDATE_REVIEW_TIMEOUT_S,
+    )
+    story_review_timeout_seconds: int = Field(
+        default=DEFAULT_STORY_REVIEW_TIMEOUT_S,
+        ge=1,
+        le=604800,
     )
 
 
@@ -155,6 +243,7 @@ class CandidateReviewState(BaseModel):
     note: str = Field(default="", max_length=MAX_CANDIDATE_TEXT_LENGTH)
     decided_by: str | None = Field(default=None, max_length=MAX_DECIDED_BY_LENGTH)
     decided_at: datetime | None = None
+    story_workflow_id: str | None = Field(default=None, max_length=MAX_STORY_WORKFLOW_ID_LENGTH)
 
 
 class StoryCandidateResult(BaseModel):
@@ -165,6 +254,7 @@ class StoryCandidateResult(BaseModel):
     note: str = Field(default="", max_length=MAX_CANDIDATE_TEXT_LENGTH)
     decided_by: str | None = Field(default=None, max_length=MAX_DECIDED_BY_LENGTH)
     decided_at: datetime | None = None
+    story_workflow_id: str | None = Field(default=None, max_length=MAX_STORY_WORKFLOW_ID_LENGTH)
 
 
 @workflow.defn
@@ -179,6 +269,8 @@ class StoryCandidateWorkflow:
         self._note = ""
         self._decided_by: str | None = None
         self._decided_at: datetime | None = None
+        self._story_workflow_id: str | None = None
+        self._story_review_timeout_seconds = DEFAULT_STORY_REVIEW_TIMEOUT_S
 
     def _review_state(self) -> CandidateReviewState:
         candidate = self._candidate
@@ -189,6 +281,7 @@ class StoryCandidateWorkflow:
             note=self._note,
             decided_by=self._decided_by,
             decided_at=self._decided_at,
+            story_workflow_id=self._story_workflow_id,
         )
 
     def _record(self, status: CandidateStatus, decision: CandidateDecision) -> None:
@@ -200,21 +293,23 @@ class StoryCandidateWorkflow:
         self._decision = decision
         self._decision_status = status
 
-    def _finish(
-        self,
-        status: CandidateStatus,
-        note: str,
-        decided_by: str | None,
-    ) -> StoryCandidateResult:
-        candidate = self._candidate
-        assert candidate is not None
+    def _record_terminal(self, status: CandidateStatus, note: str, decided_by: str | None) -> None:
         self._status = status
         self._note = note
         self._decided_by = decided_by
         self._decided_at = workflow.now()
-        _upsert_status_attribute(status)
+
+    def _result_with(
+        self, status: CandidateStatus, note: str, decided_by: str | None
+    ) -> StoryCandidateResult:
+        candidate = self._candidate
+        assert candidate is not None
         result_status: Literal["approved", "rejected", "expired"] = (
-            "approved" if status is CandidateStatus.APPROVED else "rejected"
+            "approved"
+            if status is CandidateStatus.APPROVED
+            else "rejected"
+            if status is CandidateStatus.REJECTED
+            else "expired"
         )
         return StoryCandidateResult(
             status=result_status,
@@ -222,33 +317,98 @@ class StoryCandidateWorkflow:
             note=note,
             decided_by=decided_by,
             decided_at=self._decided_at,
+            story_workflow_id=self._story_workflow_id,
         )
+
+    def _expire_old(self) -> StoryCandidateResult:
+        self._status = CandidateStatus.EXPIRED
+        self._decided_at = workflow.now()
+        _upsert_status_attribute(CandidateStatus.EXPIRED)
+        return self._result_with(CandidateStatus.EXPIRED, "", None)
+
+    def _finish_old(
+        self,
+        status: CandidateStatus,
+        note: str,
+        decided_by: str | None,
+    ) -> StoryCandidateResult:
+        self._record_terminal(status, note, decided_by)
+        _upsert_status_attribute(status)
+        return self._result_with(status, note, decided_by)
+
+    async def _finish_new(
+        self,
+        status: CandidateStatus,
+        note: str,
+        decided_by: str | None,
+    ) -> StoryCandidateResult:
+        candidate = self._candidate
+        assert candidate is not None
+        self._record_terminal(status, note, decided_by)
+        decided_at = self._decided_at
+        assert decided_at is not None
+        workflow.upsert_search_attributes(  # pyright: ignore[reportUnknownMemberType]
+            _shared_terminal_updates(status, candidate, decided_at)
+        )
+        if status is CandidateStatus.APPROVED:
+            story = story_input_for(candidate)
+            story_id = story_id_for(story.candidate_id)
+            self._story_workflow_id = story_id
+            try:
+                await workflow.start_child_workflow(
+                    StoryGenerationWorkflow.run,
+                    StoryGenerationInput(
+                        candidate_id=story.candidate_id,
+                        story=story,
+                        story_created_at=candidate.observed_at,
+                        review_timeout_seconds=self._story_review_timeout_seconds,
+                    ),
+                    id=story_id,
+                    task_queue=STORY_TASK_QUEUE,
+                    parent_close_policy=workflow.ParentClosePolicy.ABANDON,
+                    id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
+                    search_attributes=story_start_attributes(
+                        StoryGenerationStatus.RESEARCHING.value,
+                        candidate.title,
+                        candidate.source.value,
+                        story.candidate_id,
+                        candidate.observed_at,
+                        workflow.now(),
+                    ),
+                )
+            except WorkflowAlreadyStartedError:
+                workflow.logger.warning(
+                    "Story workflow already started; keeping its deterministic id"
+                )
+        return self._result_with(status, note, decided_by)
 
     @workflow.run
     async def run(self, data: StoryCandidateInput) -> StoryCandidateResult:
         self._candidate = data.candidate
         self._status = CandidateStatus.AWAITING_REVIEW
+        self._story_review_timeout_seconds = data.story_review_timeout_seconds
+        remaining = (
+            data.candidate.observed_at + STORY_UI_RETENTION - workflow.now()
+        ).total_seconds()
+        effective_timeout = max(0.0, min(float(data.review_timeout_seconds), remaining))
         try:
+            if effective_timeout <= 0:
+                raise TimeoutError
             await workflow.wait_condition(
                 lambda: self._decision is not None,
-                timeout=timedelta(seconds=data.review_timeout_seconds),
+                timeout=timedelta(seconds=effective_timeout),
             )
         except TimeoutError:
-            self._status = CandidateStatus.EXPIRED
-            self._decided_at = workflow.now()
-            _upsert_status_attribute(CandidateStatus.EXPIRED)
-            return StoryCandidateResult(
-                status="expired",
-                candidate=data.candidate,
-                note="",
-                decided_by=None,
-                decided_at=self._decided_at,
-            )
+            if workflow.patched(STORY_HANDOFF_PATCH):
+                return await self._finish_new(CandidateStatus.EXPIRED, "", None)
+            return self._expire_old()
         decision = self._decision
         assert decision is not None
         decision_status = self._decision_status
         assert decision_status is not None
-        return self._finish(decision_status, decision.note, decision.decided_by)
+        if workflow.patched(STORY_HANDOFF_PATCH):
+            return await self._finish_new(decision_status, decision.note, decision.decided_by)
+        return self._finish_old(decision_status, decision.note, decision.decided_by)
 
     @workflow.signal
     def approve(self, decision: CandidateDecision) -> None:

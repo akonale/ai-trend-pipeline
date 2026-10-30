@@ -1,6 +1,6 @@
 # 050: Story research and evidence contracts
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -378,3 +378,6 @@ no multi-megabyte fixture is committed.
   statuses raise `RetryableFetchError` with a constant message; tests assert no URL/query.
   No other exception or log path leaks URLs or content (DNS errors are constant strings).
   Scope unchanged, lint clean, 757 tests pass.
+- **scribe**: Updated README/architecture docs (research package, evidence models, safe-fetch and
+  SSRF rules, five `RESEARCH_*` settings) and opened https://github.com/akonale/ai-trend-pipeline/pull/57.
+  Next: human merges the PR.

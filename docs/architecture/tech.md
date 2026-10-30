@@ -141,6 +141,9 @@ The message is the event value; the payload carries `event`, `source` and the li
 | `critique_chart` | `CritiqueActivities` | `CritiqueChartInput` -> `ChartCritique` |
 | `render_chart_png` | module function | `RenderChartInput` -> `RenderChartOutput` |
 | `post_chart_to_bluesky` | `BlueskyActivities` | `PostChartInput` -> `PostChartOutput` |
+| `fetch_context` | `StoryResearchActivities` | `FetchContextInput` -> `FetchContextOutput` |
+| `match_owid_evidence` | `StoryResearchActivities` | `MatchEvidenceInput` -> `MatchEvidenceOutput` |
+| `research_story` | `StoryResearchActivities` | `ResearchInput` -> `ResearchOutput` |
 
 Activity classes take their clients in `__init__` (httpx / Anthropic), so tests pass fakes with
 `MockTransport`.
@@ -162,6 +165,24 @@ registered on the ingestion worker, but `SOURCE_ENABLED` still defaults to `hn`,
 default and must never appear in `.env.prod`; it is a dev/test source used to prove pluggability.
 Both poll activities log `events_normalized` with counts only. The chart workflow and chart queue
 are unchanged.
+
+### Research (`research/`)
+
+`research/models.py` holds the frozen, `extra="forbid"` contracts (`StoryInput`, `StoryContext`,
+`EvidenceSource`, `ResearchInput`, `ResearchOutput`, failures and notes) with bounded text, at most
+3 contexts, 4 evidence items, 8 failures/notes and 16 000 characters of context text.
+`research/fetch.py` is the safe fetcher: it accepts only `http`/`https`, no userinfo, ports `80`/`443`, and
+rejects `localhost`, single-label and local/internal host names. It resolves every hop through an
+injectable resolver and rejects any non-global destination (private, loopback, link-local,
+multicast, reserved, unspecified, carrier-grade NAT and IPv4-mapped IPv6), follows at most
+`RESEARCH_MAX_REDIRECTS` redirects with full re-validation, honours exact approved-host lists,
+streams at most `RESEARCH_MAX_RESPONSE_BYTES`, and normalizes HTML/plain text with the stdlib
+parser. `httpx` resolves again at connect time, so a DNS-rebinding time-of-check gap remains; the
+pre-connect checks are the mitigation, not an absolute guarantee. `research/activities.py` exposes
+three read-only, idempotent activities. `supported` requires a fetched original article of at least
+300 characters; a dataset match alone cannot support a story, and a missing catalog match is only a
+note. OWID problems degrade to notes. The activities are not registered on any worker yet (053 owns
+registration and retry policies), and no LLM or new credential is involved.
 
 ### Determinism, idempotency, replay
 
@@ -429,6 +450,11 @@ environment variables.
 | `SOURCE_POLL_TIMEOUT_S` | `source_poll_timeout_s` | HN source poll HTTP timeout, over 0 and at most 60 | `15.0` |
 | `CANDIDATE_REVIEW_TIMEOUT_S` | `candidate_review_timeout_s` | story candidate review timeout, 1-604800 seconds | `172800` |
 | `SOURCE_CANDIDATE_BUDGET` | `source_candidate_budget` | new candidate workflows per source per UTC day, 1-500 | `20` |
+| `RESEARCH_FETCH_TIMEOUT_S` | `research_fetch_timeout_s` | article fetch timeout in seconds, over 0 and at most 60 | `10.0` |
+| `RESEARCH_MAX_RESPONSE_BYTES` | `research_max_response_bytes` | streamed response byte cap, 1024-4194304 | `524288` |
+| `RESEARCH_MAX_REDIRECTS` | `research_max_redirects` | redirects followed with full re-validation, 0-5 | `3` |
+| `RESEARCH_USER_AGENT` | `research_user_agent` | request user agent, stripped 1-200; blank means the default | `ai-trend-pipeline-research/0.1` |
+| `RESEARCH_EXTRA_CONTEXT_HOSTS` | `research_extra_context_hosts` | comma-separated exact hosts allowed for extra context; empty or `none` disables | empty |
 
 Secrets use `SecretStr`. Compose-only keys (`POSTGRES_PASSWORD`, `CLOUDFLARE_TUNNEL_TOKEN`,
 `APP_URL` documentation only) are not read by the app.

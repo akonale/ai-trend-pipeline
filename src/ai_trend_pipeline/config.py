@@ -4,8 +4,9 @@ import os
 from collections.abc import Mapping
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, TypeAdapter, field_validator
 
+from ai_trend_pipeline.research import HostName
 from ai_trend_pipeline.sources import SourceName
 from ai_trend_pipeline.sources.registry import (
     REGISTRY,
@@ -19,6 +20,10 @@ DEFAULT_TEMPORAL_ADDRESS = "localhost:7233"
 DEFAULT_TEMPORAL_UI_URL = "http://localhost:8233"
 DEFAULT_WEB_HOST = "127.0.0.1"
 DEFAULT_DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/postgres"
+DEFAULT_RESEARCH_FETCH_TIMEOUT_S = 10.0
+DEFAULT_RESEARCH_MAX_RESPONSE_BYTES = 524288
+DEFAULT_RESEARCH_MAX_REDIRECTS = 3
+DEFAULT_RESEARCH_USER_AGENT = "ai-trend-pipeline-research/0.1"
 
 
 class Settings(BaseModel):
@@ -43,6 +48,15 @@ class Settings(BaseModel):
         default=DEFAULT_CANDIDATE_REVIEW_TIMEOUT_S, ge=1, le=604800
     )
     source_candidate_budget: int = Field(default=20, ge=1, le=500)
+    research_fetch_timeout_s: float = Field(default=DEFAULT_RESEARCH_FETCH_TIMEOUT_S, gt=0, le=60)
+    research_max_response_bytes: int = Field(
+        default=DEFAULT_RESEARCH_MAX_RESPONSE_BYTES, ge=1024, le=4194304
+    )
+    research_max_redirects: int = Field(default=DEFAULT_RESEARCH_MAX_REDIRECTS, ge=0, le=5)
+    research_user_agent: str = Field(
+        default=DEFAULT_RESEARCH_USER_AGENT, min_length=1, max_length=200
+    )
+    research_extra_context_hosts: frozenset[HostName] = frozenset()
 
     @field_validator("source_enabled")
     @classmethod
@@ -51,6 +65,13 @@ class Settings(BaseModel):
             enabled_sources(value)
         except UnknownSourceError as exc:
             raise ValueError(str(exc)) from exc
+        return value
+
+    @field_validator("research_user_agent", mode="before")
+    @classmethod
+    def _default_user_agent(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip() or DEFAULT_RESEARCH_USER_AGENT
         return value
 
 
@@ -81,6 +102,13 @@ def _parse_source_enabled(raw: str | None) -> frozenset[SourceName]:
     return frozenset(names)
 
 
+def _parse_extra_context_hosts(raw: str | None) -> frozenset[HostName]:
+    if raw is None or not raw.strip() or raw.strip().lower() == "none":
+        return frozenset()
+    tokens = [part.strip() for part in raw.split(",") if part.strip()]
+    return TypeAdapter(frozenset[HostName]).validate_python(tokens)
+
+
 def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
     env = os.environ if environ is None else environ
     api_key = env.get("ANTHROPIC_API_KEY")
@@ -105,4 +133,17 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
             env.get("CANDIDATE_REVIEW_TIMEOUT_S") or DEFAULT_CANDIDATE_REVIEW_TIMEOUT_S
         ),
         source_candidate_budget=int(env.get("SOURCE_CANDIDATE_BUDGET") or 20),
+        research_fetch_timeout_s=float(
+            env.get("RESEARCH_FETCH_TIMEOUT_S") or DEFAULT_RESEARCH_FETCH_TIMEOUT_S
+        ),
+        research_max_response_bytes=int(
+            env.get("RESEARCH_MAX_RESPONSE_BYTES") or DEFAULT_RESEARCH_MAX_RESPONSE_BYTES
+        ),
+        research_max_redirects=int(
+            env.get("RESEARCH_MAX_REDIRECTS") or DEFAULT_RESEARCH_MAX_REDIRECTS
+        ),
+        research_user_agent=env.get("RESEARCH_USER_AGENT") or DEFAULT_RESEARCH_USER_AGENT,
+        research_extra_context_hosts=_parse_extra_context_hosts(
+            env.get("RESEARCH_EXTRA_CONTEXT_HOSTS")
+        ),
     )

@@ -1,38 +1,30 @@
 """Fixed, replay-safe operational events for source ingestion.
 
-Pure module: it imports only `sources.models` and the standard library, so deterministic workflow
-code may import it inside `workflow.unsafe.imports_passed_through()`. The field guard, not reviewer
-discipline, keeps source text and secrets out of the operational log.
+Pure module: it imports only `sources.models`, the shared operational guard and the standard
+library, so deterministic workflow code may import it inside
+`workflow.unsafe.imports_passed_through()`. The field guard, not reviewer discipline, keeps source
+text and secrets out of the operational log.
 """
 
-from collections.abc import Mapping
 from enum import StrEnum
-from typing import Protocol
 
+from ai_trend_pipeline.operational_logging import (
+    FORBIDDEN_LOG_FIELDS,
+    MAX_LOG_VALUE_LENGTH,
+    LogValue,
+    StructuredLogger,
+    check_log_field,
+)
 from ai_trend_pipeline.sources.models import SourceName
 
-MAX_LOG_VALUE_LENGTH = 256
-
-FORBIDDEN_LOG_FIELDS = frozenset(
-    {
-        "title",
-        "url",
-        "summary",
-        "proposed_angle",
-        "selection_reason",
-        "instructions",
-        "prompt",
-        "response",
-        "payload",
-        "body",
-        "text",
-        "api_key",
-        "password",
-        "secret",
-    }
-)
-
-LogValue = str | int | float | bool | None
+__all__ = [
+    "FORBIDDEN_LOG_FIELDS",
+    "MAX_LOG_VALUE_LENGTH",
+    "IngestionLogEvent",
+    "LogValue",
+    "StructuredLogger",
+    "log_event",
+]
 
 
 class IngestionLogEvent(StrEnum):
@@ -62,26 +54,6 @@ _WARNING_EVENTS = frozenset(
 )
 
 
-class StructuredLogger(Protocol):
-    """The subset of the SDK workflow/activity logger that ingestion needs."""
-
-    def info(self, msg: str, *, extra: Mapping[str, object]) -> None: ...
-
-    def warning(self, msg: str, *, extra: Mapping[str, object]) -> None: ...
-
-    def error(self, msg: str, *, extra: Mapping[str, object]) -> None: ...
-
-
-def _checked_field(name: str, value: object) -> object:
-    if name.casefold() in FORBIDDEN_LOG_FIELDS:
-        raise ValueError(f"forbidden log field: {name}")
-    if isinstance(value, str):
-        return value[:MAX_LOG_VALUE_LENGTH]
-    if value is None or isinstance(value, (bool, int, float)):
-        return value
-    raise ValueError(f"log field {name!r} must be a primitive, got {type(value).__name__}")
-
-
 def log_event(
     logger: StructuredLogger,
     event: IngestionLogEvent,
@@ -91,7 +63,7 @@ def log_event(
     """Emit one event with `event` and `source` plus the caller's primitive fields."""
     payload: dict[str, object] = {"event": event.value, "source": source.value}
     for name, value in fields.items():
-        payload[name] = _checked_field(name, value)
+        payload[name] = check_log_field(name, value, forbidden=FORBIDDEN_LOG_FIELDS)
     if event in _ERROR_EVENTS:
         logger.error(event.value, extra=payload)
     elif event in _WARNING_EVENTS:

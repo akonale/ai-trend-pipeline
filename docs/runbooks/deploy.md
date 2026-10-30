@@ -7,8 +7,9 @@ compose file (`infra/`).
 
 `.env.prod` is separate from the dev `.env`. Prod never reads `.env`. Public access through the
 Cloudflare Tunnel is covered in [cloudflare.md](cloudflare.md). Source ingestion is covered in
-[ingestion.md](ingestion.md) and its search attributes in
-[search-attributes.md](search-attributes.md).
+[ingestion.md](ingestion.md), its search attributes in
+[search-attributes.md](search-attributes.md), and approved-candidate story generation in
+[stories.md](stories.md).
 
 ## `.env.prod` keys
 
@@ -26,6 +27,11 @@ Cloudflare Tunnel is covered in [cloudflare.md](cloudflare.md). Source ingestion
 - `SOURCE_POLL_TIMEOUT_S` (optional, default 15.0, over 0 and at most 60)
 - `CANDIDATE_REVIEW_TIMEOUT_S` (optional, default 172800, 1-604800)
 - `SOURCE_CANDIDATE_BUDGET` (optional, default 20, 1-500; new candidate workflows per source per UTC day)
+- `RESEARCH_FETCH_TIMEOUT_S` (optional, default 10.0, over 0 and at most 60; article HTTP timeout)
+- `RESEARCH_MAX_RESPONSE_BYTES` (optional, default 524288, 1024-4194304; article response cap)
+- `RESEARCH_MAX_REDIRECTS` (optional, default 3, 0-5; article redirect cap)
+- `RESEARCH_USER_AGENT` (optional, default `ai-trend-pipeline-research/0.1`, 1-200 characters)
+- `RESEARCH_EXTRA_CONTEXT_HOSTS` (optional, empty; comma-separated exact host names for approved extra article context)
 
 `DATABASE_URL` (style profiles) is assembled in compose from `POSTGRES_PASSWORD`, so it needs no new
 `.env.prod` key. It requires a password without spaces, quotes or backslashes.

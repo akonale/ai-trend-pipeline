@@ -191,6 +191,50 @@ The message is the event value; the payload carries `event`, `source` and the li
 | `candidate_ingestion.continue_as_new` | workflow, before continue-as-new | INFO | `total_polls`, `processed_count`, `cursor` |
 | `candidate_ingestion.stopped` | workflow, before returning | INFO | `total_polls` |
 
+### Story generation budgets and operational logs
+
+Story work adds no global quota, table or setting. The bounded envelope is layered in existing
+code:
+
+| Budget | Value / setting | Enforced by |
+| --- | --- | --- |
+| Candidate starts per source per UTC day | `SOURCE_CANDIDATE_BUDGET`, 1-500, default 20 | `SourceIngestionWorkflow` budget roll/skip; zero spends no LLM credit |
+| Story starts per candidate | exactly 1, ever | `story-v1-<hash>` deterministic id, `REJECT_DUPLICATE`, ignored duplicate approvals |
+| Activity calls per story | 1 research, 1 facts, ≤2 drafts, ≤2 critiques | `StoryGenerationWorkflow.run`; no loop after round 1 |
+| Attempts per activity | 3 | `ACTIVITY_MAX_ATTEMPTS`; non-retryable draft/checker errors stop immediately |
+| Activity timeouts | research 120 s, facts 30 s, draft 120 s, critique 120 s | the four `*_ACTIVITY_TIMEOUT` constants |
+| Article HTTP | `RESEARCH_FETCH_TIMEOUT_S` (0, 60] default 10.0; `RESEARCH_MAX_RESPONSE_BYTES` 1024-4194304 default 524288; `RESEARCH_MAX_REDIRECTS` 0-5 default 3 | `research/fetch.py`, activity-per-story fetch count |
+| Context / evidence | 3 contexts, 8 000 chars each, 16 000 total; 4 evidence; 300 dataset rows; 20 countries; 8 failures and notes | `research/models.py`, `research/activities.py` |
+| Facts | `STORY_DRAFT_MAX_FACTS` = 16 requested by the workflow, contract `MAX_FACTS` = 32, 4 series entities, 96 KiB target | `analysis/models.py`, `analysis/calculations.py`, `story_generation.py` |
+| Draft / check text | prompt 100 000 chars; 4 096 draft and 2 048 critique tokens; headline 160, summary 600, body 6 000, 5 key points, 4 source links, 5 caveats, post text 300; one revision | `story_drafting/models.py`, `writing.py`, `critique.py` |
+| Review wait | `min(review_timeout_seconds, story_created_at + 48 h - workflow.now())` | `story_generation.py`, `STORY_UI_RETENTION` |
+
+The events are emitted only by `StoryGenerationWorkflow`, through `story_logging.log_story_event`
+and the shared `operational_logging` guard. Activities stay log-free. The message is the event
+value and every record carries `event`:
+
+| Event | Level | Fields besides `event` |
+| --- | --- | --- |
+| `story_generation.started` | INFO | `candidate_id`, `story_id`, `status` |
+| `story_generation.status` | INFO | `status`, `previous_status`, `candidate_id` |
+| `story_generation.research_completed` | INFO | `status`, `context_count`, `evidence_count`, `failure_count` |
+| `story_generation.facts_completed` | INFO | `status`, `fact_count` |
+| `story_generation.draft_completed` | INFO | `round`, `revision_applied`, `note_count` |
+| `story_generation.check_completed` | INFO | `round`, `passed`, `finding_count` |
+| `story_generation.revision` | WARNING | `round`, `candidate_id` |
+| `story_generation.activity_failed` | ERROR | `activity`, `error_type`, `status` |
+| `story_generation.review_waiting` | INFO | `timeout_seconds`, `status` |
+| `story_generation.decision` | INFO | `decision`, `has_note` |
+| `story_generation.ignored_signal` | WARNING | `signal`, `status` |
+| `story_generation.finished` | INFO | `status`, `candidate_id`, `story_id` |
+
+`FORBIDDEN_STORY_LOG_FIELDS` extends `FORBIDDEN_LOG_FIELDS` with `excerpt`, `evidence`, `draft`,
+`critique`, `package`, `note`, `decided_by`, `email`, `token`, `authorization`, `cookie`, `context`,
+`fact`, `story_text`, `status_detail` and `reason`; names are rejected case-insensitively,
+non-primitives raise, and strings truncate at 256 characters. Never log exception text: only
+`error_type` is recorded. Procedures and exact commands are in the
+[stories runbook](../runbooks/stories.md).
+
 ### Activities and models
 
 | Activity | Class / function | Input -> output |
@@ -655,7 +699,14 @@ Secrets use `SecretStr`. Compose-only keys (`POSTGRES_PASSWORD`, `CLOUDFLARE_TUN
   asserts one inbox row per source and unchanged approve/reject, proves the budget is per source,
   and proves one failing source does not block the other. `test_ingestion_logging.py` captures
   workflow and activity records and asserts the fixed event set, the forbidden-field guard and that
-  no source title or credential appears.
+  no source title or credential appears. `test_story_generation_e2e.py` is the full story proof: a
+  `start_local` server with all nine search attributes, recorded HN/article/OWID/Anthropic fixtures,
+  the real ingestion, candidate and story workflows and activities, the real candidate/status/detail
+  services over the Temporal gateways, and the real FastAPI routes over `httpx.ASGITransport`
+  (only the three service dependencies are overridden). It covers success, unsupported,
+  failed-after-retry, candidate rejection, story rejection, critique revision and review expiry,
+  one row/workflow per candidate, the 48-hour retention cutoff by a future clock, and asserts no
+  publishing, chart or render activity is scheduled.
 - Lint: Ruff (line length 100) and Pyright strict; no `# type: ignore` or `Any` without a comment.
 - Agent relay: planner, builder, verifier, reviewer, scribe with human checkpoints; see
   `docs/mvp-plan.md` and `CLAUDE.md` (do not copy them).

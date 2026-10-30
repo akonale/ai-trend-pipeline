@@ -45,6 +45,7 @@ with workflow.unsafe.imports_passed_through():
         StoryPackage,
         draft_input_for,
     )
+    from ai_trend_pipeline.story_logging import StoryLogEvent, log_story_event
     from ai_trend_pipeline.story_status import (
         DEFAULT_STORY_REVIEW_TIMEOUT_S,
         STORY_UI_RETENTION,
@@ -305,12 +306,20 @@ class StoryGenerationWorkflow:
         )
 
     def _transition(self, status: StoryGenerationStatus, detail: str | None = None) -> None:
+        previous = self._status
         self._status = status
         self._updated_at = workflow.now()
         if detail is not None:
             self._status_detail = bounded_detail(detail)
         workflow.upsert_search_attributes(  # pyright: ignore[reportUnknownMemberType]
             story_status_updates(status.value, self._updated_at, self._status_detail)
+        )
+        log_story_event(
+            workflow.logger,
+            StoryLogEvent.STATUS,
+            status=status.value,
+            previous_status=previous.value,
+            candidate_id=self._candidate_id,
         )
 
     def _result(
@@ -345,6 +354,13 @@ class StoryGenerationWorkflow:
         self._transition(internal, detail)
         self._package = package
         self._critique = critique
+        log_story_event(
+            workflow.logger,
+            StoryLogEvent.FINISHED,
+            status=internal.value,
+            candidate_id=self._candidate_id,
+            story_id=self._story_id,
+        )
         return self._result(result_status)
 
     def _expire(self) -> StoryGenerationResult:
@@ -366,8 +382,11 @@ class StoryGenerationWorkflow:
 
     def _record(self, status: StoryGenerationStatus, decision: FinalStoryDecision) -> None:
         if self._decision is not None or self._status is not StoryGenerationStatus.REVIEW:
-            workflow.logger.warning(
-                "Ignoring %s decision; status is %s", status.value, self._status.value
+            log_story_event(
+                workflow.logger,
+                StoryLogEvent.IGNORED_SIGNAL,
+                signal="approve" if status is StoryGenerationStatus.READY else "reject",
+                status=self._status.value,
             )
             return
         self._decision = decision
@@ -396,6 +415,14 @@ class StoryGenerationWorkflow:
         except ActivityError as exc:
             if is_cancelled_exception(exc):
                 raise
+            cause = exc.cause
+            log_story_event(
+                workflow.logger,
+                StoryLogEvent.ACTIVITY_FAILED,
+                activity=activity_name,
+                error_type=type(cause if cause is not None else exc).__name__,
+                status=self._status.value,
+            )
             self._failure_detail = failure_detail(exc)
             return None
 
@@ -412,6 +439,12 @@ class StoryGenerationWorkflow:
         if effective_timeout <= 0:
             return self._expire()
         self._transition(StoryGenerationStatus.REVIEW)
+        log_story_event(
+            workflow.logger,
+            StoryLogEvent.REVIEW_WAITING,
+            timeout_seconds=effective_timeout,
+            status=self._status.value,
+        )
         try:
             await workflow.wait_condition(
                 lambda: self._decision is not None,
@@ -426,7 +459,14 @@ class StoryGenerationWorkflow:
         self._decided_by = decision.decided_by
         self._note = decision.note
         self._decided_at = workflow.now()
-        if decision_status is StoryGenerationStatus.READY:
+        approved = decision_status is StoryGenerationStatus.READY
+        log_story_event(
+            workflow.logger,
+            StoryLogEvent.DECISION,
+            decision="approved" if approved else "rejected",
+            has_note=bool(decision.note),
+        )
+        if approved:
             return self._finish(
                 StoryGenerationStatus.READY,
                 "ready",
@@ -446,6 +486,13 @@ class StoryGenerationWorkflow:
         self._candidate_id = data.candidate_id
         self._story_created_at = data.story_created_at
         self._updated_at = workflow.now()
+        log_story_event(
+            workflow.logger,
+            StoryLogEvent.STARTED,
+            candidate_id=self._candidate_id,
+            story_id=self._story_id,
+            status=self._status.value,
+        )
 
         if self._deadline_passed():
             return self._expire()
@@ -460,6 +507,14 @@ class StoryGenerationWorkflow:
         )
         if research is None:
             return self._failed()
+        log_story_event(
+            workflow.logger,
+            StoryLogEvent.RESEARCH_COMPLETED,
+            status=research.status.value,
+            context_count=len(research.contexts),
+            evidence_count=len(research.evidence),
+            failure_count=len(research.failures),
+        )
         if self._deadline_passed():
             return self._expire()
         if research.status is ResearchStatus.UNSUPPORTED:
@@ -478,6 +533,12 @@ class StoryGenerationWorkflow:
         )
         if facts is None:
             return self._failed()
+        log_story_event(
+            workflow.logger,
+            StoryLogEvent.FACTS_COMPLETED,
+            status=facts.status.value,
+            fact_count=len(facts.facts),
+        )
         if self._deadline_passed():
             return self._expire()
         if facts.status is FactSetStatus.UNSUPPORTED:
@@ -498,6 +559,13 @@ class StoryGenerationWorkflow:
         )
         if draft is None:
             return self._failed()
+        log_story_event(
+            workflow.logger,
+            StoryLogEvent.DRAFT_COMPLETED,
+            round=0,
+            revision_applied=draft.revision_applied,
+            note_count=len(draft.notes),
+        )
         if self._deadline_passed():
             return self._expire()
 
@@ -511,12 +579,25 @@ class StoryGenerationWorkflow:
         )
         if check is None:
             return self._failed()
+        log_story_event(
+            workflow.logger,
+            StoryLogEvent.CHECK_COMPLETED,
+            round=0,
+            passed=check.passed,
+            finding_count=len(check.findings),
+        )
         if self._deadline_passed():
             return self._expire()
 
         if check.passed:
             return await self._review(data, draft.draft, check)
 
+        log_story_event(
+            workflow.logger,
+            StoryLogEvent.REVISION,
+            round=1,
+            candidate_id=self._candidate_id,
+        )
         revision = RevisionRequest(prior_draft=draft.draft, critique=check, round=1)
         revised_input = draft_input.model_copy(update={"revision": revision})
         revised = await self._execute(
@@ -528,6 +609,13 @@ class StoryGenerationWorkflow:
         )
         if revised is None:
             return self._failed()
+        log_story_event(
+            workflow.logger,
+            StoryLogEvent.DRAFT_COMPLETED,
+            round=1,
+            revision_applied=revised.revision_applied,
+            note_count=len(revised.notes),
+        )
         if self._deadline_passed():
             return self._expire()
 
@@ -540,6 +628,13 @@ class StoryGenerationWorkflow:
         )
         if revised_check is None:
             return self._failed()
+        log_story_event(
+            workflow.logger,
+            StoryLogEvent.CHECK_COMPLETED,
+            round=1,
+            passed=revised_check.passed,
+            finding_count=len(revised_check.findings),
+        )
         if not revised_check.passed:
             return self._finish(
                 StoryGenerationStatus.FAILED, "failed", FAILED_AFTER_REVISION_DETAIL

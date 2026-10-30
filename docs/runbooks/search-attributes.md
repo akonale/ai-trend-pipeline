@@ -93,13 +93,31 @@ StoryTitle          Keyword
 StoryUpdatedAt      Datetime
 ```
 
-## 3. Dev is in memory
+## 3. Story generation checks
+
+Once the worker has registered the attributes, verify story generation with the two queries below.
+The first lists stories waiting for a final decision; the second lists every workflow (candidate
+plus story) for one candidate.
+
+```sh
+dev-temporal workflow list --query 'WorkflowType = "StoryGenerationWorkflow" AND StoryStatus = "review"'
+dev-temporal workflow list --query 'StoryCandidateId = "candidate-v1-..."'
+```
+
+`StoryStatus` stores the internal state (`researching`, `analyzing`, `writing`, `checking`,
+`review`, `ready`, `rejected`, `unsupported`, `failed`, `expired`) and never the five UI badges.
+`StoryCreatedAt` (inherited by the story from the candidate's detection time) drives the strict
+48-hour retention cutoff on both list pages. `StoryUpdatedAt` is for sorting only; it does not
+reset retention. A healthy handoff shows exactly two workflows per approved candidate
+(`StoryCandidateWorkflow` and `StoryGenerationWorkflow`) and one for a rejected candidate.
+
+## 4. Dev is in memory
 
 The dev server (`temporalio/temporal:1.9.1` `start-dev`) keeps everything in memory, so the
 attributes disappear with `just down`. The worker recreates them on the next `just dev`; you do not
 need to run the create commands by hand for dev unless you are repairing a running stack.
 
-## 4. Tests
+## 5. Tests
 
 Tests pre-register the attributes and never call the operator RPC in the time-skipping server:
 

@@ -25,6 +25,7 @@ from ai_trend_pipeline.daily_chart import (
     DailyChartWorkflow,
     ReviewState,
 )
+from ai_trend_pipeline.publishing.models import publication_key
 from ai_trend_pipeline.services.candidates import (
     CandidateNotFound,
     CandidatePage,
@@ -86,6 +87,16 @@ from ai_trend_pipeline.story_generation import (
     StoryGenerationState,
     StoryGenerationWorkflow,
 )
+from ai_trend_pipeline.story_publishing import (
+    PUBLISH_WORKFLOW_TIMEOUT,
+    STOPPED_DETAIL,
+    STORY_PUBLISHING_TASK_QUEUE,
+    PublicationStatus,
+    StoryPublishingInput,
+    StoryPublishingResult,
+    StoryPublishingState,
+    StoryPublishingWorkflow,
+)
 from ai_trend_pipeline.story_visibility import (
     STORY_CANDIDATE_ID_ATTRIBUTE,
     STORY_CREATED_AT_ATTRIBUTE,
@@ -94,6 +105,7 @@ from ai_trend_pipeline.story_visibility import (
     STORY_STATUS_DETAIL_ATTRIBUTE,
     STORY_TITLE_ATTRIBUTE,
     STORY_UPDATED_AT_ATTRIBUTE,
+    story_start_attributes,
 )
 
 
@@ -521,3 +533,94 @@ class TemporalStoryStatusGateway:
         except RPCError as exc:
             raise StoryStatusUnavailable() from exc
         return StoryListPage()
+
+
+class TemporalStoryPublishingGateway:
+    """Starts and reads one publishing workflow per story, destination and content hash."""
+
+    def __init__(self, client: Client) -> None:
+        self._client = client
+
+    async def story_state(self, workflow_id: str) -> StoryGenerationState:
+        handle = self._client.get_workflow_handle_for(StoryGenerationWorkflow.run, workflow_id)
+        return await _detail_call(workflow_id, handle.query(StoryGenerationWorkflow.story_state))
+
+    async def story_result(self, workflow_id: str) -> StoryGenerationResult:
+        handle = self._client.get_workflow_handle_for(StoryGenerationWorkflow.run, workflow_id)
+        return await _detail_call(workflow_id, handle.result())
+
+    async def _inherited_metadata(self, story_workflow_id: str) -> tuple[str, str]:
+        """The generation run's title and source, or blanks when they are missing."""
+        handle = self._client.get_workflow_handle_for(
+            StoryGenerationWorkflow.run, story_workflow_id
+        )
+        try:
+            description = await handle.describe()
+        except RPCError as exc:
+            if exc.status == RPCStatusCode.NOT_FOUND:
+                return "", ""
+            raise StoryDetailUnavailable() from exc
+        attributes = description.typed_search_attributes
+        title = attributes.get(STORY_TITLE_ATTRIBUTE)
+        source = attributes.get(STORY_SOURCE_ATTRIBUTE)
+        return (
+            title if isinstance(title, str) else "",
+            source if isinstance(source, str) else "",
+        )
+
+    async def start(self, data: StoryPublishingInput) -> None:
+        title, source = await self._inherited_metadata(data.story_workflow_id)
+        # StoryCreatedAt is the original story time, so publishing never resets the 48-hour window.
+        attributes = story_start_attributes(
+            status=PublicationStatus.PUBLISHING.value,
+            title=title,
+            source=source,
+            candidate_id=data.candidate_id,
+            created_at=data.story_created_at,
+            updated_at=datetime.now(UTC),
+        )
+        try:
+            await self._client.start_workflow(
+                StoryPublishingWorkflow.run,
+                data,
+                id=publication_key(data.story_id, data.destination, data.content_hash),
+                task_queue=STORY_PUBLISHING_TASK_QUEUE,
+                id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,
+                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+                execution_timeout=PUBLISH_WORKFLOW_TIMEOUT,
+                search_attributes=attributes,
+            )
+        except WorkflowAlreadyStartedError:
+            # Defensive: USE_EXISTING normally returns the running workflow instead of raising.
+            return
+        except RPCError as exc:
+            raise StoryDetailUnavailable() from exc
+
+    async def publication(self, publication_id: str) -> StoryPublishingState | None:
+        handle = self._client.get_workflow_handle_for(StoryPublishingWorkflow.run, publication_id)
+        try:
+            description = await handle.describe()
+        except RPCError as exc:
+            if exc.status == RPCStatusCode.NOT_FOUND:
+                return None
+            raise StoryDetailUnavailable() from exc
+        status = description.status
+        if status is WorkflowExecutionStatus.RUNNING:
+            return await _detail_call(
+                publication_id, handle.query(StoryPublishingWorkflow.publication_state)
+            )
+        if status is WorkflowExecutionStatus.COMPLETED:
+            result: StoryPublishingResult = await _detail_call(publication_id, handle.result())
+            return _state_from_result(result)
+        return StoryPublishingState(
+            publication_id=publication_id,
+            status=PublicationStatus.FAILED,
+            status_detail=STOPPED_DETAIL,
+            error_code=None,
+            retryable=True,
+            updated_at=description.close_time or datetime.now(UTC),
+        )
+
+
+def _state_from_result(result: StoryPublishingResult) -> StoryPublishingState:
+    return StoryPublishingState.model_validate(result.model_dump())

@@ -2,7 +2,7 @@
 
 import ast
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -91,7 +91,7 @@ def key_of(data: StoryPublishingInput) -> str:
 
 
 @asynccontextmanager
-async def publishing_env(pds: FakePds, media_root: Path) -> AsyncIterator[WorkflowEnvironment]:
+async def publishing_env(pds: FakePds, media_root: Path) -> AsyncGenerator[WorkflowEnvironment]:
     activities = make_activities(pds, media_root)
     async with await WorkflowEnvironment.start_time_skipping(
         data_converter=pydantic_data_converter

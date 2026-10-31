@@ -205,7 +205,9 @@ class StoryPublishingWorkflow:
                 "publication": publication,
             }
         )
-        workflow.upsert_search_attributes(story_status_updates(status.value, now, detail))
+        workflow.upsert_search_attributes(  # pyright: ignore[reportUnknownMemberType]
+            story_status_updates(status.value, now, detail)
+        )
 
     def _finish(self) -> StoryPublishingResult:
         state = self._state

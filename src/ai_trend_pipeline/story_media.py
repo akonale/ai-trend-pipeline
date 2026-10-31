@@ -30,10 +30,16 @@ STORY_MEDIA_TASK_QUEUE = "story-media-task-queue"
 RENDER_STATIC_ACTIVITY = "render_static_media"
 RENDER_ANIMATED_ACTIVITY = "render_animated_media"
 STATIC_RENDER_TIMEOUT = timedelta(seconds=60)
-ANIMATED_RENDER_TIMEOUT = timedelta(seconds=120)
+ANIMATED_RENDER_TIMEOUT = timedelta(seconds=45)
 RENDER_MAX_ATTEMPTS = 3
 RENDER_RETRY_POLICY = RetryPolicy(
     maximum_attempts=RENDER_MAX_ATTEMPTS,
+    non_retryable_error_types=["MediaRenderInvalid", "MediaArtifactTooLarge"],
+)
+
+# A deterministic render rarely succeeds on a third try, so animated renders get two attempts.
+ANIMATED_RENDER_RETRY_POLICY = RetryPolicy(
+    maximum_attempts=2,
     non_retryable_error_types=["MediaRenderInvalid", "MediaArtifactTooLarge"],
 )
 
@@ -80,7 +86,7 @@ class StoryMediaWorkflow:
                 RenderMediaInput(brief=brief, kind=MediaKind.ANIMATED),
                 result_type=MediaArtifact,
                 start_to_close_timeout=ANIMATED_RENDER_TIMEOUT,
-                retry_policy=RENDER_RETRY_POLICY,
+                retry_policy=ANIMATED_RENDER_RETRY_POLICY,
             )
         except ActivityError as exc:
             if is_cancelled_exception(exc):

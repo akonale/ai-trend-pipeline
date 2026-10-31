@@ -18,7 +18,7 @@ from ai_trend_pipeline.media.card import (
 )
 from ai_trend_pipeline.media.illustration import ILLUSTRATION_PROVIDERS
 from ai_trend_pipeline.media.models import MAX_STATIC_BYTES, MediaKind, MediaType, artifact_id_for
-from ai_trend_pipeline.media.providers import MediaContentUnsupported, renderer_for
+from ai_trend_pipeline.media.providers import renderer_for
 from tests.card_cases import BRIEFS, GOLDENS
 from tests.regen_card_goldens import GOLDEN_DIR
 from tests.test_design_tokens import contrast, theme
@@ -75,14 +75,17 @@ def test_version_and_artifact_id_change_with_theme_and_size() -> None:
     ]
     ids = {artifact_id_for(brief, MediaKind.STATIC, r.name, r.version) for r in renderers}
     assert len(ids) == 3
-    assert renderers[0].version == "1-light-1200x675"
+    assert renderers[0].version == "1.1-light-1200x675"
     again = StoryCardRenderer()
     assert artifact_id_for(brief, MediaKind.STATIC, again.name, again.version) in ids
 
 
-def test_render_animated_raises_content_unsupported() -> None:
-    with pytest.raises(MediaContentUnsupported):
-        StoryCardRenderer().render_animated(BRIEFS["fact"])
+def test_render_animated_returns_gif_with_duration() -> None:
+    rendered = StoryCardRenderer().render_animated(BRIEFS["fact"])
+    assert rendered.media_type is MediaType.GIF
+    assert rendered.duration_ms == 4500
+    assert (rendered.width, rendered.height) == CARD_LANDSCAPE
+    assert rendered.data.startswith(b"GIF89a")
 
 
 def test_render_makes_no_network_calls(monkeypatch: pytest.MonkeyPatch) -> None:

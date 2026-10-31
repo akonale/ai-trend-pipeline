@@ -18,6 +18,7 @@ from ai_trend_pipeline.media.models import MediaBrief, MediaType
 from ai_trend_pipeline.media.providers import MediaContentUnsupported, RenderedMedia
 
 CARD_TEMPLATE_VERSION = "1"
+GIF_TEMPLATE_VERSION = "1"
 CARD_LANDSCAPE = (1200, 675)
 CARD_SQUARE = (1080, 1080)
 CARD_MIN = (640, 360)
@@ -524,7 +525,7 @@ class StoryCardRenderer:
         self._theme = theme
         self._width = width
         self._height = height
-        self.version = f"{CARD_TEMPLATE_VERSION}-{theme}-{width}x{height}"
+        self.version = f"{CARD_TEMPLATE_VERSION}.{GIF_TEMPLATE_VERSION}-{theme}-{width}x{height}"
 
     def render_static(self, brief: MediaBrief) -> RenderedMedia:
         layout = layout_story_card(brief, self._theme, self._width, self._height)
@@ -532,5 +533,17 @@ class StoryCardRenderer:
         return RenderedMedia(data, MediaType.PNG, self._width, self._height, None)
 
     def render_animated(self, brief: MediaBrief) -> RenderedMedia:
-        _ = brief
-        raise MediaContentUnsupported("animation not available")
+        # Imported here because `animation` imports this module for the card drawing code.
+        from ai_trend_pipeline.media.animation import (
+            GIF_DURATION_MS,
+            MAX_GIF_SIDE,
+            build_story_frames,
+            encode_gif,
+        )
+
+        if self._width > MAX_GIF_SIDE or self._height > MAX_GIF_SIDE:
+            raise MediaContentUnsupported(f"animated cards are limited to {MAX_GIF_SIDE}px")
+        layout = layout_story_card(brief, self._theme, self._width, self._height)
+        frames = build_story_frames(layout, brief.animation_beats)
+        data = encode_gif(frames)
+        return RenderedMedia(data, MediaType.GIF, self._width, self._height, GIF_DURATION_MS)

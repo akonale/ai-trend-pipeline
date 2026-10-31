@@ -44,9 +44,15 @@ def _invalid(message: str) -> ApplicationError:
 
 
 class StoryMediaActivities:
-    def __init__(self, media_root: Path, renderer: MediaRenderer) -> None:
+    def __init__(
+        self, media_root: Path, renderer: MediaRenderer, max_concurrent_animations: int = 1
+    ) -> None:
+        if max_concurrent_animations < 1:
+            raise ValueError("max_concurrent_animations must be at least 1")
         self._media_root = media_root
         self._renderer = renderer
+        # GIF renders are CPU-heavy, so only a few may run at once on one worker.
+        self._animation_slots = asyncio.Semaphore(max_concurrent_animations)
 
     @activity.defn(name="render_static_media")
     async def render_static_media(self, data: RenderMediaInput) -> MediaArtifact:
@@ -54,18 +60,25 @@ class StoryMediaActivities:
 
     @activity.defn(name="render_animated_media")
     async def render_animated_media(self, data: RenderMediaInput) -> MediaArtifact:
-        return await self._render(data, MediaKind.ANIMATED, self._renderer.render_animated)
+        return await self._render(
+            data, MediaKind.ANIMATED, self._renderer.render_animated, self._animation_slots
+        )
 
     async def _render(
         self,
         data: RenderMediaInput,
         kind: MediaKind,
         render: Callable[[MediaBrief], RenderedMedia],
+        slots: asyncio.Semaphore | None = None,
     ) -> MediaArtifact:
         if data.kind is not kind:
             raise _invalid(f"expected a {kind.value} render request")
         try:
-            rendered = await asyncio.to_thread(render, data.brief)
+            if slots is None:
+                rendered = await asyncio.to_thread(render, data.brief)
+            else:
+                async with slots:
+                    rendered = await asyncio.to_thread(render, data.brief)
         except MediaContentUnsupported as exc:
             raise _invalid(f"{kind.value} content is not supported by this renderer") from exc
         except MediaRenderError as exc:

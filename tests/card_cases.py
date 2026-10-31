@@ -1,5 +1,6 @@
 """Shared card briefs and golden cases (used by tests and the golden regeneration script)."""
 
+from ai_trend_pipeline.media.animation import Keyframe
 from ai_trend_pipeline.media.card import CARD_LANDSCAPE, CARD_MIN, CARD_SQUARE, CardTheme
 from ai_trend_pipeline.media.models import MediaBrief
 from tests.media_fixtures import make_brief
@@ -43,4 +44,18 @@ GOLDENS: dict[str, tuple[str, CardTheme, tuple[int, int]]] = {
     "dark_fact_1200x675": ("fact", CardTheme.DARK, CARD_LANDSCAPE),
     "light_long_640x360": ("long", CardTheme.LIGHT, CARD_MIN),
     "light_long_1080x1080": ("long", CardTheme.LIGHT, CARD_SQUARE),
+}
+
+# Animation keyframe goldens: name -> (brief key, theme, size, keyframe)
+GIF_GOLDENS: dict[str, tuple[str, CardTheme, tuple[int, int], Keyframe]] = {
+    "light_fact_1200x675_open": ("fact", CardTheme.LIGHT, CARD_LANDSCAPE, Keyframe.OPEN),
+    "light_fact_1200x675_headline_done": (
+        "fact",
+        CardTheme.LIGHT,
+        CARD_LANDSCAPE,
+        Keyframe.HEADLINE_DONE,
+    ),
+    "light_fact_1200x675_fact_done": ("fact", CardTheme.LIGHT, CARD_LANDSCAPE, Keyframe.FACT_DONE),
+    "light_fact_1200x675_final": ("fact", CardTheme.LIGHT, CARD_LANDSCAPE, Keyframe.FINAL),
+    "dark_fact_1200x675_fact_done": ("fact", CardTheme.DARK, CARD_LANDSCAPE, Keyframe.FACT_DONE),
 }

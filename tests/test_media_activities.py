@@ -1,5 +1,8 @@
 """Render activities: validation, storage and error mapping."""
 
+import asyncio
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -8,7 +11,14 @@ from temporalio.testing import ActivityEnvironment
 
 from ai_trend_pipeline.media.activities import StoryMediaActivities
 from ai_trend_pipeline.media.fake import FakeMediaRenderer
-from ai_trend_pipeline.media.models import MediaKind, MediaType, RenderMediaInput, artifact_id_for
+from ai_trend_pipeline.media.models import (
+    MediaBrief,
+    MediaKind,
+    MediaType,
+    RenderMediaInput,
+    artifact_id_for,
+)
+from ai_trend_pipeline.media.providers import RenderedMedia
 from tests.media_fixtures import make_brief
 
 
@@ -115,3 +125,66 @@ async def test_content_unsupported_is_non_retryable_invalid(tmp_path: Path) -> N
         assert info.value.type == "MediaRenderInvalid"
         assert info.value.non_retryable
     assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.asyncio
+async def test_story_card_render_stores_animated_gif_artifact(tmp_path: Path) -> None:
+    from ai_trend_pipeline.media.card import StoryCardRenderer
+
+    renderer = StoryCardRenderer()
+    brief = make_brief()
+    artifact = await ActivityEnvironment().run(
+        StoryMediaActivities(tmp_path, renderer).render_animated_media,
+        RenderMediaInput(brief=brief, kind=MediaKind.ANIMATED),
+    )
+    assert artifact.kind is MediaKind.ANIMATED and artifact.media_type is MediaType.GIF
+    assert artifact.duration_ms == 4500
+    assert (tmp_path / artifact.relative_path).is_file()
+    assert artifact.relative_path.endswith(".gif")
+
+
+class SlowRenderer(FakeMediaRenderer):
+    def __init__(self) -> None:
+        super().__init__()
+        self._lock = threading.Lock()
+        self.current = {"static": 0, "animated": 0}
+        self.peak = {"static": 0, "animated": 0}
+
+    def _slow(self, kind: str) -> None:
+        with self._lock:
+            self.current[kind] += 1
+            self.peak[kind] = max(self.peak[kind], self.current[kind])
+        time.sleep(0.15)
+        with self._lock:
+            self.current[kind] -= 1
+
+    def render_static(self, brief: MediaBrief) -> RenderedMedia:
+        self._slow("static")
+        return super().render_static(brief)
+
+    def render_animated(self, brief: MediaBrief) -> RenderedMedia:
+        self._slow("animated")
+        return super().render_animated(brief)
+
+
+@pytest.mark.asyncio
+async def test_animated_renders_respect_concurrency_limit(tmp_path: Path) -> None:
+    renderer = SlowRenderer()
+    acts = StoryMediaActivities(tmp_path, renderer)
+    animated = RenderMediaInput(brief=make_brief(), kind=MediaKind.ANIMATED)
+    static = RenderMediaInput(brief=make_brief(), kind=MediaKind.STATIC)
+    await asyncio.gather(
+        ActivityEnvironment().run(acts.render_animated_media, animated),
+        ActivityEnvironment().run(acts.render_animated_media, animated),
+    )
+    assert renderer.peak["animated"] == 1
+    await asyncio.gather(
+        ActivityEnvironment().run(acts.render_static_media, static),
+        ActivityEnvironment().run(acts.render_static_media, static),
+    )
+    assert renderer.peak["static"] == 2
+
+
+def test_max_concurrent_animations_must_be_positive(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="at least 1"):
+        StoryMediaActivities(tmp_path, FakeMediaRenderer(), max_concurrent_animations=0)

@@ -1,6 +1,6 @@
 # 063: StoryPublishingWorkflow and gateway
 
-Status: approved
+Status: built
 
 > Plan row **062** in `docs/mvp-plan.md` ("`StoryPublishingWorkflow` and gateway"), renumbered to
 > **063** (repo numbers are plan row + 1, see `docs/tasks/058-media-foundation.md`). It builds on
@@ -280,3 +280,7 @@ Path(settings.media_dir)).publish_story_to_bluesky]`. Run a sixth worker on
 Key choices: expected failures return a typed `publish_failed` result. The gateway uses USE_EXISTING + ALLOW_DUPLICATE, and the fixed rkey keeps a re-run from posting twice. Retries are bounded at 4 attempts and 20 minutes, which handles the 062 carry-forward. `StoryCreatedAt` and `StoryCandidateId` are inherited.
 Note: `package.story_id` is the candidate ID, so the key is `publish-v1-<candidate-id>-bluesky-<hash>`. `FakePds` moves to `tests/publishing_fixtures.py`.
 I have no shell, so there is no branch and no commit. The file is uncommitted in the main checkout. Next: the orchestrator creates `task/063-story-publishing-workflow`, commits only this file, and approves it (the row is `no`).
+
+**builder**: Built `story_publishing.py`, `services/publishing.py`, `TemporalStoryPublishingGateway`, the sixth worker, tests and the replay fixture `story_publishing_v1_published.json`. `FakePds` moved to `tests/publishing_fixtures.py`. `just lint` clean and the full suite passes (1363).
+Notes: the time-skipping server has no ListWorkflows, so the concurrency test counts run ids from a recording client instead of listing. Gateway `start` tolerates a missing generation workflow (blank title/source). Protocol params are named `workflow_id` to match the other gateways.
+`tech.md` updated (Story publishing contracts, Worker). The frontend-design skill was loaded but not needed (no UI).

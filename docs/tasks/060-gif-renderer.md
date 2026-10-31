@@ -1,6 +1,6 @@
 # 060: Short story GIF renderer
 
-Status: approved
+Status: built
 
 > Plan row **059** in `docs/mvp-plan.md` ("Short engaging GIF renderer"), renumbered to **060**
 > (repo numbers are plan row + 1, see `docs/tasks/058-media-foundation.md`). It builds on the
@@ -287,3 +287,7 @@ float] = time.monotonic, budget_s: float = GIF_RENDER_BUDGET_S) -> tuple[GifFram
 One PR: `media/animation.py`, `render_animated`, a semaphore in the activity, a 45 s and 2-attempt animated policy, and the reduced-motion view model (template in 061).
 I could not create the branch or commit, because I have no shell tool. The spec file is uncommitted in the main checkout. The orchestrator must create `task/060-gif-renderer` from main and commit it.
 Next: the orchestrator approves (row is `no`), then the builder writes the tests first.
+
+**builder**: Built per spec: `media/animation.py`, `render_animated`, animation semaphore, 45 s and 2-attempt animated policy, `StoryMediaView`, goldens and docs. All new tests pass; ruff and pyright clean; full suite left to the verifier.
+Existing workflow tests assumed 3 animated attempts, so I changed them to 2 (fail-always now counts 2; the recover test fails once).
+Pyright-ignored imports of private `_px` and `_scale` from `card.py` (comment explains) to share pixel scaling.

@@ -8,6 +8,7 @@ from urllib.parse import quote, urlencode, urlsplit
 from pydantic import BaseModel, Field, ValidationError
 
 from ai_trend_pipeline.daily_chart import APPROVAL_TIMEOUT, ReviewState
+from ai_trend_pipeline.media.models import MediaManifest, MediaOutcome
 from ai_trend_pipeline.post_options import (
     CHART_TYPES,
     MAX_COUNTRIES,
@@ -1550,3 +1551,34 @@ def build_story_not_available_view(
 def story_decision_notice(token: str) -> str:
     """Allow-listed detail notice text; unknown tokens render nothing."""
     return STORY_DETAIL_NOTICES.get(token.strip(), "")
+
+
+MOTION_OK_MEDIA = "(prefers-reduced-motion: no-preference)"
+
+
+class StoryMediaView(BaseModel):
+    """Poster for everyone; the GIF only for `<source media=motion_media>` (no JavaScript)."""
+
+    poster_src: str
+    poster_width: int
+    poster_height: int
+    animated_src: str | None
+    alt_text: str
+    motion_media: Literal["(prefers-reduced-motion: no-preference)"] = MOTION_OK_MEDIA
+
+
+def build_story_media_view(detail_id: str, manifest: MediaManifest | None) -> StoryMediaView | None:
+    if manifest is None or manifest.outcome is MediaOutcome.TEXT_ONLY:
+        return None
+    poster = manifest.static_artifact
+    if poster is None:
+        return None
+    base = f"/stories/{quote(detail_id, safe='')}/media/"
+    animated = manifest.animated_artifact if manifest.outcome is MediaOutcome.GIF else None
+    return StoryMediaView(
+        poster_src=base + quote(poster.artifact_id, safe=""),
+        poster_width=poster.width,
+        poster_height=poster.height,
+        animated_src=None if animated is None else base + quote(animated.artifact_id, safe=""),
+        alt_text=poster.alt_text,
+    )

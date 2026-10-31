@@ -19,15 +19,22 @@ from ai_trend_pipeline.story_generation import (
     StoryGenerationWorkflow,
 )
 from ai_trend_pipeline.story_media import STORY_MEDIA_TASK_QUEUE, StoryMediaWorkflow
+from ai_trend_pipeline.story_publishing import (
+    STORY_PUBLISHING_TASK_QUEUE,
+    StoryPublishingWorkflow,
+)
 from ai_trend_pipeline.worker import (
     CANDIDATE_WORKFLOWS,
     INGESTION_WORKFLOWS,
     MEDIA_WORKER_MAX_CONCURRENT_ACTIVITIES,
     MEDIA_WORKFLOWS,
+    PUBLISHING_WORKER_MAX_CONCURRENT_ACTIVITIES,
+    PUBLISHING_WORKFLOWS,
     STORY_WORKFLOWS,
     daily_chart_activities,
     ingestion_activities,
     media_activities,
+    publishing_activities,
     story_activities,
 )
 
@@ -131,3 +138,23 @@ def test_media_worker_registers_workflow_activities_and_concurrency() -> None:
         media_activities
     )
     assert "MEDIA_PROVIDER" not in text
+
+
+def test_publishing_worker_registers_workflow_and_story_activity() -> None:
+    assert PUBLISHING_WORKFLOWS == [StoryPublishingWorkflow]
+    assert STORY_PUBLISHING_TASK_QUEUE == "story-publishing-task-queue"
+    assert PUBLISHING_WORKER_MAX_CONCURRENT_ACTIVITIES == 2
+    creds = BlueskyCredentials.model_validate(
+        {"handle": "h.invalid", "app_password": "pw", "service": "https://x"}
+    )
+    activities = publishing_activities(httpx.AsyncClient(), creds, Settings())
+    assert [activity.__name__ for activity in activities] == ["publish_story_to_bluesky"]
+    source = Path(__file__).resolve().parent.parent / "src" / "ai_trend_pipeline" / "worker.py"
+    text = source.read_text(encoding="utf-8")
+    block = text[text.index("publishing_worker = Worker(") : text.index("await asyncio.gather")]
+    assert "task_queue=STORY_PUBLISHING_TASK_QUEUE" in block
+    assert "workflows=PUBLISHING_WORKFLOWS" in block
+    assert "publishing_activities(bluesky_client, credentials, settings)" in block
+    assert "max_concurrent_activities=PUBLISHING_WORKER_MAX_CONCURRENT_ACTIVITIES" in block
+    assert "publishing_worker.run()" in text
+    assert "publish_story_to_bluesky" not in inspect.getsource(daily_chart_activities)

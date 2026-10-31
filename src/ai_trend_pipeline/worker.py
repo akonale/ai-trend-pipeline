@@ -28,6 +28,7 @@ from ai_trend_pipeline.hn import HNActivities, make_hn_client
 from ai_trend_pipeline.media.activities import StoryMediaActivities
 from ai_trend_pipeline.media.providers import renderer_for
 from ai_trend_pipeline.owid import OwidActivities, make_owid_client
+from ai_trend_pipeline.publishing.bluesky_story import BlueskyStoryActivities
 from ai_trend_pipeline.render import render_chart_png
 from ai_trend_pipeline.research.activities import (
     StoryResearchActivities,
@@ -47,6 +48,10 @@ from ai_trend_pipeline.story_generation import (
     StoryGenerationWorkflow,
 )
 from ai_trend_pipeline.story_media import STORY_MEDIA_TASK_QUEUE, StoryMediaWorkflow
+from ai_trend_pipeline.story_publishing import (
+    STORY_PUBLISHING_TASK_QUEUE,
+    StoryPublishingWorkflow,
+)
 from ai_trend_pipeline.story_selection import StorySelectionActivities
 from ai_trend_pipeline.temporal_client import connect, ensure_story_search_attributes
 from ai_trend_pipeline.topic import TopicActivities, make_anthropic_client
@@ -59,6 +64,8 @@ STORY_WORKFLOWS = [StoryGenerationWorkflow]
 MEDIA_WORKFLOWS = [StoryMediaWorkflow]
 MEDIA_WORKER_MAX_CONCURRENT_ACTIVITIES = 2
 MAX_CONCURRENT_ANIMATIONS = 1
+PUBLISHING_WORKFLOWS = [StoryPublishingWorkflow]
+PUBLISHING_WORKER_MAX_CONCURRENT_ACTIVITIES = 2
 
 
 async def connect_with_retry(settings: Settings) -> Client:
@@ -141,6 +148,16 @@ def media_activities(settings: Settings) -> list[Callable[..., Any]]:
     return [media.render_static_media, media.render_animated_media]
 
 
+# Any matches the type of Temporal's `Worker(activities=...)` parameter.
+def publishing_activities(
+    bluesky_client: httpx.AsyncClient,
+    credentials: BlueskyCredentials,
+    settings: Settings,
+) -> list[Callable[..., Any]]:
+    story_publisher = BlueskyStoryActivities(bluesky_client, credentials, Path(settings.media_dir))
+    return [story_publisher.publish_story_to_bluesky]
+
+
 async def main() -> None:
     settings = load_settings()
     client = await connect_with_retry(settings)
@@ -193,6 +210,13 @@ async def main() -> None:
             activities=media_activities(settings),
             max_concurrent_activities=MEDIA_WORKER_MAX_CONCURRENT_ACTIVITIES,
         )
+        publishing_worker = Worker(
+            client,
+            task_queue=STORY_PUBLISHING_TASK_QUEUE,
+            workflows=PUBLISHING_WORKFLOWS,
+            activities=publishing_activities(bluesky_client, credentials, settings),
+            max_concurrent_activities=PUBLISHING_WORKER_MAX_CONCURRENT_ACTIVITIES,
+        )
         await asyncio.gather(
             hello_worker.run(),
             chart_worker.run(),
@@ -200,6 +224,7 @@ async def main() -> None:
             ingestion_worker.run(),
             story_worker.run(),
             media_worker.run(),
+            publishing_worker.run(),
         )
 
 

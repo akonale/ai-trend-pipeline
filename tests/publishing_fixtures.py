@@ -1,7 +1,14 @@
 """Builders for approved story packages with real media manifests."""
 
+import json
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
+import httpx
+
+from ai_trend_pipeline.bluesky import BlueskyCredentials
 from ai_trend_pipeline.media.briefs import story_content_hash, story_package_hash
 from ai_trend_pipeline.media.models import (
     MediaArtifact,
@@ -13,6 +20,7 @@ from ai_trend_pipeline.media.models import (
     sha256_hex,
 )
 from ai_trend_pipeline.media.storage import write_artifact
+from ai_trend_pipeline.publishing.bluesky_story import BlueskyStoryActivities
 from ai_trend_pipeline.story_drafting.models import StoryPackage
 from tests.drafting_fixtures import make_clean_package
 from tests.media_fixtures import make_brief
@@ -72,3 +80,104 @@ def make_approved_package(
     )
     package = make_clean_package(media=manifest, **overrides)
     return package, story_package_hash(package)
+
+
+FIXTURES = Path(__file__).parent / "fixtures"
+NOW = datetime(2026, 5, 2, 9, 0, 0, tzinfo=UTC)
+PASSWORD = "pw-secret"
+DID = "did:plc:fakefakefakefakefakefake"
+
+
+def fixture(name: str) -> dict[str, Any]:  # Any: hand-written JSON fixtures
+    return json.loads((FIXTURES / name).read_text())
+
+
+def story_fixture(name: str) -> dict[str, Any]:  # Any: hand-written JSON fixtures
+    return fixture(f"bluesky_story/{name}")
+
+
+Scripted = Callable[[httpx.Request], httpx.Response]
+
+
+class FakePds:
+    """Records requests, stores created records, and replays scripted responses per endpoint."""
+
+    def __init__(self) -> None:
+        self.requests: list[httpx.Request] = []
+        self.records: dict[str, dict[str, Any]] = {}  # Any: JSON record bodies
+        self.script: dict[str, list[Scripted]] = {}
+        self.create_ok = 0
+
+    def on(self, name: str, *responses: Scripted) -> None:
+        self.script.setdefault(name, []).extend(responses)
+
+    def names(self) -> list[str]:
+        return [r.url.path.rsplit(".", 1)[-1] for r in self.requests]
+
+    def bodies(self, name: str) -> list[Any]:  # Any: JSON bodies
+        return [json.loads(r.content) for r in self.requests if r.url.path.endswith(name)]
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        name = request.url.path.rsplit(".", 1)[-1]
+        queue = self.script.get(name)
+        if queue:
+            return queue.pop(0)(request)
+        if name == "createSession":
+            return httpx.Response(200, json=fixture("bluesky_create_session.json"))
+        if name == "getRecord":
+            rkey = request.url.params["rkey"]
+            if rkey in self.records:
+                found = story_fixture("get_record_found.json")
+                found["uri"] = found["uri"].replace("RKEY", rkey)
+                return httpx.Response(200, json=found)
+            return httpx.Response(400, json=fixture("bluesky_record_not_found.json"))
+        if name == "uploadBlob":
+            return httpx.Response(200, json=fixture("bluesky_upload_blob.json"))
+        if name == "createRecord":
+            return self.create(request)
+        return httpx.Response(404)
+
+    def create(self, request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        if body["rkey"] in self.records:
+            return httpx.Response(400, json=story_fixture("create_record_invalid.json"))
+        self.records[body["rkey"]] = body
+        self.create_ok += 1
+        created = fixture("bluesky_create_record.json")
+        created["uri"] = created["uri"].replace("RKEY", body["rkey"])
+        return httpx.Response(200, json=created)
+
+
+def respond(status: int, fixture_name: str | None = None, **headers: str) -> Scripted:
+    def build(_: httpx.Request) -> httpx.Response:
+        body = None if fixture_name is None else story_fixture(fixture_name)
+        return httpx.Response(status, json=body, headers=headers)
+
+    return build
+
+
+def create_then_fail(pds: FakePds) -> Scripted:
+    """The server stores the record but answers with a client error."""
+
+    def build(request: httpx.Request) -> httpx.Response:
+        pds.create(request)
+        return httpx.Response(400, json=story_fixture("create_record_invalid.json"))
+
+    return build
+
+
+def transport_error(request: httpx.Request) -> httpx.Response:
+    raise httpx.ConnectError("boom pw-secret", request=request)
+
+
+def make_activities(
+    pds: FakePds, media_root: Path, clock: Callable[[], datetime] = lambda: NOW
+) -> BlueskyStoryActivities:
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(pds.handler), base_url="https://pds.invalid/xrpc/"
+    )
+    creds = BlueskyCredentials.model_validate(
+        {"handle": "test.example.invalid", "app_password": PASSWORD, "service": "https://x"}
+    )
+    return BlueskyStoryActivities(client, creds, media_root, clock=clock)

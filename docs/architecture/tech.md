@@ -380,9 +380,21 @@ the idempotency key, and the Bluesky rkey is `make_tid(story_created_at, key)`, 
 posts at most once. `BlueskyStoryActivities.publish_story_to_bluesky` (`bluesky_story.py`) re-checks
 hashes and the artifact file before any network call, looks for an existing record, then uploads and
 creates. Its errors use fixed messages with `PublicationErrorCode` values as types. The activity is
-not registered with a worker until the story-publishing workflow arrives (repo task 063).
-Carry-forward for 063: other 4xx from `getRecord` or `uploadBlob` map to the retryable
-`UnexpectedDestinationResponse`, so the workflow must bound retry attempts. For 064: show the
+registered on `story-publishing-task-queue` by the worker (task 063).
+`StoryPublishingWorkflow` (`story_publishing.py`, beside `story_media.py`) runs once per story,
+destination and approved hash, with the publication key as its workflow ID. It re-runs
+`format_publication` in workflow code (a rejected package finishes `publish_failed` with no activity),
+then calls the activity with 60 s start-to-close, 20 min schedule-to-close and at most 4 attempts
+(2 s backoff, 60 s cap; every non-retryable `PublicationErrorCode` is listed), which bounds the
+retryable `UnexpectedDestinationResponse`. Expected failures return a typed `publish_failed` result
+with a fixed sentence per error code, so the story stays publishable; the `publication_state` query
+and the `StoryStatus` search attribute use `publishing`, `published` and `publish_failed`.
+`StoryPublishingService.publish` (`services/publishing.py`) is the only starter: it needs a Ready
+generation story inside the 48-hour window and the hash the user saw, returns an existing
+`publishing` or `published` run without starting, and `TemporalStoryPublishingGateway` starts with
+`USE_EXISTING` + `ALLOW_DUPLICATE`. The start attributes copy `StoryTitle`, `StorySource`, the
+candidate ID and the original `StoryCreatedAt`, so publishing never resets the retention window; the
+`/stories` list query still covers only the candidate and generation workflow types. For 064: show the
 formatted post text during review, since text over 300 characters fails with `PostTextTooLong`.
 
 ### Determinism, idempotency, replay
@@ -406,7 +418,7 @@ formatted post text during review, since text over 300 characters fails with `Po
 ### Worker (`worker.py`)
 
 `main()` loads settings, connects with retry (30 s), registers the candidate and story search
-attributes, builds the Anthropic, HN, OWID, Bluesky and research clients and runs five workers:
+attributes, builds the Anthropic, HN, OWID, Bluesky and research clients and runs six workers:
 `hello-task-queue` (`HelloWorkflow`, `say_hello`), the daily chart queue (`DailyChartWorkflow` and
 the seven activities from `daily_chart_activities`), `story-candidate-task-queue`
 (`CANDIDATE_WORKFLOWS = [StoryCandidateWorkflow]`, no activities), `source-ingestion-task-queue`
@@ -416,7 +428,10 @@ the seven activities from `daily_chart_activities`), `story-candidate-task-queue
 and `activity_executor=ThreadPoolExecutor(max_workers=4)` for the sync fact activity), and
 `story-media-task-queue` (`MEDIA_WORKFLOWS = [StoryMediaWorkflow]`, with `render_static_media` and
 `render_animated_media` from `media_activities(settings)`, the `MEDIA_PROVIDER` renderer (default `story-card`),
-2 concurrent activities and 1 concurrent animation). It exits at
+2 concurrent activities and 1 concurrent animation), and `story-publishing-task-queue`
+(`PUBLISHING_WORKFLOWS = [StoryPublishingWorkflow]`, with `publish_story_to_bluesky` from
+`publishing_activities(bluesky_client, credentials, settings)`, 2 concurrent activities, reusing the
+Bluesky client; no new env vars). It exits at
 startup if `ANTHROPIC_API_KEY`, `BLUESKY_HANDLE` or `BLUESKY_APP_PASSWORD` is missing. Worker
 startup does not start ingestion; `just ingest` does. `DraftChartWorkflow` (in `chart_loop.py`) is
 not registered.

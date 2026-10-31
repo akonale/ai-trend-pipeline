@@ -1,6 +1,6 @@
 # 059: Static story-card renderer
 
-Status: built
+Status: pr-open
 
 > Plan row **058** in `docs/mvp-plan.md` ("Static story-card renderer"), renumbered to **059**
 > because task 057 was already taken and plan row 057 shipped as task 058
@@ -370,3 +370,14 @@ Next: the orchestrator re-approves (row is `no`), then the builder vendors the A
 **builder**: Replaced the stale Inter draft with the Archivo design: vendored ExtraBold/Medium (repo has no releases, so pinned commit 2111276), `card.py` rewritten (marker bands, ink shadow, text policy, 4-line caps), tests and 7 goldens regenerated.
 Preview route, service, activity mapping and registry were already in the tree and kept. Docs: tech.md and README updated.
 Unsure: unicode golden uses Latin/Vietnamese plus emoji only; ran only the touched test files plus ruff and pyright (clean).
+
+**verifier**: Ran `just lint` (ruff check, ruff format --check, pyright: clean) and `just test` (1190 passed) with ANTHROPIC_* unset.
+All checks pass.
+Next: reviewer.
+
+**reviewer**: Approved. Diff matches spec scope; all listed tests exist and the 121 touched-area tests pass. Workflow code is untouched, the renderer is pure and deterministic, and the activity maps MediaContentUnsupported to non-retryable.
+Note: README media paragraph is one long line; fine but could be rewrapped.
+Next: scribe.
+
+**scribe**: Wrapped the README media paragraph and pushed. Opened PR https://github.com/akonale/ai-trend-pipeline/pull/68 against main with `gh pr create`, since the relay uses gh.
+Status set to pr-open. Next: human merges PR #68.

@@ -1,6 +1,6 @@
 # 060: Short story GIF renderer
 
-Status: reviewed
+Status: pr-open
 
 > Plan row **059** in `docs/mvp-plan.md` ("Short engaging GIF renderer"), renumbered to **060**
 > (repo numbers are plan row + 1, see `docs/tasks/058-media-foundation.md`). It builds on the
@@ -297,3 +297,6 @@ All checks pass.
 
 **reviewer**: Approved. Retry-attempt test changes (3 to 2) follow the spec's 2-attempt animated policy; the `_px`/`_scale` Pyright ignores carry explanatory comments.
 Notes: extra `test_nothing_to_animate_raises_content_unsupported` and the `tests/card_cases.py` edit are unlisted but in scope. The workflow encoder-failure test stubs `render_animated` rather than failing the real encoder, which is acceptable.
+
+**scribe**: README GIF paragraph rewrapped (docs only). PR opened against main: https://github.com/akonale/ai-trend-pipeline/pull/69
+Status set to pr-open. Next: human reviews and merges PR #69.

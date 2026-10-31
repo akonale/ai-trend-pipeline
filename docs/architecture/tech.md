@@ -433,14 +433,15 @@ helper does I/O, and the badge is built only from an already-fetched `CandidateP
 | Method | Path | Purpose | Notes |
 | --- | --- | --- | --- |
 | GET | `/health` | Health page | no Temporal call |
-| GET | `/` | Step 1: topic box and chips (GET form to `/new/style`) | `?topic=` and the fourteen option and style params prefill; options come back as hidden carry fields; never validates |
-| GET | `/new/style` | Step 2: per-chart options plus an editable style panel prefilled from the saved style | uses `optional_user`; 303 to `/` without a topic, 400 (step 1 with an error) over 200 characters; never fails on the style read; without a user or when the store is down the page shows a note instead of the "Save as my default" checkbox |
+| GET | `/` | Redirect to the Stories home page | 307 to `/stories`; no template or service call |
+| GET | `/new` | Step 1: topic box and chips (GET form to `/new/style`) | `?topic=` and the fourteen option and style params prefill; options come back as hidden carry fields; never validates |
+| GET | `/new/style` | Step 2: per-chart options plus an editable style panel prefilled from the saved style | uses `optional_user`; 303 to `/new` without a topic, 400 (step 1 with an error) over 200 characters; never fails on the style read; without a user or when the store is down the page shows a note instead of the "Save as my default" checkbox |
 | POST | `/runs` | Validate form, start a run, 303 to `/runs/{id}` | uses `current_user`; 400 bad options, or empty topic or over `MAX_TOPIC_LENGTH` (200 characters), 429 cap, 409 id exists, 503 style store down (read or "Save as my default" write); style overrides and `save_default` are form fields |
 | GET | `/runs/{id}` | Run page | 404 page if unknown |
 | GET | `/runs/{id}/status` | htmx fragment, polled every 2 s while `polling` | |
 | GET | `/runs/{id}/chart.png` | The PNG | 404 unless the file is inside `CHART_OUTPUT_DIR` |
 | POST | `/runs/{id}/decision` | Send approve/reject, 303 to `?sent=1` | uses `current_user`; 400 bad value, 409 not awaiting, 404 unknown |
-| GET | `/stories` | Unified story status ledger | `?filter=` accepts only `all`, `pending`, `writing`, `review`, `ready`, `closed`; `?page=` is an opaque forward cursor carrying the filter and seen candidate ids; 400 friendly notice on an invalid token, 503 full-shell unavailable page; only the last 48 hours are visible |
+| GET | `/stories` | Unified story status ledger, and the default page | `?filter=` accepts only `all`, `pending`, `writing`, `review`, `ready`, `closed`; `?page=` is an opaque forward cursor carrying the filter and seen candidate ids; 400 friendly notice on an invalid token, 503 full-shell unavailable page; only the last 48 hours are visible; pending rows link to `/candidates/{id}`, every other row to `/stories/{id}` |
 | GET | `/stories/rows` | htmx fragment for the results region | 200 for both success and a service failure (so htmx swaps and stops); no filter bar or heading in the response |
 | GET | `/stories/{id}` | Story detail for a candidate or generation workflow | `?decided=` allow-listed notice; 404 missing/unknown, 410 past the 48-hour cutoff, 502 malformed typed result, 503 service outage; one status stamp and either the package with final Approve/Reject, the read-only approved package, or one closed reason |
 | GET | `/stories/{id}/status` | htmx fragment for `#story-detail` | always 200; polls only while pending or writing; typed failures swap in a neutral non-polling line |
@@ -557,7 +558,8 @@ and optional `badge`, `user_email`, `env_tag` "dev" in local mode, `SHELL_TAGLIN
 `base.html`: a skip link, `<header class="site-header">` with brand, `<nav aria-label="Main">`
 ("Stories", "Candidates", "New chart", "Your style", `aria-current="page"` on the current one) and the
 `.user-chip` (only when an email is known), `<main id="main">`, and `<footer class="site-footer">` with
-the tagline and the `.dev-tag`. The brand always links to `/`. A `NavBadge` (`text`, `label`) renders
+the tagline and the `.dev-tag`. Stories is the default page and the first nav item. The brand always
+links to `/stories`. A `NavBadge` (`text`, `label`) renders
 as an `aria-hidden` `.nav-badge` count plus a visually hidden sentence; `pending_nav_badge` derives it
 only from the fetched first inbox page (`N`, or `N+` with a next page). The body is a flex column so
 the footer sticks to the bottom; no JavaScript, the nav wraps on phones. From `48rem` up the shared
@@ -582,7 +584,7 @@ pill is marigold) and `.story-row__detail` (a muted, ellipsized one-liner). Redu
 transitions and the progress animation, plus the candidate row transition.
 
 Flow: `StepperView` / `build_stepper(current, topic_href)` (view_models) shape the four steps
-(Topic, Style, Review, Done); shown on step 1, step 2 and the run page (`RUN_STEP` maps status to
+(Topic, Style, Review, Done); shown on step 1 (`/new`), step 2 and the run page (`RUN_STEP` maps status to
 step 3 or 4). On the run page the stepper sits outside `#run-status`; the `/runs/{id}/status`
 fragment re-emits it with `hx-swap-oob="true"` so it moves from 3 to 4 when polling ends. All flow
 state travels in the query string or form fields (`flow_query`); no session.
@@ -590,8 +592,8 @@ state travels in the query string or form fields (`flow_query`); no session.
 Run page states (flow steps 3 and 4, `build_run_view`): the `<h1>` lives inside `#run-status` so it
 changes as polling moves on (Drafting your chart, Review your chart, Sending your decision, Posting
 to Bluesky, Posted to Bluesky, Rejected, Expired). Polling states show a stage message in the
-`role="status"` block; end states show an outcome card with `Make another chart` (and `View the
-post` when approved). The link comes from `bluesky_post_url`, which accepts only a `did:plc` post
+`role="status"` block; end states show an outcome card with `Make another chart` (to `/new`) and
+`View the post` when approved. The link comes from `bluesky_post_url`, which accepts only a `did:plc` post
 URI of the exact shape our activity makes and builds `https://bsky.app/profile/<did>/post/<rkey>`;
 anything else gives no link and the page says so. The anchor uses `target="_blank"
 rel="noopener noreferrer"` (it is a click-through link, not a loaded asset). There is no `stage`

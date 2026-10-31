@@ -50,23 +50,25 @@ just web     # serves http://127.0.0.1:8000 (health page at /health)
 On a remote dev server, tunnel the port first: `ssh -L 8000:localhost:8000 <host>`. The page needs
 no Temporal connection. htmx 2.0.4 is vendored as-is in `src/ai_trend_pipeline/web/static/`.
 
-Open `/`, type a topic (or click an example chip, which fills the box) and click Next. Step 2
+Open `/new`, type a topic (or click an example chip, which fills the box) and click Next. Step 2
 (`/new/style`) sets the per-post options and shows your saved style; Generate starts the run.
-`/?topic=<text>` prefills the topic. This needs `just dev` running. The run
+`/new?topic=<text>` prefills the topic. `GET /` 307-redirects to `/stories`, the default page. This needs `just dev` running. The run
 page at `/runs/<id>` updates live (htmx polling) and, once the chart is ready, shows the preview,
 caption and critique with Approve and Reject buttons; approving posts to Bluesky, and the
 approved run then links to the post on bsky.app. It also links to
 the run in the Temporal UI, at `TEMPORAL_UI_URL` (default `http://localhost:8233`).
 
-The header lists Stories first, then Candidates, New chart and Your style, with the brand still
-opening `/`. Stories is marked current on `/stories` and its fragments; Candidates is marked current
+The header lists Stories first, then Candidates, New chart and Your style, with the brand and the
+home page pointing at Stories. Stories is marked current on `/stories` and its fragments; Candidates is marked current
 on the inbox and every candidate page. On a successful first inbox page Candidates also shows a
 count badge (`N`, or `N+` when there is another page); older pages and non-inbox pages show no
 badge.
 
-`/stories` is the status ledger for everything detected in the last 48 hours. Each row shows the
+`/stories` is the default page and the status ledger for everything detected in the last 48 hours.
+Each row shows the
 title, source, one of five status stamps (Pending, Writing, Review, Ready, Closed), an optional
-one-line status detail, the updated time and a link to `/stories/<id>`. The six filter pills reset
+one-line status detail, the updated time and a link. Pending rows open `/candidates/<id>` for the
+candidate decision; every other row opens `/stories/<id>`. The six filter pills reset
 pagination; `?page=` is an opaque forward cursor that keeps the filter. It is plain server HTML: no
 JavaScript is needed to filter, page or open a row. While a visible row is Pending, Writing or
 Review the results region refreshes with htmx every 10 seconds; a Ready/Closed-only, empty or

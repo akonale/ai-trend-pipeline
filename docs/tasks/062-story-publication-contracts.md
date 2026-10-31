@@ -1,6 +1,6 @@
 # 062: Story-publication contracts and Bluesky story activity
 
-Status: reviewed
+Status: pr-open (https://github.com/akonale/ai-trend-pipeline/pull/71)
 
 > Plan row **061** in `docs/mvp-plan.md` ("Story-publication contracts and Bluesky activity"),
 > renumbered to **062** (repo numbers are plan row + 1, see `docs/tasks/058-media-foundation.md`).
@@ -246,3 +246,6 @@ All checks pass.
 
 **reviewer**: Approved. Diff matches spec; hash and artifact checks run before any network call; fixed rkey plus getRecord and recheck gives idempotency; errors are fixed-message and `from None`. Pure modules import no I/O; `bluesky.py`, `test_bluesky.py` and `.claude/` are not in the diff.
 Notes: `tests/publishing_fixtures.py` is a small shared helper outside "Files to touch" and is acceptable. Other 4xx from getRecord or uploadBlob map to retryable UnexpectedDestinationResponse. Repo 063 should bound retry attempts.
+
+**scribe**: Added the 063 retry-bound and 064 text-preview carry-forward notes to tech.md. Opened PR #71 (https://github.com/akonale/ai-trend-pipeline/pull/71) against main. Not merged.
+Next: human reviews and merges PR #71. Then repo 063 (`StoryPublishingWorkflow`) starts from this spec.

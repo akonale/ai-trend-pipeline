@@ -240,12 +240,16 @@ _FILTER_PREDICATES: dict[StoryFilter, str] = {
 
 
 def story_visibility_query(filter: StoryFilter, cutoff: datetime) -> str:
-    """One visibility query for both workflow types, with the strict retention cutoff."""
+    """One visibility query for both workflow types, each with its own retention clock.
+
+    Candidate executions predate `StoryCreatedAt`, so they use the built-in `StartTime`;
+    generation executions keep the shared `StoryCreatedAt` attribute.
+    """
     stamp = _as_utc(cutoff).strftime("%Y-%m-%dT%H:%M:%SZ")
     query = (
-        f"(WorkflowType = '{CANDIDATE_WORKFLOW_TYPE}' "
-        f"OR WorkflowType = '{GENERATION_WORKFLOW_TYPE}') "
-        f"AND StoryCreatedAt > '{stamp}'"
+        f"((WorkflowType = '{CANDIDATE_WORKFLOW_TYPE}' AND StartTime > '{stamp}') "
+        f"OR (WorkflowType = '{GENERATION_WORKFLOW_TYPE}' "
+        f"AND StoryCreatedAt > '{stamp}'))"
     )
     predicate = _FILTER_PREDICATES[filter]
     return f"{query} AND {predicate}" if predicate else query

@@ -40,7 +40,11 @@ from ai_trend_pipeline.services.stories import (
 )
 from ai_trend_pipeline.services.temporal_gateway import TemporalStoryStatusGateway
 from ai_trend_pipeline.sources import SourceName
-from ai_trend_pipeline.story_candidate import CandidateStatus
+from ai_trend_pipeline.story_candidate import (
+    CANDIDATE_SOURCE_ATTRIBUTE,
+    CANDIDATE_STATUS_ATTRIBUTE,
+    CandidateStatus,
+)
 from ai_trend_pipeline.story_status import STORY_UI_RETENTION, PrimaryStoryStatus
 from ai_trend_pipeline.story_visibility import (
     STORY_CANDIDATE_ID_ATTRIBUTE,
@@ -279,11 +283,14 @@ def test_filters_match_after_collapse() -> None:
     ] == [ready]
 
 
-def test_visibility_query_covers_all_filters_and_the_cutoff() -> None:
+def test_visibility_query_uses_start_time_for_candidates_and_story_created_at_for_generations() -> (
+    None
+):
     cutoff = datetime(2026, 10, 28, 12, 0, tzinfo=UTC)
     base = (
-        "(WorkflowType = 'StoryCandidateWorkflow' OR WorkflowType = 'StoryGenerationWorkflow') "
-        "AND StoryCreatedAt > '2026-10-28T12:00:00Z'"
+        "((WorkflowType = 'StoryCandidateWorkflow' AND StartTime > '2026-10-28T12:00:00Z') "
+        "OR (WorkflowType = 'StoryGenerationWorkflow' "
+        "AND StoryCreatedAt > '2026-10-28T12:00:00Z'))"
     )
     assert story_visibility_query(StoryFilter.ALL, cutoff) == base
     assert story_visibility_query(StoryFilter.PENDING, cutoff) == (
@@ -362,31 +369,42 @@ class FakeExecution:
         workflow_type: str,
         workflow_id: str,
         *,
-        candidate_id: str,
+        candidate_id: str | None,
         status: str,
-        created_at: datetime,
+        created_at: datetime | None = None,
+        start_time: datetime | None = None,
         updated_at: datetime | None = None,
         title: str = "A story",
         source: str = "hn",
         closed: bool = False,
+        candidate_only: bool = False,
+        memo: dict[str, object] | None = None,
     ) -> None:
         self.workflow_type = workflow_type
         self.id = workflow_id
         self.status = (
             WorkflowExecutionStatus.COMPLETED if closed else WorkflowExecutionStatus.RUNNING
         )
-        self.typed_search_attributes = {
-            STORY_STATUS_ATTRIBUTE: status,
-            STORY_TITLE_ATTRIBUTE: title,
-            STORY_SOURCE_ATTRIBUTE: source,
-            STORY_CANDIDATE_ID_ATTRIBUTE: candidate_id,
-            STORY_CREATED_AT_ATTRIBUTE: created_at,
-            STORY_UPDATED_AT_ATTRIBUTE: updated_at,
-            STORY_STATUS_DETAIL_ATTRIBUTE: None,
-        }
+        self.start_time = start_time if start_time is not None else created_at
+        if candidate_only:
+            self.typed_search_attributes = {
+                CANDIDATE_STATUS_ATTRIBUTE: status,
+                CANDIDATE_SOURCE_ATTRIBUTE: source,
+            }
+        else:
+            self.typed_search_attributes = {
+                STORY_STATUS_ATTRIBUTE: status,
+                STORY_TITLE_ATTRIBUTE: title,
+                STORY_SOURCE_ATTRIBUTE: source,
+                STORY_CANDIDATE_ID_ATTRIBUTE: candidate_id,
+                STORY_CREATED_AT_ATTRIBUTE: created_at,
+                STORY_UPDATED_AT_ATTRIBUTE: updated_at,
+                STORY_STATUS_DETAIL_ATTRIBUTE: None,
+            }
+        self._memo = memo or {}
 
     async def memo(self) -> dict[str, object]:
-        return {}
+        return self._memo
 
 
 class FakeIterator:
@@ -437,6 +455,7 @@ async def test_pagination_does_not_repeat_rows_across_pages() -> None:
         candidate_id="cand-x",
         status="approved",
         created_at=NOW - timedelta(hours=2),
+        start_time=NOW - timedelta(hours=2),
     )
     story_x = FakeExecution(
         GENERATION_WORKFLOW_TYPE,
@@ -452,6 +471,7 @@ async def test_pagination_does_not_repeat_rows_across_pages() -> None:
         candidate_id="cand-y",
         status="awaiting_review",
         created_at=NOW - timedelta(hours=1),
+        start_time=NOW - timedelta(hours=1),
     )
     gateway, client = _gateway([[candidate_x], [story_x, candidate_y]])
 
@@ -484,6 +504,7 @@ async def test_pagination_recovers_earlier_pages_after_overflow() -> None:
         candidate_id="cand-new",
         status="awaiting_review",
         created_at=NOW - timedelta(hours=1),
+        start_time=NOW - timedelta(hours=1),
     )
     gateway, _ = _gateway([[review], [fresh]])
 
@@ -505,6 +526,187 @@ async def test_pagination_recovers_earlier_pages_after_overflow() -> None:
 
 
 @pytest.mark.asyncio
+async def test_pre_053_candidate_without_story_created_at_is_visible_as_pending() -> None:
+    execution = FakeExecution(
+        CANDIDATE_WORKFLOW_TYPE,
+        "candidate-v1-pre053",
+        candidate_id=None,
+        status="awaiting_review",
+        created_at=None,
+        start_time=IN_WINDOW,
+        title="",
+        candidate_only=True,
+        memo={"candidate_title": "Detected before 053"},
+    )
+    gateway, _ = _gateway([[execution]])
+
+    page = await gateway.list_stories(ListStoriesRequest(), now=NOW, cutoff=CUTOFF)
+
+    assert len(page.stories) == 1
+    row = page.stories[0]
+    assert row.candidate_id == "candidate-v1-pre053"
+    assert row.detail_id == "candidate-v1-pre053"
+    assert row.status is PrimaryStoryStatus.PENDING
+    assert row.title == "Detected before 053"
+    assert row.created_at == IN_WINDOW
+
+    pending = await gateway.list_stories(
+        ListStoriesRequest(filter=StoryFilter.PENDING), now=NOW, cutoff=CUTOFF
+    )
+    assert [item.candidate_id for item in pending.stories] == ["candidate-v1-pre053"]
+
+
+@pytest.mark.asyncio
+async def test_pre_053_candidate_boundary_is_strict_on_start_time() -> None:
+    visible = NOW - timedelta(hours=47, minutes=59, seconds=59)
+    hidden = NOW - timedelta(hours=48)
+    gateway, _ = _gateway(
+        [
+            [
+                FakeExecution(
+                    CANDIDATE_WORKFLOW_TYPE,
+                    "candidate-v1-visible",
+                    candidate_id=None,
+                    status="awaiting_review",
+                    created_at=None,
+                    start_time=visible,
+                    candidate_only=True,
+                ),
+                FakeExecution(
+                    CANDIDATE_WORKFLOW_TYPE,
+                    "candidate-v1-hidden",
+                    candidate_id=None,
+                    status="awaiting_review",
+                    created_at=None,
+                    start_time=hidden,
+                    candidate_only=True,
+                ),
+            ]
+        ]
+    )
+
+    page = await gateway.list_stories(ListStoriesRequest(), now=NOW, cutoff=CUTOFF)
+
+    assert [row.candidate_id for row in page.stories] == ["candidate-v1-visible"]
+    assert page.stories[0].created_at == visible
+
+
+@pytest.mark.asyncio
+async def test_generation_rows_still_use_story_created_at_only() -> None:
+    gateway, _ = _gateway(
+        [
+            [
+                FakeExecution(
+                    GENERATION_WORKFLOW_TYPE,
+                    "story-v1-missing",
+                    candidate_id="cand-missing",
+                    status="review",
+                    created_at=None,
+                    start_time=IN_WINDOW,
+                ),
+                FakeExecution(
+                    GENERATION_WORKFLOW_TYPE,
+                    "story-v1-retained",
+                    candidate_id="cand-retained",
+                    status="review",
+                    created_at=IN_WINDOW,
+                    start_time=NOW - timedelta(hours=49),
+                ),
+                FakeExecution(
+                    GENERATION_WORKFLOW_TYPE,
+                    "story-v1-boundary",
+                    candidate_id="cand-boundary",
+                    status="review",
+                    created_at=NOW - timedelta(hours=48),
+                    start_time=IN_WINDOW,
+                ),
+            ]
+        ]
+    )
+
+    page = await gateway.list_stories(ListStoriesRequest(), now=NOW, cutoff=CUTOFF)
+
+    assert [row.candidate_id for row in page.stories] == ["cand-retained"]
+    assert page.stories[0].created_at == IN_WINDOW
+
+
+@pytest.mark.asyncio
+async def test_pre_053_candidate_and_its_generation_row_collapse_to_one_row() -> None:
+    candidate = FakeExecution(
+        CANDIDATE_WORKFLOW_TYPE,
+        "candidate-v1-collapse",
+        candidate_id=None,
+        status="awaiting_review",
+        created_at=None,
+        start_time=NOW - timedelta(hours=2),
+        title="",
+        candidate_only=True,
+        memo={"candidate_title": "Collapsed title"},
+    )
+    generation = FakeExecution(
+        GENERATION_WORKFLOW_TYPE,
+        "story-v1-collapse",
+        candidate_id="candidate-v1-collapse",
+        status="review",
+        created_at=NOW - timedelta(hours=1),
+    )
+    gateway, _ = _gateway([[candidate, generation]])
+
+    page = await gateway.list_stories(ListStoriesRequest(), now=NOW, cutoff=CUTOFF)
+
+    assert len(page.stories) == 1
+    assert page.stories[0].detail_id == "story-v1-collapse"
+    assert page.stories[0].status is PrimaryStoryStatus.REVIEW
+
+
+@pytest.mark.asyncio
+async def test_mixed_rows_keep_pagination_dedup_and_overflow_tokens() -> None:
+    generation = FakeExecution(
+        GENERATION_WORKFLOW_TYPE,
+        "story-v1-old",
+        candidate_id="candidate-v1-old",
+        status="review",
+        created_at=NOW - timedelta(hours=46),
+        start_time=NOW - timedelta(hours=47),
+    )
+    pre_053 = FakeExecution(
+        CANDIDATE_WORKFLOW_TYPE,
+        "candidate-v1-old",
+        candidate_id="cand-old",
+        status="approved",
+        created_at=None,
+        start_time=NOW - timedelta(hours=47, minutes=30),
+        candidate_only=True,
+    )
+    fresh = FakeExecution(
+        CANDIDATE_WORKFLOW_TYPE,
+        "candidate-v1-new",
+        candidate_id="cand-new",
+        status="awaiting_review",
+        created_at=None,
+        start_time=NOW - timedelta(hours=1),
+        candidate_only=True,
+    )
+    gateway, client = _gateway([[generation], [pre_053, fresh]])
+
+    first = await gateway.list_stories(ListStoriesRequest(limit=1), now=NOW, cutoff=CUTOFF)
+    assert [row.candidate_id for row in first.stories] == ["candidate-v1-new"]
+    assert first.next_token is not None
+    token = decode_story_page_token(first.next_token, filter=StoryFilter.ALL)
+    assert token.raw is None
+    assert token.seen == ["candidate-v1-new"]
+
+    second = await gateway.list_stories(
+        ListStoriesRequest(limit=1, page_token=first.next_token), now=NOW, cutoff=CUTOFF
+    )
+    assert [row.candidate_id for row in second.stories] == ["candidate-v1-old"]
+    assert second.stories[0].detail_id == "story-v1-old"
+    assert second.stories[0].status is PrimaryStoryStatus.REVIEW
+    assert second.next_token is None
+    assert all("StartTime >" in query and "StoryCreatedAt >" in query for query in client.queries)
+
+
+@pytest.mark.asyncio
 async def test_closed_filter_includes_generation_start_failures() -> None:
     failed = FakeExecution(
         CANDIDATE_WORKFLOW_TYPE,
@@ -512,6 +714,7 @@ async def test_closed_filter_includes_generation_start_failures() -> None:
         candidate_id="cand-failed",
         status="approved",
         created_at=NOW - timedelta(hours=3),
+        start_time=NOW - timedelta(hours=3),
         updated_at=NOW - timedelta(minutes=2),
         closed=True,
     )
@@ -521,6 +724,7 @@ async def test_closed_filter_includes_generation_start_failures() -> None:
         candidate_id="cand-starting",
         status="approved",
         created_at=NOW - timedelta(hours=2),
+        start_time=NOW - timedelta(hours=2),
         updated_at=NOW - timedelta(seconds=10),
         closed=False,
     )

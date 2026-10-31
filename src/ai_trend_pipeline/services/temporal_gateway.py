@@ -189,10 +189,11 @@ def _query_stamp(moment: datetime) -> str:
 
 
 def pending_candidates_query(cutoff: datetime) -> str:
+    """Pre-053 candidates have no `StoryCreatedAt`; their start time is the detection time."""
     return (
         f"WorkflowType = '{CANDIDATE_WORKFLOW_TYPE}' AND "
         f"CandidateStatus = '{CandidateStatus.AWAITING_REVIEW.value}' AND "
-        f"StoryCreatedAt > '{_query_stamp(cutoff)}'"
+        f"StartTime > '{_query_stamp(cutoff)}'"
     )
 
 
@@ -273,6 +274,10 @@ class TemporalCandidateGateway:
             rows = iterator.current_page or []
             summaries: list[CandidateSummary] = []
             for workflow_execution in rows:
+                # The query stamp is truncated to whole seconds; re-apply the strict
+                # boundary so a candidate exactly 48 hours old is never listed.
+                if not retained(workflow_execution.start_time, cutoff):
+                    continue
                 summary = await _candidate_summary(workflow_execution)
                 if summary is not None:
                     summaries.append(summary)
@@ -418,12 +423,18 @@ class TemporalStoryStatusGateway:
         source = source_value if isinstance(source_value, str) else ""
         status = status_value if isinstance(status_value, str) else ""
         candidate_id = candidate_value if isinstance(candidate_value, str) else None
-        created_at = _datetime_value(created_value)
         updated_at = _datetime_value(updated_value)
         detail = detail_value if isinstance(detail_value, str) else None
 
-        # Pre-053 candidate rows carry only the candidate keys; read memos only when the
-        # shared attribute is absent.
+        # Candidate executions keep the original detection time in StartTime; pre-053 rows
+        # never received StoryCreatedAt, and generation rows must not fall back to StartTime.
+        if execution.workflow_type == CANDIDATE_WORKFLOW_TYPE:
+            created_at = _datetime_value(execution.start_time)
+        else:
+            created_at = _datetime_value(created_value)
+
+        # Pre-053 candidate rows carry only the candidate keys; read the candidate memo only
+        # when the shared title is absent.
         if not source:
             source_fallback = attributes.get(CANDIDATE_SOURCE_ATTRIBUTE)
             if isinstance(source_fallback, str):
@@ -432,14 +443,11 @@ class TemporalStoryStatusGateway:
             status_fallback = attributes.get(CANDIDATE_STATUS_ATTRIBUTE)
             if isinstance(status_fallback, str):
                 status = status_fallback
-        if not title or created_at is None:
+        if not title:
             memo = await execution.memo()
-            if not title:
-                memo_title = memo.get("candidate_title")
-                if isinstance(memo_title, str):
-                    title = memo_title
-            if created_at is None:
-                created_at = _datetime_value(memo.get("candidate_observed_at"))
+            memo_title = memo.get("candidate_title")
+            if isinstance(memo_title, str):
+                title = memo_title
         if candidate_id is None and execution.workflow_type == CANDIDATE_WORKFLOW_TYPE:
             candidate_id = execution.id
 

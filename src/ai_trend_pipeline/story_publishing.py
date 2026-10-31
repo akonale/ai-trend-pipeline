@@ -205,6 +205,7 @@ class StoryPublishingWorkflow:
                 "publication": publication,
             }
         )
+        # Temporal types upsert_search_attributes only partly; strict Pyright flags it as unknown.
         workflow.upsert_search_attributes(  # pyright: ignore[reportUnknownMemberType]
             story_status_updates(status.value, now, detail)
         )

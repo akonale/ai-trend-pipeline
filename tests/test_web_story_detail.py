@@ -899,3 +899,43 @@ def test_story_media_css_is_responsive_and_reduced_motion_aware() -> None:
     )
     assert "px;" not in re.sub(r"var\(--[a-z-]+\)", "", block).replace("1px", "")
     assert not re.search(r"(?<!max-)width:\s*\d+(px|rem)", block)
+
+
+def test_post_proof_replaces_post_text_in_review_and_ready() -> None:
+    for status in (PrimaryStoryStatus.REVIEW, PrimaryStoryStatus.READY):
+        text = html.unescape(page(media_detail(None, status=status)))
+        assert "Post text" not in text
+        assert 'class="story-post-text"' not in text
+        assert text.count('<section class="post-proof">') == 1
+        assert "<h2>Bluesky post</h2>" in text
+        assert "Rates held steady again.\n\nSource: " in text
+        assert '<span class="post-proof__link">example.com</span>' in text
+        assert re.search(r"\d+ of 300 characters", text)
+        assert text.index("The figure is provisional.") < text.index("post-proof")
+
+
+def test_over_limit_proof_shows_problem_in_review() -> None:
+    package = make_package(post_text="x" * 290)
+    detail = make_detail(package=package, content_hash=HASH)
+    text = html.unescape(page(detail))
+    assert "post-proof--over" in text
+    assert "The post text is longer than Bluesky allows." in text
+    assert "Reject this story: it can't be published as written." in text
+    assert "309 of 300 characters" in text or re.search(r"3\d\d of 300 characters", text)
+    ready = make_detail(
+        package=package,
+        content_hash=HASH,
+        status=PrimaryStoryStatus.READY,
+        internal_status="ready",
+    )
+    ready_text = html.unescape(page(ready))
+    assert "It can't be published as approved." in ready_text
+    assert "Publish to Bluesky" not in ready_text
+    assert "<button" not in ready_text
+
+
+def test_gif_story_keeps_reduced_motion_poster_with_proof() -> None:
+    text = page(media_detail(MediaOutcome.GIF, status=PrimaryStoryStatus.READY))
+    assert "(prefers-reduced-motion: no-preference)" in text
+    assert "<picture>" in text and "post-proof" in text
+    assert "Reduced motion is on, so the still card is shown." in text

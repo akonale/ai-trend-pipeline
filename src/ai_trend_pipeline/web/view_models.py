@@ -34,7 +34,9 @@ from ai_trend_pipeline.story_candidate import CandidateReviewState, candidate_id
 from ai_trend_pipeline.story_drafting.models import StoryPackage
 from ai_trend_pipeline.story_publishing import (
     FAILURE_DETAILS,
+    PUBLISHED_DETAIL,
     PUBLISHING_CHECKING_DETAIL,
+    PUBLISHING_POSTING_DETAIL,
     STOPPED_DETAIL,
     PublicationStatus,
     StoryPublishingState,
@@ -1193,9 +1195,7 @@ def build_story_list_view(
         older_href=older_href,
         newest_href=base if page_token is not None else None,
         polling=bool(rows)
-        and any(
-            row.status in _ACTIVE_STORY_STATUSES or row.publishing for row in page.stories
-        ),
+        and any(row.status in _ACTIVE_STORY_STATUSES or row.publishing for row in page.stories),
         polling_href=_story_rows_href(filter, page_token),
     )
 
@@ -1536,6 +1536,31 @@ class PublishPanelView(BaseModel):
     requested_by: str = ""
 
 
+_FIXED_PUBLICATION_DETAILS = frozenset(
+    {
+        PUBLISHING_CHECKING_DETAIL,
+        PUBLISHING_POSTING_DETAIL,
+        PUBLISHED_DETAIL,
+        STOPPED_DETAIL,
+        *FAILURE_DETAILS.values(),
+    }
+)
+
+
+def publication_detail(publication: StoryPublishingState) -> str:
+    """One fixed sentence for a publication. Anything that is not known copy is dropped."""
+    detail = bounded_detail(publication.status_detail)
+    if detail is not None and detail in _FIXED_PUBLICATION_DETAILS:
+        return detail
+    if publication.error_code is not None:
+        return FAILURE_DETAILS[publication.error_code]
+    if publication.status is PublicationStatus.PUBLISHED:
+        return PUBLISHED_DETAIL
+    if publication.status is PublicationStatus.FAILED:
+        return STOPPED_DETAIL
+    return PUBLISHING_CHECKING_DETAIL
+
+
 def _failure_hint(publication: StoryPublishingState) -> tuple[str, bool]:
     code = publication.error_code
     if code is None:
@@ -1576,19 +1601,14 @@ def build_publish_panel(
         return PublishPanelView(
             mode="publishing",
             heading=PUBLISH_PUBLISHING_HEADING,
-            body=bounded_detail(publication.status_detail) or PUBLISHING_CHECKING_DETAIL,
+            body=publication_detail(publication),
             button_label=PUBLISH_BUSY_LABEL,
             button_disabled=True,
             requested_by=requested_by,
         )
     if publication is not None:
-        code = publication.error_code
         hint, retry = _failure_hint(publication)
-        body = (
-            FAILURE_DETAILS[code]
-            if code is not None
-            else bounded_detail(publication.status_detail) or STOPPED_DETAIL
-        )
+        body = publication_detail(publication)
         return PublishPanelView(
             mode="failed",
             heading=PUBLISH_FAILED_HEADING,
@@ -1672,7 +1692,7 @@ def _story_progress(detail: StoryDetail) -> str:
     if detail.status is PrimaryStoryStatus.READY:
         publication = detail.publication
         if publication is not None:
-            return bounded_detail(publication.status_detail) or READY_PROGRESS
+            return publication_detail(publication)
         return READY_PROGRESS
     if detail.status is PrimaryStoryStatus.PUBLISHED:
         return PUBLISHED_PROGRESS

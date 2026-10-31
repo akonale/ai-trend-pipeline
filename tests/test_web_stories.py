@@ -1,6 +1,7 @@
 """Stories route, fragment and view-model tests with a fake service; no Temporal."""
 
 import html
+import re
 from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
@@ -438,3 +439,31 @@ def test_nav_marks_stories_current_and_candidates_on_the_inbox() -> None:
 
     text = client_for(FakeStoryService(page())).get("/stories").text
     assert 'aria-current="page">Stories' in text
+
+
+def test_filter_bar_has_published_between_ready_and_closed() -> None:
+    text = client_for(FakeStoryService(page(story()))).get("/stories").text
+    labels = re.findall(r'<a class="status-filter[^"]*" href="[^"]*"[^>]*>([^<]+)</a>', text)
+    assert labels == ["All", "Pending", "Writing", "Review", "Ready", "Published", "Closed"]
+    assert 'href="/stories?filter=published"' in text
+
+
+def test_published_row_badge_and_link_to_generation_id() -> None:
+    row = story(status=PrimaryStoryStatus.PUBLISHED, detail="Published to Bluesky.")
+    text = client_for(FakeStoryService(page(row))).get("/stories?filter=published").text
+    assert 'class="badge badge--published">Published</span>' in text
+    assert 'href="/stories/story-v1-a"' in text
+    assert "publish-v1" not in text
+    assert "publish_failed" not in text
+    assert "hx-get" not in text
+
+
+def test_list_polls_while_a_row_is_publishing_even_in_ready_filter() -> None:
+    publishing = story(status=PrimaryStoryStatus.READY, detail="Posting to Bluesky.").model_copy(
+        update={"publishing": True}
+    )
+    text = client_for(FakeStoryService(page(publishing))).get("/stories?filter=ready").text
+    assert 'hx-get="/stories/rows?filter=ready"' in text
+    assert 'class="badge badge--success">Ready</span>' in text
+    assert "Posting to Bluesky." in text
+    assert "badge--publishing" not in text

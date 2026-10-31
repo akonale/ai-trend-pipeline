@@ -1,6 +1,6 @@
 # 057: Pre-053 candidate visibility fallback
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -170,3 +170,7 @@ then the builder writes the regression tests first.
 visibility query and the row mapping; `pending_candidates_query` uses `StartTime` plus an in-code
 boundary guard. Added the six regression tests, updated exact-query/pagination assertions and both
 docs. The parenthesized OR works on `start_local`, so no split query was needed. Next: verifier.
+
+**verifier**: `just lint` clean; `just test` 1008 passed with the harness `ANTHROPIC_*` base-url vars unset (unset run was needed: with them set, 73 LLM tests failed with `anthropic.APIConnectionError`). Next: reviewer.
+
+**reviewer**: Approved. Spec met: candidate rows use `StartTime` (query + mapping, plus the in-code boundary guard), generation rows keep `StoryCreatedAt`; exact prod case and strict boundary covered; de-dup/pagination/overflow tests intact. Scope minimal, lint + targeted tests green. Next: scribe.

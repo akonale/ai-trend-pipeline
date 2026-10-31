@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import cast
 
 import pytest
@@ -38,6 +38,7 @@ from ai_trend_pipeline.story_candidate import (
     candidate_id_for,
 )
 from ai_trend_pipeline.story_status import STORY_UI_RETENTION
+from ai_trend_pipeline.story_visibility import STORY_CREATED_AT_ATTRIBUTE
 from ai_trend_pipeline.temporal_client import ensure_candidate_search_attributes
 
 OBSERVED = datetime.now(UTC)
@@ -216,14 +217,16 @@ async def test_decide_maps_missing_and_closed_and_returns_result() -> None:
     assert result.decided_by == "alice"
 
 
-def test_pending_query_includes_cutoff() -> None:
+def test_pending_query_uses_start_time_cutoff() -> None:
     cutoff = datetime(2026, 10, 28, 12, 0, tzinfo=UTC)
     assert CANDIDATE_TASK_QUEUE == "story-candidate-task-queue"
-    assert pending_candidates_query(cutoff) == (
+    query = pending_candidates_query(cutoff)
+    assert query == (
         "WorkflowType = 'StoryCandidateWorkflow' AND "
         "CandidateStatus = 'awaiting_review' AND "
-        "StoryCreatedAt > '2026-10-28T12:00:00Z'"
+        "StartTime > '2026-10-28T12:00:00Z'"
     )
+    assert "StoryCreatedAt" not in query
 
 
 class EmptyVisibilityIterator:
@@ -257,6 +260,106 @@ async def test_list_pending_passes_the_cutoff() -> None:
     assert page.candidates == []
     assert client.queries == [pending_candidates_query(cutoff)]
     assert "2026-10-28T12:00:00Z" in client.queries[0]
+    assert "StartTime >" in client.queries[0]
+    assert "StoryCreatedAt" not in client.queries[0]
+
+
+class FakeVisibilityExecution:
+    def __init__(
+        self,
+        workflow_id: str,
+        *,
+        start_time: datetime,
+        attributes: dict[object, object],
+        memo: dict[str, object] | None = None,
+    ) -> None:
+        self.id = workflow_id
+        self.workflow_type = "StoryCandidateWorkflow"
+        self.start_time = start_time
+        self.typed_search_attributes = attributes
+        self._memo = memo or {}
+
+    async def memo(self) -> dict[str, object]:
+        return self._memo
+
+
+class FixedVisibilityIterator:
+    def __init__(self, page: list[FakeVisibilityExecution]) -> None:
+        self.current_page = page
+        self.next_page_token: bytes | None = None
+
+    async def fetch_next_page(self) -> None:
+        return None
+
+
+class FixedVisibilityClient:
+    def __init__(self, page: list[FakeVisibilityExecution]) -> None:
+        self.page = page
+        self.queries: list[str] = []
+
+    def list_workflows(
+        self, query: str, *, page_size: int | None = None, next_page_token: bytes | None = None
+    ) -> FixedVisibilityIterator:
+        _ = (page_size, next_page_token)
+        self.queries.append(query)
+        return FixedVisibilityIterator(self.page)
+
+
+def _candidate_attributes() -> dict[object, object]:
+    return {
+        CANDIDATE_STATUS_ATTRIBUTE: "awaiting_review",
+        CANDIDATE_SOURCE_ATTRIBUTE: "hn",
+    }
+
+
+@pytest.mark.asyncio
+async def test_list_pending_includes_pre_053_candidate_and_excludes_the_boundary() -> None:
+    now = datetime.now(UTC)
+    cutoff = now - STORY_UI_RETENTION
+    visible = FakeVisibilityExecution(
+        "candidate-v1-visible",
+        start_time=now - timedelta(hours=1),
+        attributes=_candidate_attributes(),
+        memo={"candidate_title": "Detected before 053"},
+    )
+    boundary = FakeVisibilityExecution(
+        "candidate-v1-boundary",
+        start_time=now - timedelta(hours=48),
+        attributes=_candidate_attributes(),
+    )
+    client = FixedVisibilityClient([visible, boundary])
+    gateway = TemporalCandidateGateway(cast(Client, client))
+
+    page = await gateway.list_pending(ListCandidatesRequest(limit=100), cutoff=cutoff)
+
+    assert [candidate.candidate_id for candidate in page.candidates] == ["candidate-v1-visible"]
+    assert len(page.candidates) == 1
+    assert page.next_token is None
+    assert client.queries == [pending_candidates_query(cutoff)]
+
+
+@pytest.mark.asyncio
+async def test_list_pending_uses_start_time_not_story_created_at() -> None:
+    now = datetime.now(UTC)
+    cutoff = now - STORY_UI_RETENTION
+    only_start = FakeVisibilityExecution(
+        "candidate-v1-only-start",
+        start_time=now - timedelta(hours=1),
+        attributes=_candidate_attributes(),
+    )
+    old_start_attributes = _candidate_attributes()
+    old_start_attributes[STORY_CREATED_AT_ATTRIBUTE] = now - timedelta(hours=1)
+    old_start = FakeVisibilityExecution(
+        "candidate-v1-old-start",
+        start_time=now - timedelta(hours=48),
+        attributes=old_start_attributes,
+    )
+    client = FixedVisibilityClient([only_start, old_start])
+    gateway = TemporalCandidateGateway(cast(Client, client))
+
+    page = await gateway.list_pending(ListCandidatesRequest(limit=100), cutoff=cutoff)
+
+    assert [candidate.candidate_id for candidate in page.candidates] == ["candidate-v1-only-start"]
 
 
 class FailingVisibilityClient:

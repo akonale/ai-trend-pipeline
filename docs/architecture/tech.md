@@ -476,17 +476,21 @@ while Postgres is down.
   with `id_conflict_policy=USE_EXISTING` and `id_reuse_policy=REJECT_DUPLICATE`, set both search
   attributes and the memo keys `candidate_title`, `candidate_proposed_angle`,
   `candidate_observed_at`; `list_pending(request, *, cutoff)` runs the visibility query with opaque
-  URL-safe base64 page tokens (default size 20, max 100) and `StoryCreatedAt > cutoff`. Any
-  `RPCError` from visibility becomes `CandidateUnavailable`.
+  URL-safe base64 page tokens (default size 20, max 100) and `StartTime > cutoff` (the original
+  detection time, present on pre-053 executions), re-applying the strict boundary after the fetch.
+  Any `RPCError` from visibility becomes `CandidateUnavailable`.
 - `StoryStatusService` (`services/stories.py`): `list_stories(request, *, now)` requires an aware
   UTC clock, computes `cutoff = now - STORY_UI_RETENTION` (48 hours) once and calls a
   `StoryStatusGateway`. Pure helpers map the six UI filters, encode/decode the base64url JSON page
-  token (`v`, `filter`, `raw`, `seen`), build the single visibility query for both workflow types,
-  apply the strict `StoryCreatedAt > cutoff` window, de-duplicate by `StoryCandidateId` preferring
-  the generation workflow (including the generation-start-failure mapping), and sort newest first.
+  token (`v`, `filter`, `raw`, `seen`), build the single visibility query for both workflow types
+  with one retention branch each (candidate executions: `StartTime > cutoff`; generation
+  executions: `StoryCreatedAt > cutoff`), apply the strict window, de-duplicate by
+  `StoryCandidateId` preferring the generation workflow (including the generation-start-failure
+  mapping), and sort newest first.
   Errors: `InvalidStoryPageToken`, `StoryStatusUnavailable`.
 - `TemporalStoryStatusGateway` (`services/temporal_gateway.py`): scans up to five raw visibility
-  pages per request, maps the seven shared `Story*` attributes (falling back to candidate memos and
+  pages per request, maps the seven shared `Story*` attributes (candidate rows take `created_at`
+  from `StartTime`, generation rows from `StoryCreatedAt`; falling back to candidate memos and
   `CandidateSource`/`CandidateStatus` only for pre-053 rows), re-applies the cutoff and the filter
   after collapse, and emits a forward token without any per-row handle or query. Any `RPCError`
   from visibility becomes `StoryStatusUnavailable`.

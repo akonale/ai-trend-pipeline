@@ -70,6 +70,23 @@ def _media_for(
     return PublicationMedia(artifact=artifact, alt_text=artifact.alt_text)
 
 
+def formatted_post(
+    package: StoryPackage, capabilities: DestinationCapabilities
+) -> tuple[str, list[LinkFacet], str | None]:
+    """The post text, its link facets and the link anchor text (or None). Pure, no checks."""
+    body = package.post_text if package.post_text is not None else package.headline
+    if capabilities.supports_link_facets and package.source_links:
+        link = package.source_links[0]
+        anchor = _anchor(str(link.url))
+        prefix = f"{body}\n\nSource: "
+        start = len(prefix.encode("utf-8"))
+        facet = LinkFacet(
+            byte_start=start, byte_end=start + len(anchor.encode("utf-8")), uri=link.url
+        )
+        return prefix + anchor, [facet], anchor
+    return body, [], None
+
+
 def format_publication(
     package: StoryPackage, content_hash: str, capabilities: DestinationCapabilities
 ) -> PublicationPackage:
@@ -82,18 +99,7 @@ def format_publication(
     ):
         raise PublicationRejected(PublicationErrorCode.MANIFEST_MISMATCH)
 
-    body = package.post_text if package.post_text is not None else package.headline
-    text = body
-    facets: list[LinkFacet] = []
-    if capabilities.supports_link_facets and package.source_links:
-        link = package.source_links[0]
-        anchor = _anchor(str(link.url))
-        prefix = f"{body}\n\nSource: "
-        text = prefix + anchor
-        start = len(prefix.encode("utf-8"))
-        facets.append(
-            LinkFacet(byte_start=start, byte_end=start + len(anchor.encode("utf-8")), uri=link.url)
-        )
+    text, facets, _ = formatted_post(package, capabilities)
     if len(text) > capabilities.max_text_chars or len(text.encode("utf-8")) > (
         capabilities.max_text_bytes
     ):

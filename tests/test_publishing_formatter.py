@@ -144,3 +144,15 @@ def test_output_is_deterministic() -> None:
     first = format_publication(package, digest, CAPS)
     assert first == format_publication(package, digest, CAPS)
     assert first.model_dump_json() == format_publication(package, digest, CAPS).model_dump_json()
+
+
+def test_formatted_post_is_used_by_format_publication_unchanged() -> None:
+    from ai_trend_pipeline.publishing.formatter import formatted_post
+
+    package, digest = make_approved_package(None)
+    text, facets, anchor = formatted_post(package, CAPS)
+    out = format_publication(package, digest, CAPS)
+    assert (text, facets) == (out.text, out.facets)
+    assert anchor == "news.example"
+    no_facets = CAPS.model_copy(update={"supports_link_facets": False})
+    assert formatted_post(package, no_facets) == (package.post_text, [], None)

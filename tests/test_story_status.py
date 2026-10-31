@@ -52,3 +52,11 @@ def test_media_maps_to_writing() -> None:
 
     assert primary_story_status("media") is PrimaryStoryStatus.WRITING
     assert "'media'" in _FILTER_PREDICATES[StoryFilter.WRITING]
+
+
+def test_published_maps_to_published_and_internal_publish_states_map_to_ready() -> None:
+    assert primary_story_status("published") is PrimaryStoryStatus.PUBLISHED
+    assert primary_story_status("publishing") is PrimaryStoryStatus.READY
+    assert primary_story_status("publish_failed") is PrimaryStoryStatus.READY
+    assert primary_story_status("ready") is PrimaryStoryStatus.READY
+    assert len(PrimaryStoryStatus) == 6

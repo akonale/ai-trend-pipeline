@@ -1,4 +1,4 @@
-"""Pure mapping from internal candidate/story states to the five UI statuses.
+"""Pure mapping from internal candidate/story states to the six UI statuses.
 
 Standard library only so workflows, services and web code can all import it.
 """
@@ -26,6 +26,7 @@ class PrimaryStoryStatus(StrEnum):
     WRITING = "writing"
     REVIEW = "review"
     READY = "ready"
+    PUBLISHED = "published"
     CLOSED = "closed"
 
 
@@ -37,6 +38,8 @@ def primary_story_status(value: str) -> PrimaryStoryStatus:
         return PrimaryStoryStatus.WRITING
     if value == "review":
         return PrimaryStoryStatus.REVIEW
-    if value == "ready":
+    if value in ("ready", "publishing", "publish_failed"):
         return PrimaryStoryStatus.READY
+    if value == "published":
+        return PrimaryStoryStatus.PUBLISHED
     return PrimaryStoryStatus.CLOSED

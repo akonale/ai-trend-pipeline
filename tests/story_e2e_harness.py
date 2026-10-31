@@ -25,6 +25,7 @@ from temporalio.worker import Worker
 from ai_trend_pipeline.analysis.activities import FactActivities
 from ai_trend_pipeline.config import Settings
 from ai_trend_pipeline.hn import HN_BASE_URL
+from ai_trend_pipeline.media.providers import MediaRenderer
 from ai_trend_pipeline.owid import OWID_BASE_URL
 from ai_trend_pipeline.research.activities import StoryResearchActivities
 from ai_trend_pipeline.services.candidates import (
@@ -34,6 +35,7 @@ from ai_trend_pipeline.services.candidates import (
     ListCandidatesRequest,
 )
 from ai_trend_pipeline.services.ingestion import source_ingestion_input
+from ai_trend_pipeline.services.publishing import StoryPublishingService
 from ai_trend_pipeline.services.stories import (
     ListStoriesRequest,
     StoryDetailNotFound,
@@ -43,6 +45,7 @@ from ai_trend_pipeline.services.stories import (
 from ai_trend_pipeline.services.temporal_gateway import (
     TemporalCandidateGateway,
     TemporalStoryDetailGateway,
+    TemporalStoryPublishingGateway,
     TemporalStoryStatusGateway,
 )
 from ai_trend_pipeline.source_ingestion import (
@@ -66,6 +69,7 @@ from ai_trend_pipeline.story_generation import (
     StoryGenerationResult,
     StoryGenerationWorkflow,
 )
+from ai_trend_pipeline.story_publishing import STORY_PUBLISHING_TASK_QUEUE, StoryPublishingWorkflow
 from ai_trend_pipeline.story_selection import StorySelectionActivities
 from ai_trend_pipeline.story_status import PrimaryStoryStatus
 from ai_trend_pipeline.story_visibility import (
@@ -82,11 +86,13 @@ from ai_trend_pipeline.web.app import create_app
 from ai_trend_pipeline.web.dependencies import (
     get_candidate_service,
     get_story_detail_service,
+    get_story_publishing_service,
     get_story_status_service,
 )
 from ai_trend_pipeline.web.view_models import (
     STORY_STATUS_LABELS,
 )
+from tests.publishing_fixtures import FakePds, make_activities
 from tests.story_generation_fixtures import make_media_worker
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -142,6 +148,8 @@ class Harness:
     app: FastAPI
     calls: Calls
     draft_gate: asyncio.Event
+    media_dir: Path
+    publishing_service: StoryPublishingService
 
 
 def hn_client(fixture_name: str) -> httpx.AsyncClient:
@@ -246,7 +254,10 @@ async def story_e2e(
     hn_fixture: str,
     *,
     gated_external_ids: frozenset[str] = frozenset(),
+    pds: FakePds | None = None,
+    renderer: MediaRenderer | None = None,
 ) -> AsyncGenerator[Harness, None]:
+    """The full stack. With `pds`, a publishing worker also runs the real Bluesky activity."""
     # The SDK default for search_attributes contains an unresolved generic; typed keys are safe.
     env = await WorkflowEnvironment.start_local(  # pyright: ignore[reportUnknownMemberType]
         data_converter=pydantic_data_converter,
@@ -279,7 +290,11 @@ async def story_e2e(
 
     candidate_service = CandidateService(TemporalCandidateGateway(env.client), settings)
     story_service = StoryStatusService(TemporalStoryStatusGateway(env.client))
-    detail_service = StoryDetailService(TemporalStoryDetailGateway(env.client))
+    publishing_gateway = TemporalStoryPublishingGateway(env.client)
+    detail_service = StoryDetailService(
+        TemporalStoryDetailGateway(env.client), publications=publishing_gateway
+    )
+    publishing_service = StoryPublishingService(publishing_gateway)
     app = create_app(settings)
 
     def candidate_dependency() -> CandidateService:
@@ -295,14 +310,28 @@ async def story_e2e(
     app.dependency_overrides[get_story_status_service] = story_status_dependency
     app.dependency_overrides[get_story_detail_service] = story_detail_dependency
 
+    def story_publishing_dependency() -> StoryPublishingService:
+        return publishing_service
+
+    app.dependency_overrides[get_story_publishing_service] = story_publishing_dependency
+
     workflow_id = source_ingestion_workflow_id(SourceName.HN)
     async with env, hn, article, owid:
         with (
             ThreadPoolExecutor(max_workers=4) as executor,
             tempfile.TemporaryDirectory() as media_dir,
         ):
+            bluesky = make_activities(
+                pds or FakePds(), Path(media_dir), clock=lambda: datetime.now(UTC)
+            )
             async with (
-                make_media_worker(env, Path(media_dir)),
+                make_media_worker(env, Path(media_dir), renderer),
+                Worker(
+                    env.client,
+                    task_queue=STORY_PUBLISHING_TASK_QUEUE,
+                    workflows=[StoryPublishingWorkflow],
+                    activities=[bluesky.publish_story_to_bluesky] if pds is not None else [],
+                ),
                 Worker(
                     env.client,
                     task_queue=SOURCE_INGESTION_TASK_QUEUE,
@@ -346,6 +375,8 @@ async def story_e2e(
                     app=app,
                     calls=calls,
                     draft_gate=draft_gate,
+                    media_dir=Path(media_dir),
+                    publishing_service=publishing_service,
                 )
 
 

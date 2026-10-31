@@ -7,8 +7,15 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import ValidationError
 
 from ai_trend_pipeline.services.media import MediaArtifactNotFound, StoryMediaPreviewService
+from ai_trend_pipeline.services.publishing import (
+    PublishStoryRequest,
+    StoryNotPublishable,
+    StoryPublishingService,
+    StoryPublishStale,
+)
 from ai_trend_pipeline.services.stories import (
     DecideStoryRequest,
     InvalidStoryPageToken,
@@ -25,11 +32,13 @@ from ai_trend_pipeline.services.stories import (
     StoryStatusService,
     story_filter,
 )
+from ai_trend_pipeline.story_publishing import PublicationStatus
 from ai_trend_pipeline.web.dependencies import (
     CurrentUser,
     current_user,
     get_story_detail_service,
     get_story_media_preview_service,
+    get_story_publishing_service,
     get_story_status_service,
     get_templates,
 )
@@ -44,6 +53,7 @@ from ai_trend_pipeline.web.view_models import (
     build_story_list_view,
     build_story_not_available_view,
     story_decision_notice,
+    story_publish_notice,
 )
 
 router = APIRouter()
@@ -171,6 +181,7 @@ async def story_detail(
     request: Request,
     detail_id: str,
     decided: str = "",
+    publish: str = "",
     service: StoryDetailService = Depends(get_story_detail_service),
     templates: Jinja2Templates = Depends(get_templates),
 ) -> HTMLResponse:
@@ -179,7 +190,7 @@ async def story_detail(
         detail_id,
         service,
         templates,
-        notice=story_decision_notice(decided),
+        notice=story_decision_notice(decided) or story_publish_notice(publish),
     )
 
 
@@ -277,3 +288,43 @@ async def decide_story(
     elif result.status == "rejected" and kind == "reject":
         token = "rejected"
     return RedirectResponse(f"{redirect}?decided={token}#story-notice", status_code=303)
+
+
+_PUBLISH_TOKENS: dict[PublicationStatus, str] = {
+    PublicationStatus.PUBLISHING: "started",
+    PublicationStatus.PUBLISHED: "published",
+    PublicationStatus.FAILED: "failed",
+}
+
+
+@router.post("/stories/{detail_id}/publish", response_model=None)
+async def publish_story(
+    request: Request,
+    detail_id: str,
+    content_hash: Annotated[str, Form()] = "",
+    user: CurrentUser = Depends(current_user),
+    service: StoryPublishingService = Depends(get_story_publishing_service),
+    templates: Jinja2Templates = Depends(get_templates),
+) -> RedirectResponse | HTMLResponse:
+    redirect = f"/stories/{quote(detail_id, safe='')}"
+    try:
+        state = await service.publish(
+            PublishStoryRequest(
+                detail_id=detail_id, content_hash=content_hash, requested_by=user.email
+            ),
+            now=datetime.now(UTC),
+        )
+    except (StoryPublishStale, ValidationError):
+        return RedirectResponse(f"{redirect}?publish=stale#story-notice", status_code=303)
+    except StoryNotPublishable:
+        return RedirectResponse(f"{redirect}?publish=not_ready#story-notice", status_code=303)
+    except StoryDetailNotFound:
+        return _not_available(request, templates, "missing", detail_id, 404)
+    except StoryDetailExpired:
+        return _not_available(request, templates, "expired", detail_id, 410)
+    except StoryDetailMalformed:
+        return _not_available(request, templates, "malformed", detail_id, 502)
+    except StoryDetailUnavailable:
+        return _not_available(request, templates, "unavailable", detail_id, 503)
+    token = _PUBLISH_TOKENS[state.status]
+    return RedirectResponse(f"{redirect}?publish={token}#story-notice", status_code=303)

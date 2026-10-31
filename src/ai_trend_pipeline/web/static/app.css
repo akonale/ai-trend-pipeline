@@ -18,6 +18,7 @@
   --color-warning: #ffc93c;
   --color-danger: #ff9a9a;
   --color-neutral: #d3d6de;
+  --color-published: #c7b8ff;
   --color-on-fill: #15172b;
   --color-on-fill-muted: #4a4f5e;
   --color-chart-bg: #ffffff;
@@ -50,6 +51,7 @@
   --shadow-md: 6px 6px 0 0 var(--color-shadow);
   --shadow-lift: 6px 6px 0 0 var(--color-shadow);
   --shadow-chart: 10px 10px 0 0 var(--color-highlight);
+  --shadow-published: 6px 6px 0 0 var(--color-published);
   --shadow-none: 0 0 0 0 var(--color-shadow);
   --duration-press: 80ms;
 }
@@ -895,3 +897,63 @@ main {
     align-items: start;
   }
 }
+
+/* Publishing: the post proof, the publish panel and the Published stamp. */
+.badge--published { background: var(--color-published); }
+.post-proof {
+  margin: var(--space-5) 0;
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.post-proof__head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: var(--border-thin) solid var(--color-border);
+  font-size: var(--text-sm);
+  font-weight: 800;
+}
+.post-proof__head h2 { margin: 0; font-family: var(--font-display); font-size: inherit; }
+.post-proof__count { font-variant-numeric: tabular-nums; font-weight: 700; }
+.post-proof__text {
+  margin: 0;
+  padding: var(--space-4);
+  max-width: 62ch;
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.post-proof__link { color: var(--color-accent); text-decoration: underline; }
+.post-proof__ruler {
+  height: 0.75rem;
+  border-top: var(--border-thin) solid var(--color-border);
+  background: repeating-linear-gradient(90deg, var(--color-border) 0 2px, transparent 2px 10%);
+}
+.post-proof__ruler span { display: block; height: 100%; width: var(--post-used); background: var(--color-info); }
+.post-proof--over .post-proof__ruler span { background: var(--color-danger); }
+.post-proof__problem {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-danger);
+  color: var(--color-on-fill);
+  border-top: var(--border-thin) solid var(--color-border);
+  font-weight: 700;
+}
+.publish-panel__failure {
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-danger);
+  color: var(--color-on-fill);
+  border: var(--border-thin) solid var(--color-border);
+  font-weight: 700;
+}
+.story-rail .decision .btn,
+.story-rail > .btn { width: 100%; }
+.story-rail--published { box-shadow: var(--shadow-published); }

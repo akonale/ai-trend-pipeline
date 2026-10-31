@@ -19,6 +19,8 @@ from ai_trend_pipeline.post_options import (
     TIME_PRESETS,
     PostOptions,
 )
+from ai_trend_pipeline.publishing.models import PublicationErrorCode
+from ai_trend_pipeline.publishing.preview import PostPreview
 from ai_trend_pipeline.services.candidates import CandidatePage, CandidateSummary
 from ai_trend_pipeline.services.stories import (
     StoryDetail,
@@ -30,6 +32,13 @@ from ai_trend_pipeline.services.stories import (
 from ai_trend_pipeline.sources import SourceName
 from ai_trend_pipeline.story_candidate import CandidateReviewState, candidate_id_for
 from ai_trend_pipeline.story_drafting.models import StoryPackage
+from ai_trend_pipeline.story_publishing import (
+    FAILURE_DETAILS,
+    PUBLISHING_CHECKING_DETAIL,
+    STOPPED_DETAIL,
+    PublicationStatus,
+    StoryPublishingState,
+)
 from ai_trend_pipeline.story_status import PrimaryStoryStatus
 from ai_trend_pipeline.story_visibility import bounded_detail
 from ai_trend_pipeline.style import (
@@ -1021,6 +1030,7 @@ STORY_STATUS_LABELS: dict[PrimaryStoryStatus, str] = {
     PrimaryStoryStatus.WRITING: "Writing",
     PrimaryStoryStatus.REVIEW: "Review",
     PrimaryStoryStatus.READY: "Ready",
+    PrimaryStoryStatus.PUBLISHED: "Published",
     PrimaryStoryStatus.CLOSED: "Closed",
 }
 STORY_STATUS_BADGE_CLASSES: dict[PrimaryStoryStatus, str] = {
@@ -1028,6 +1038,7 @@ STORY_STATUS_BADGE_CLASSES: dict[PrimaryStoryStatus, str] = {
     PrimaryStoryStatus.WRITING: "badge--progress",
     PrimaryStoryStatus.REVIEW: "badge--attention",
     PrimaryStoryStatus.READY: "badge--success",
+    PrimaryStoryStatus.PUBLISHED: "badge--published",
     PrimaryStoryStatus.CLOSED: "badge--danger",
 }
 STORY_FILTER_LABELS: dict[StoryFilter, str] = {
@@ -1036,6 +1047,7 @@ STORY_FILTER_LABELS: dict[StoryFilter, str] = {
     StoryFilter.WRITING: "Writing",
     StoryFilter.REVIEW: "Review",
     StoryFilter.READY: "Ready",
+    StoryFilter.PUBLISHED: "Published",
     StoryFilter.CLOSED: "Closed",
 }
 _ACTIVE_STORY_STATUSES = frozenset(
@@ -1181,8 +1193,9 @@ def build_story_list_view(
         older_href=older_href,
         newest_href=base if page_token is not None else None,
         polling=bool(rows)
-        and filter not in (StoryFilter.READY, StoryFilter.CLOSED)
-        and any(row.status in _ACTIVE_STORY_STATUSES for row in page.stories),
+        and any(
+            row.status in _ACTIVE_STORY_STATUSES or row.publishing for row in page.stories
+        ),
         polling_href=_story_rows_href(filter, page_token),
     )
 
@@ -1217,14 +1230,63 @@ STORY_DETAIL_TITLE_FALLBACK = "Untitled story"
 PENDING_PROGRESS = "Waiting for the candidate review."
 WRITING_PROGRESS = "Writing and checking the story."
 REVIEW_PROGRESS = "Ready for your final review."
-READY_PROGRESS = "Approved and ready. Nothing was published."
+READY_PROGRESS = "Approved and ready to publish."
+PUBLISHED_PROGRESS = "Published to Bluesky."
 
 FINAL_REVIEW_HEADING = "Final review"
 FINAL_DECISION_NOTE = "Approving marks this story ready. Nothing is published."
 APPROVE_FINAL_LABEL = "Approve final story"
 REJECT_FINAL_LABEL = "Reject final story"
 APPROVED_HEADING = "Approved"
-APPROVED_BODY = "This is the final package. Nothing was published."
+APPROVED_BODY = "This is the final package. It is not published yet."
+PUBLISHED_BODY = "This is the package that was published."
+
+POST_PROOF_HEADING = "Bluesky post"
+POST_REVIEW_PROBLEM = " Reject this story: it can't be published as written."
+POST_READY_PROBLEM = " It can't be published as approved."
+
+PUBLISH_ACTION_LABEL = "Publish to Bluesky"
+PUBLISH_BUSY_LABEL = "Publishing\u2026"
+PUBLISH_RETRY_LABEL = "Try again"
+PUBLISH_LINK_LABEL = "View the post on Bluesky"
+PUBLISH_LINK_MISSING = "The post link could not be shown."
+PUBLISH_APPROVED_HEADING = "Approved"
+PUBLISH_AVAILABLE_BODY = "Ready to publish. Nothing is posted until you press Publish."
+PUBLISH_UNKNOWN_BODY = "Publishing status could not be read. Refresh to check again."
+PUBLISH_PUBLISHING_HEADING = "Publishing"
+PUBLISH_FAILED_HEADING = "Not published"
+PUBLISH_PUBLISHED_HEADING = "Published"
+PUBLISH_NO_RETRY_HINT = "This approved story can't be posted as it is."
+PUBLISH_GENERIC_HINT = "Try again."
+PUBLISH_FAILURE_HINTS: dict[PublicationErrorCode, str] = {
+    PublicationErrorCode.AUTH_FAILED: (
+        "Check the Bluesky account settings on the worker, then try again."
+    ),
+    PublicationErrorCode.RATE_LIMITED: "Wait a few minutes, then try again.",
+    PublicationErrorCode.MEDIA_MISSING: "Restore the approved image file, then try again.",
+    PublicationErrorCode.ARTIFACT_HASH_MISMATCH: (
+        "Restore the approved image file, then try again."
+    ),
+}
+PUBLISH_NO_RETRY_CODES = frozenset(
+    {
+        PublicationErrorCode.CONTENT_HASH_MISMATCH,
+        PublicationErrorCode.MANIFEST_MISMATCH,
+        PublicationErrorCode.POST_TEXT_TOO_LONG,
+        PublicationErrorCode.ALT_TEXT_TOO_LONG,
+        PublicationErrorCode.MEDIA_NOT_SUPPORTED,
+        PublicationErrorCode.MEDIA_TOO_LARGE,
+    }
+)
+STORY_PUBLISH_NOTICES: dict[str, str] = {
+    "started": "Publishing started. This page updates when it finishes.",
+    "published": "Published to Bluesky.",
+    "failed": "Publishing failed. The reason is shown next to the story.",
+    "stale": (
+        "This story changed after you opened it. Nothing was posted. Check it and try again."
+    ),
+    "not_ready": "Only an approved story can be published. Nothing was posted.",
+}
 
 KEY_POINTS_LABEL = "Key points"
 EVIDENCE_LABEL = "Evidence"
@@ -1290,6 +1352,7 @@ _STORY_DETAIL_STATES: dict[PrimaryStoryStatus, DetailState] = {
     PrimaryStoryStatus.WRITING: "writing",
     PrimaryStoryStatus.REVIEW: "review",
     PrimaryStoryStatus.READY: "ready",
+    PrimaryStoryStatus.PUBLISHED: "ready",
     PrimaryStoryStatus.CLOSED: "closed",
 }
 
@@ -1403,6 +1466,155 @@ def story_package_view(package: StoryPackage) -> StoryPackageView:
     )
 
 
+class PostPreviewView(BaseModel):
+    heading: str = POST_PROOF_HEADING
+    body_text: str
+    link_text: str | None
+    count_text: str
+    used_percent: int
+    over: bool
+    problem_text: str
+
+
+def build_post_preview_view(
+    preview: PostPreview, *, stage: Literal["review", "ready"]
+) -> PostPreviewView:
+    """The post proof. The problem sentence is fixed copy; it never echoes the post text."""
+    problem = ""
+    if preview.problem is not None:
+        suffix = POST_REVIEW_PROBLEM if stage == "review" else POST_READY_PROBLEM
+        problem = FAILURE_DETAILS[preview.problem] + suffix
+    percent = round(preview.char_count * 100 / preview.max_chars) if preview.max_chars else 0
+    return PostPreviewView(
+        body_text=preview.body_text,
+        link_text=preview.link_text,
+        count_text=f"{preview.char_count} of {preview.max_chars} characters",
+        used_percent=max(0, min(100, percent)),
+        over=preview.char_count > preview.max_chars,
+        problem_text=problem,
+    )
+
+
+_BSKY_POST_PATH = re.compile(r"/profile/([^/\s?#]+)/post/([^/\s?#]+)", re.ASCII)
+
+
+def safe_bluesky_post_url(url: str | None) -> str | None:
+    """Only a plain https://bsky.app/profile/<x>/post/<y> link; anything else gives None."""
+    if not url:
+        return None
+    try:
+        parts = urlsplit(url)
+        port = parts.port
+    except ValueError:
+        return None
+    if parts.scheme != "https" or parts.netloc != "bsky.app" or port is not None:
+        return None
+    if parts.query or parts.fragment or "#" in url or "?" in url:
+        return None
+    if _BSKY_POST_PATH.fullmatch(parts.path) is None:
+        return None
+    return url
+
+
+PublishMode = Literal["available", "blocked", "publishing", "failed", "published", "unknown"]
+
+
+class PublishPanelView(BaseModel):
+    mode: PublishMode
+    heading: str
+    body: str
+    hint: str = ""
+    button_label: str = ""
+    action: str = ""
+    content_hash: str = ""
+    show_form: bool = False
+    button_disabled: bool = False
+    post_href: str | None = None
+    post_link_label: str = PUBLISH_LINK_LABEL
+    published_iso: str = ""
+    published_text: str = ""
+    requested_by: str = ""
+
+
+def _failure_hint(publication: StoryPublishingState) -> tuple[str, bool]:
+    code = publication.error_code
+    if code is None:
+        return PUBLISH_GENERIC_HINT, True
+    if code in PUBLISH_NO_RETRY_CODES:
+        return PUBLISH_NO_RETRY_HINT, False
+    return PUBLISH_FAILURE_HINTS.get(code, PUBLISH_GENERIC_HINT), True
+
+
+def build_publish_panel(
+    detail: StoryDetail, preview: PostPreviewView | None, *, now: datetime
+) -> PublishPanelView:
+    """The Ready-state publish panel. Only fixed copy and a validated link are rendered."""
+    action = f"/stories/{quote(detail.workflow_id, safe='')}/publish"
+    publication = detail.publication
+    requested_by = ""
+    if publication is not None and publication.requested_by:
+        requested_by = f"Requested by {publication.requested_by}"
+    if detail.publication_unknown:
+        return PublishPanelView(
+            mode="unknown", heading=PUBLISH_APPROVED_HEADING, body=PUBLISH_UNKNOWN_BODY
+        )
+    if publication is not None and publication.status is PublicationStatus.PUBLISHED:
+        result = publication.publication
+        href = safe_bluesky_post_url(result.public_url) if result is not None else None
+        when = relative_time(result.published_at, now) if result is not None else ""
+        return PublishPanelView(
+            mode="published",
+            heading=PUBLISH_PUBLISHED_HEADING,
+            body=f"Published to Bluesky {when}." if when else PUBLISHED_PROGRESS,
+            hint="" if href else PUBLISH_LINK_MISSING,
+            post_href=href,
+            published_iso=_as_utc(result.published_at).isoformat() if result else "",
+            published_text=when,
+            requested_by=requested_by,
+        )
+    if publication is not None and publication.status is PublicationStatus.PUBLISHING:
+        return PublishPanelView(
+            mode="publishing",
+            heading=PUBLISH_PUBLISHING_HEADING,
+            body=bounded_detail(publication.status_detail) or PUBLISHING_CHECKING_DETAIL,
+            button_label=PUBLISH_BUSY_LABEL,
+            button_disabled=True,
+            requested_by=requested_by,
+        )
+    if publication is not None:
+        code = publication.error_code
+        hint, retry = _failure_hint(publication)
+        body = (
+            FAILURE_DETAILS[code]
+            if code is not None
+            else bounded_detail(publication.status_detail) or STOPPED_DETAIL
+        )
+        return PublishPanelView(
+            mode="failed",
+            heading=PUBLISH_FAILED_HEADING,
+            body=body,
+            hint=hint,
+            button_label=PUBLISH_RETRY_LABEL if retry else "",
+            action=action if retry else "",
+            content_hash=detail.content_hash or "",
+            show_form=retry,
+            requested_by=requested_by,
+        )
+    if preview is not None and preview.problem_text:
+        return PublishPanelView(
+            mode="blocked", heading=PUBLISH_APPROVED_HEADING, body=preview.problem_text
+        )
+    return PublishPanelView(
+        mode="available",
+        heading=PUBLISH_APPROVED_HEADING,
+        body=PUBLISH_AVAILABLE_BODY,
+        button_label=PUBLISH_ACTION_LABEL,
+        action=action,
+        content_hash=detail.content_hash or "",
+        show_form=True,
+    )
+
+
 class StoryDetailView(BaseModel):
     page_title: str = ""
     detail_id: str = ""
@@ -1428,6 +1640,9 @@ class StoryDetailView(BaseModel):
     media: "StoryMediaView | None" = None
     media_missing_heading: str = ""
     media_missing_body: str = ""
+    post_proof: PostPreviewView | None = None
+    publish_panel: PublishPanelView | None = None
+    published: bool = False
     content_hash: str = ""
     package_code: str = ""
     package_code_label: str = PACKAGE_CODE_LABEL
@@ -1455,7 +1670,12 @@ def _story_progress(detail: StoryDetail) -> str:
     if detail.status is PrimaryStoryStatus.REVIEW:
         return REVIEW_PROGRESS
     if detail.status is PrimaryStoryStatus.READY:
+        publication = detail.publication
+        if publication is not None:
+            return bounded_detail(publication.status_detail) or READY_PROGRESS
         return READY_PROGRESS
+    if detail.status is PrimaryStoryStatus.PUBLISHED:
+        return PUBLISHED_PROGRESS
     return ""
 
 
@@ -1492,12 +1712,26 @@ def build_story_detail_view(
     relative = relative_time(detail.created_at, now)
     closed = detail.status is PrimaryStoryStatus.CLOSED
     closed_heading, closed_body = _story_closed_copy(detail) if closed else ("", "")
-    ready = detail.status is PrimaryStoryStatus.READY
+    published = detail.status is PrimaryStoryStatus.PUBLISHED
+    ready = detail.status is PrimaryStoryStatus.READY or published
     media = None
     media_missing = False
     package_note = ""
     content_hash = ""
-    if detail.status in (PrimaryStoryStatus.REVIEW, PrimaryStoryStatus.READY):
+    post_proof: PostPreviewView | None = None
+    panel: PublishPanelView | None = None
+    if detail.status in (
+        PrimaryStoryStatus.REVIEW,
+        PrimaryStoryStatus.READY,
+        PrimaryStoryStatus.PUBLISHED,
+    ):
+        stage: Literal["review", "ready"] = (
+            "review" if detail.status is PrimaryStoryStatus.REVIEW else "ready"
+        )
+        if detail.post_preview is not None:
+            post_proof = build_post_preview_view(detail.post_preview, stage=stage)
+        if ready:
+            panel = build_publish_panel(detail, post_proof, now=now)
         manifest = detail.package.media if detail.package is not None else None
         media = build_story_media_view(detail.detail_id, manifest)
         media_missing = manifest is not None and manifest.outcome is MediaOutcome.TEXT_ONLY
@@ -1519,10 +1753,16 @@ def build_story_detail_view(
         status_label=STORY_STATUS_LABELS[detail.status],
         status_class=STORY_STATUS_BADGE_CLASSES[detail.status],
         progress=_story_progress(detail),
-        polling=detail.status in (PrimaryStoryStatus.PENDING, PrimaryStoryStatus.WRITING),
+        polling=(
+            detail.status in (PrimaryStoryStatus.PENDING, PrimaryStoryStatus.WRITING)
+            or (panel is not None and panel.mode == "publishing")
+        ),
         polling_href=f"/stories/{quote(refresh_id or detail.detail_id, safe='')}/status",
         package=package,
         media=media,
+        post_proof=post_proof,
+        publish_panel=panel,
+        published=published,
         media_missing_heading=MEDIA_MISSING_HEADING if media_missing else "",
         media_missing_body=MEDIA_MISSING_BODY if media_missing else "",
         content_hash=content_hash,
@@ -1530,7 +1770,7 @@ def build_story_detail_view(
         package_note=package_note,
         decision_action=f"/stories/{quote(detail.workflow_id, safe='')}/decide",
         approved_heading=APPROVED_HEADING if ready else "",
-        approved_body=APPROVED_BODY if ready else "",
+        approved_body=(PUBLISHED_BODY if published else APPROVED_BODY) if ready else "",
         approved_by=(f"Approved by {detail.decided_by}" if ready and detail.decided_by else ""),
         approved_at=(
             f"Approved {relative_time(detail.decided_at, now)}"
@@ -1582,6 +1822,11 @@ def build_story_not_available_view(
 def story_decision_notice(token: str) -> str:
     """Allow-listed detail notice text; unknown tokens render nothing."""
     return STORY_DETAIL_NOTICES.get(token.strip(), "")
+
+
+def story_publish_notice(token: str) -> str:
+    """Allow-listed publish notice text; unknown tokens render nothing."""
+    return STORY_PUBLISH_NOTICES.get(token.strip(), "")
 
 
 MOTION_OK_MEDIA = "(prefers-reduced-motion: no-preference)"

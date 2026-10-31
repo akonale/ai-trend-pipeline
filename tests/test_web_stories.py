@@ -197,7 +197,7 @@ def test_stories_page_renders_five_statuses_and_rows() -> None:
 def test_filter_links_and_active_state() -> None:
     text = client_for(FakeStoryService(page(story()))).get("/stories?filter=review").text
 
-    assert text.count('<a class="status-filter') == 6
+    assert text.count('<a class="status-filter') == 7
     assert text.count('aria-current="true"') == 1
     assert 'href="/stories?filter=review" aria-current="true">Review</a>' in text
     assert '<a class="status-filter" href="/stories">All</a>' in text
@@ -205,6 +205,7 @@ def test_filter_links_and_active_state() -> None:
         ("pending", "Pending"),
         ("writing", "Writing"),
         ("ready", "Ready"),
+        ("published", "Published"),
         ("closed", "Closed"),
     ):
         assert f'href="/stories?filter={key}"' in text

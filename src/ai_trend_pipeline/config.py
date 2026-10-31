@@ -19,6 +19,7 @@ DEFAULT_BLUESKY_SERVICE = "https://bsky.social"
 DEFAULT_TEMPORAL_ADDRESS = "localhost:7233"
 DEFAULT_TEMPORAL_UI_URL = "http://localhost:8233"
 DEFAULT_WEB_HOST = "127.0.0.1"
+DEFAULT_MEDIA_DIR = "media"
 DEFAULT_DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/postgres"
 DEFAULT_RESEARCH_FETCH_TIMEOUT_S = 10.0
 DEFAULT_RESEARCH_MAX_RESPONSE_BYTES = 524288
@@ -33,6 +34,7 @@ class Settings(BaseModel):
     temporal_ui_url: str = DEFAULT_TEMPORAL_UI_URL
     web_host: str = DEFAULT_WEB_HOST
     chart_output_dir: str | None = None
+    media_dir: str = Field(default=DEFAULT_MEDIA_DIR, min_length=1)
     anthropic_api_key: SecretStr | None = None
     bluesky_handle: str | None = None
     bluesky_app_password: SecretStr | None = None
@@ -118,6 +120,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         temporal_ui_url=(env.get("TEMPORAL_UI_URL") or DEFAULT_TEMPORAL_UI_URL).rstrip("/"),
         web_host=env.get("WEB_HOST") or DEFAULT_WEB_HOST,
         chart_output_dir=env.get("CHART_OUTPUT_DIR") or None,
+        media_dir=(env.get("MEDIA_DIR") or "").strip() or DEFAULT_MEDIA_DIR,
         anthropic_api_key=SecretStr(api_key) if api_key else None,
         bluesky_handle=env.get("BLUESKY_HANDLE") or None,
         bluesky_app_password=SecretStr(password) if password else None,

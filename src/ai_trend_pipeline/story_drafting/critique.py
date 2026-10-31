@@ -136,7 +136,7 @@ def _revision_payload(revision: RevisionRequest) -> dict[str, object]:
         if finding.severity is CritiqueSeverity.BLOCKING
     ]
     return {
-        "prior_draft": revision.prior_draft.model_dump(mode="json"),
+        "prior_draft": revision.prior_draft.model_dump(mode="json", exclude={"media"}),
         "blocking_findings": blocking,
         "revision_guidance": revision.critique.revision_guidance,
     }
@@ -153,7 +153,7 @@ def build_user_prompt(data: CritiqueInput) -> str:
     ]
     if draft_input.revision is not None:
         sections.append(REVISION_HEADER + _json(_revision_payload(draft_input.revision)))
-    sections.append(DRAFT_HEADER + _json(data.draft.model_dump(mode="json")))
+    sections.append(DRAFT_HEADER + _json(data.draft.model_dump(mode="json", exclude={"media"})))
     sections.append(f"Round: {data.round}")
     sections.append(CLOSING_INSTRUCTION)
     return "\n\n".join(sections)

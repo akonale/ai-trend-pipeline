@@ -54,6 +54,7 @@ services:
     environment:
       TEMPORAL_ADDRESS: temporal:7233
       CHART_OUTPUT_DIR: /data/charts
+      MEDIA_DIR: /data/media
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       BLUESKY_HANDLE: ${BLUESKY_HANDLE}
       BLUESKY_APP_PASSWORD: ${BLUESKY_APP_PASSWORD}
@@ -65,6 +66,7 @@ services:
       SOURCE_CANDIDATE_BUDGET: ${SOURCE_CANDIDATE_BUDGET:-20}
     volumes:
       - charts:/data/charts
+      - media:/data/media
 
   web:
     <<: *app
@@ -77,6 +79,7 @@ services:
     environment:
       TEMPORAL_ADDRESS: temporal:7233
       CHART_OUTPUT_DIR: /data/charts
+      MEDIA_DIR: /data/media
       WEB_HOST: 0.0.0.0
       AUTH_MODE: cloudflare
       DAILY_CHART_CAP: ${DAILY_CHART_CAP:-10}
@@ -84,6 +87,7 @@ services:
       TEMPORAL_UI_URL: ${TEMPORAL_UI_URL:-http://localhost:18233}
     volumes:
       - charts:/data/charts
+      - media:/data/media
     ports:
       - "127.0.0.1:18000:8000"
 
@@ -100,3 +104,4 @@ services:
 volumes:
   postgres-data:
   charts:
+  media:

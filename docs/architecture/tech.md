@@ -256,6 +256,8 @@ non-primitives raise, and strings truncate at 256 characters. Never log exceptio
 | `draft_story` | `StoryDraftActivities` | `DraftInput` -> `DraftOutput` |
 | `critique_story` | `StoryCritiqueActivities` | `CritiqueInput` -> `CritiqueOutput` |
 
+Media contracts (`media/`, task 058): `MediaBrief` -> `StoryMediaActivities` (`render_static_media`, `render_animated_media`, each `RenderMediaInput` -> `MediaArtifact`) -> `MediaManifest`, driven by `StoryMediaWorkflow` (`story-media-task-queue`, nothing starts it yet). Artifacts are stored as `<sha256>.<ext>` under `MEDIA_DIR` and are resolved only through a manifest (`MediaService.artifact`); bytes never enter workflow history.
+
 Activity classes take their clients in `__init__` (httpx / Anthropic), so tests pass fakes with
 `MockTransport`. The story worker registers only `research_story`, `calculate_facts`, `draft_story`
 and `critique_story`; `fetch_context` and `match_owid_evidence` stay unregistered because
@@ -663,6 +665,7 @@ environment variables.
 | `TEMPORAL_UI_URL` | `temporal_ui_url` | base for run links | `http://localhost:8233` |
 | `WEB_HOST` | `web_host` | bind address of `python -m ai_trend_pipeline.web` (port fixed at 8000) | `127.0.0.1` |
 | `CHART_OUTPUT_DIR` | `chart_output_dir` | where PNGs are written and served from | unset (`charts`) |
+| `MEDIA_DIR` | `media_dir` | shared directory for story media artifacts (`<sha256>.<ext>`); prod volume `media` in worker and web | `media` |
 | `ANTHROPIC_API_KEY` | `anthropic_api_key` | LLM calls (worker) | unset |
 | `BLUESKY_HANDLE` | `bluesky_handle` | posting account (worker) | unset |
 | `BLUESKY_APP_PASSWORD` | `bluesky_app_password` | app password (worker) | unset |

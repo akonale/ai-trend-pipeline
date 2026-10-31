@@ -266,3 +266,9 @@ def test_research_user_agent_bounds() -> None:
     assert len(load_settings({"RESEARCH_USER_AGENT": "a" * 200}).research_user_agent) == 200
     with pytest.raises(ValueError):
         load_settings({"RESEARCH_USER_AGENT": "a" * 201})
+
+
+def test_media_dir_default_and_env() -> None:
+    assert load_settings({}).media_dir == "media"
+    assert load_settings({"MEDIA_DIR": "  "}).media_dir == "media"
+    assert load_settings({"MEDIA_DIR": "/data/media"}).media_dir == "/data/media"

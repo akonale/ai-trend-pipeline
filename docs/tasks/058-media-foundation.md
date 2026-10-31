@@ -1,6 +1,6 @@
 # 058: Media contracts and StoryMediaWorkflow foundation
 
-Status: reviewed
+Status: pr-open
 
 > Plan row **057** in `docs/mvp-plan.md` ("Media contracts and `StoryMediaWorkflow` foundation"),
 > renumbered to **058** because `docs/tasks/057-candidate-visibility-fallback.md` already uses 057.
@@ -351,3 +351,6 @@ All checks pass.
 
 **reviewer**: Approved. Media package now committed and reviewed against the spec (models, briefs, storage, providers, fake, activities all match; limits, validators, atomic idempotent storage, containment checks correct).
 Notes: (1) `media_brief_for` last-resort fallback uses a literal "Story" headline, unreachable in practice. (2) `_alt_text` slices at 1000 chars without ellipsis; harmless given the 160+280 caps.
+
+**scribe**: Docs updated: `README.md` documents `MEDIA_DIR` (Configuration); `tech.md` and the `architecture/README.md` data row were already in the branch. Pushed and opened PR #67 (https://github.com/akonale/ai-trend-pipeline/pull/67), which is plan row 057 renumbered to 058.
+Next: human reviews and merges (no merge by agents).

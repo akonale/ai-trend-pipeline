@@ -1,6 +1,6 @@
 # 062: Story-publication contracts and Bluesky story activity
 
-Status: approved
+Status: built
 
 > Plan row **061** in `docs/mvp-plan.md` ("Story-publication contracts and Bluesky activity"),
 > renumbered to **062** (repo numbers are plan row + 1, see `docs/tasks/058-media-foundation.md`).
@@ -236,3 +236,7 @@ Temporal history.
 Key choices: key = workflow ID `publish-v1-<story>-<dest>-<hash>`; rkey = `make_tid(story_created_at, key)`, so re-publishing the same hash never double-posts. Bluesky has no animation, so the static fallback is used. Text over 300 code points fails (`PostTextTooLong`) and is never truncated.
 Risk: a `post_text` near 300 characters plus the "Source:" line will fail. Repo 064 should preview the formatted text in review.
 I have no shell, so I did not create the branch or commit. The spec is uncommitted in the main checkout. Next: the orchestrator creates `task/062-story-publication-contracts`, commits only this file, and approves (row is `no`).
+
+**builder**: Built `publishing/` (models, registry, formatter, `bluesky_story.py`), 5 fixtures, 3 test files plus a shared `tests/publishing_fixtures.py` helper, and the tech.md paragraph. `just lint` clean; full `just test` 1324 passed. `bluesky.py` and `test_bluesky.py` untouched.
+Checked: installed temporalio `ApplicationError` accepts `next_retry_delay: timedelta | None`, as the spec assumes.
+Extras: formatter drops the link line when `source_links` is empty; added tests for create 5xx retry and unexpected responses. Two `Any` uses are commented; `_json` helpers use `cast` for untyped PDS JSON.

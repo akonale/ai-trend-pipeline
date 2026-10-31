@@ -1,6 +1,6 @@
 # 061: Media generation and final-review integration
 
-Status: reviewed
+Status: pr-open
 
 > Plan row **060** in `docs/mvp-plan.md` ("Media generation and final-review integration"),
 > renumbered to **061** (repo numbers are plan row + 1, see `docs/tasks/058-media-foundation.md`).
@@ -333,3 +333,7 @@ Not done: screenshots, because headless Chromium lacks `libnspr4` here, so 360px
 
 **reviewer**: Approved. Patch gating (`story-media-v1`) leaves old histories unchanged and both v1 and v2 replay fixtures exist; workflow code is deterministic. Stale approve is refused in the service before signalling (no hang) and ignored in the workflow. Deviations (`cause`, manifest-derived view text, shared media-worker helpers) are acceptable. `.claude/settings.json` is not in the diff.
 Notes: spec says `reason="stale_content"` but `cause` is used (reason is a forbidden log field); `StoryReviewStale` is out of alphabetical order in `__all__`; screenshots (360px, dark) were not taken.
+
+**scribe**: Fixed the spec wording to `cause="stale_content"` (matches code and tech.md), pushed the branch and opened PR #70 (https://github.com/akonale/ai-trend-pipeline/pull/70). Status set to pr-open. Not merged.
+Open: 360px and dark-theme screenshots were not taken (headless Chromium lacks libnspr4). The PR says so, and the human should check the page in a browser before merging.
+Next: the human reviews and merges PR #70.

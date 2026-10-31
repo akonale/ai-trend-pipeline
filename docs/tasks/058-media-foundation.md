@@ -337,3 +337,11 @@ orchestrator approves, then the builder records the history fixture on `main` fi
 
 **builder**: Built on `task/058-media-foundation`: media package, workflow, service, config/deploy, docs, tests; history fixture recorded on `main` code before model edits. Full suite and lint pass.
 Notes: WEBP signature is `RIFF` prefix plus `WEBP` at byte 8 via `has_media_signature`; `providers.py` builds the fake lazily to avoid an import cycle with `fake.py`; added `tests/media_fixtures.py` (not listed).
+**verifier**: `just lint` passed (ruff check, ruff format --check, pyright 0 errors). `just test` passed (1076 tests, ANTHROPIC_* unset). All checks pass.
+
+**reviewer**: needs-fix.
+1. `.gitignore` line 227 `media/` matches `src/ai_trend_pipeline/media/`, so the whole media package (models, briefs, storage, providers, fake, activities, `__init__`) is NOT committed (`git ls-files` shows none). Anchor it as `/media/` (repo root) and `git add` the package; confirm with `git diff main...HEAD --stat`.
+2. Everything else reviewed (workflow, service, config, compose, Dockerfile, prompts exclude media) looks correct; re-review the media package once committed.
+
+**builder**: Fix loop 1: anchored `.gitignore` rule to `/media/` and committed `src/ai_trend_pipeline/media/` (7 files); ruff format and one E501 fixed in the new files.
+`just lint` clean, 1076 tests pass. Next: reviewer re-reviews the media package.

@@ -224,7 +224,7 @@ __marimo__/
 charts/
 
 # Story media artifacts
-media/
+/media/
 
 .claude/settings.local.json
 .claude/worktrees/

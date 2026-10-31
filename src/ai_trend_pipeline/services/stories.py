@@ -12,6 +12,8 @@ from typing import Literal, Protocol, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from ai_trend_pipeline.publishing.models import DestinationName, publication_key
+from ai_trend_pipeline.publishing.preview import PostPreview, preview_post
 from ai_trend_pipeline.services.candidates import (
     InvalidPageToken,
     decode_page_token,
@@ -31,7 +33,9 @@ from ai_trend_pipeline.story_generation import (
     StoryGenerationResult,
     StoryGenerationState,
     StoryGenerationStatus,
+    story_id_for,
 )
+from ai_trend_pipeline.story_publishing import PublicationStatus, StoryPublishingState
 from ai_trend_pipeline.story_status import (
     STORY_UI_RETENTION,
     PrimaryStoryStatus,
@@ -41,6 +45,7 @@ from ai_trend_pipeline.story_visibility import bounded_detail
 
 CANDIDATE_WORKFLOW_TYPE = "StoryCandidateWorkflow"
 GENERATION_WORKFLOW_TYPE = "StoryGenerationWorkflow"
+PUBLISHING_WORKFLOW_TYPE = "StoryPublishingWorkflow"
 MAX_DETAIL_ID_CHARS = 128
 
 DEFAULT_STORY_PAGE_SIZE = 20
@@ -65,6 +70,7 @@ class StoryFilter(StrEnum):
     WRITING = "writing"
     REVIEW = "review"
     READY = "ready"
+    PUBLISHED = "published"
     CLOSED = "closed"
 
 
@@ -103,6 +109,7 @@ class StoryRow(BaseModel):
     status_detail: str | None = None
     created_at: datetime
     updated_at: datetime | None = None
+    publishing: bool = False
 
 
 def _empty_story_rows() -> list[StoryRow]:
@@ -220,6 +227,8 @@ def decode_story_page_token(value: str, *, filter: StoryFilter) -> StoryPageToke
     )
 
 
+_PUBLISH_STATES = "StoryStatus IN ('ready','publishing','publish_failed','published')"
+
 _FILTER_PREDICATES: dict[StoryFilter, str] = {
     StoryFilter.ALL: "",
     StoryFilter.PENDING: (
@@ -230,7 +239,8 @@ _FILTER_PREDICATES: dict[StoryFilter, str] = {
         "OR CandidateStatus = 'approved')"
     ),
     StoryFilter.REVIEW: "StoryStatus = 'review'",
-    StoryFilter.READY: "StoryStatus = 'ready'",
+    StoryFilter.READY: _PUBLISH_STATES,
+    StoryFilter.PUBLISHED: _PUBLISH_STATES,
     StoryFilter.CLOSED: (
         "(StoryStatus IN ('rejected','unsupported','failed','expired') "
         "OR CandidateStatus IN ('rejected','expired') "
@@ -249,6 +259,8 @@ def story_visibility_query(filter: StoryFilter, cutoff: datetime) -> str:
     query = (
         f"((WorkflowType = '{CANDIDATE_WORKFLOW_TYPE}' AND StartTime > '{stamp}') "
         f"OR (WorkflowType = '{GENERATION_WORKFLOW_TYPE}' "
+        f"AND StoryCreatedAt > '{stamp}') "
+        f"OR (WorkflowType = '{PUBLISHING_WORKFLOW_TYPE}' "
         f"AND StoryCreatedAt > '{stamp}'))"
     )
     predicate = _FILTER_PREDICATES[filter]
@@ -266,10 +278,29 @@ def _within_grace(updated_at: datetime | None, now: datetime) -> bool:
     return now - _as_utc(updated_at) <= STORY_START_GRACE
 
 
+def _later(first: datetime | None, second: datetime | None) -> datetime | None:
+    if first is None or second is None:
+        return first or second
+    return max(first, second, key=_as_utc)
+
+
+def _choose_publication(publications: list[StoryVisibilityRow]) -> StoryVisibilityRow | None:
+    """A published run wins; otherwise the run updated last."""
+    if not publications:
+        return None
+    published = [row for row in publications if row.internal_status == "published"]
+    pool = published or publications
+    return max(pool, key=lambda row: _timestamp(row.updated_at))
+
+
 def collapse_story_rows(
     rows: list[StoryVisibilityRow], *, now: datetime
 ) -> list[StoryVisibilityRow]:
-    """One row per StoryCandidateId, preferring the generation workflow."""
+    """One row per StoryCandidateId, preferring the generation workflow.
+
+    A publishing run only overlays its status and detail on a Ready generation row. The row's
+    `workflow_id` is always the generation (or deterministic story) id, never a publication id.
+    """
     groups: dict[str, list[StoryVisibilityRow]] = {}
     for row in rows:
         if row.candidate_id is None or row.created_at is None:
@@ -284,6 +315,10 @@ def collapse_story_rows(
         candidate = next(
             (row for row in group if row.workflow_type == CANDIDATE_WORKFLOW_TYPE), None
         )
+        publication = _choose_publication(
+            [row for row in group if row.workflow_type == PUBLISHING_WORKFLOW_TYPE]
+        )
+        workflow_id: str | None = None
         if generation is not None:
             chosen = generation
             internal_status = generation.internal_status
@@ -292,6 +327,17 @@ def collapse_story_rows(
                 candidate.created_at if candidate is not None else None
             )
             updated_at = generation.updated_at
+            if publication is not None and internal_status == "ready":
+                internal_status = publication.internal_status
+                status_detail = bounded_detail(publication.status_detail)
+                updated_at = _later(updated_at, publication.updated_at)
+        elif publication is not None:
+            chosen = publication
+            internal_status = publication.internal_status
+            status_detail = bounded_detail(publication.status_detail)
+            created_at = publication.created_at
+            updated_at = publication.updated_at
+            workflow_id = story_id_for(candidate_id)
         elif candidate is not None:
             chosen = candidate
             internal_status = candidate.internal_status
@@ -314,7 +360,7 @@ def collapse_story_rows(
         collapsed.append(
             StoryVisibilityRow(
                 workflow_type=chosen.workflow_type,
-                workflow_id=chosen.workflow_id,
+                workflow_id=workflow_id or chosen.workflow_id,
                 candidate_id=candidate_id,
                 title=chosen.title,
                 source=chosen.source,
@@ -355,6 +401,7 @@ def build_story_row(row: StoryVisibilityRow) -> StoryRow:
         status_detail=row.status_detail,
         created_at=row.created_at,
         updated_at=row.updated_at,
+        publishing=row.internal_status == "publishing",
     )
 
 
@@ -449,6 +496,9 @@ class StoryDetail(BaseModel):
     decided_by: str | None = None
     decided_at: datetime | None = None
     note: str = ""
+    publication: StoryPublishingState | None = None
+    publication_unknown: bool = False
+    post_preview: PostPreview | None = None
 
 
 class DecideStoryRequest(BaseModel):
@@ -504,11 +554,30 @@ class StoryDetailGateway(Protocol):
     ) -> None: ...
 
 
+class PublicationLookup(Protocol):
+    async def publication(self, publication_id: str) -> StoryPublishingState | None: ...
+
+
 class StoryDetailService:
     """Read one candidate or story through queries and typed results; never parse history."""
 
-    def __init__(self, gateway: StoryDetailGateway) -> None:
+    def __init__(
+        self, gateway: StoryDetailGateway, publications: PublicationLookup | None = None
+    ) -> None:
         self._gateway = gateway
+        self._publications = publications
+
+    async def _publication_for(
+        self, package: StoryPackage, content_hash: str
+    ) -> tuple[StoryPublishingState | None, bool]:
+        """The Bluesky publication for this approved hash, and whether it could not be read."""
+        if self._publications is None:
+            return None, False
+        key = publication_key(package.story_id, DestinationName.BLUESKY, content_hash)
+        try:
+            return await self._publications.publication(key), False
+        except (StoryDetailUnavailable, StoryDetailMalformed):
+            return None, True
 
     async def show(self, detail_id: str, *, now: datetime) -> StoryDetail:
         cutoff = _aware_moment(now) - STORY_UI_RETENTION
@@ -671,6 +740,13 @@ class StoryDetailService:
                 content_hash=(
                     state.content_hash if state.status is StoryGenerationStatus.REVIEW else None
                 ),
+                post_preview=(
+                    preview_post(state.package, state.content_hash)
+                    if state.status is StoryGenerationStatus.REVIEW
+                    and state.package is not None
+                    and state.content_hash is not None
+                    else None
+                ),
             )
 
         if state.status not in (
@@ -692,6 +768,19 @@ class StoryDetailService:
         created = self._retain(requested_id, result.story_created_at, cutoff)
         if result.status == "ready" and result.package is None:
             raise StoryDetailMalformed(requested_id)
+        status = primary_story_status(result.status)
+        internal_status = result.status
+        status_detail = bounded_detail(result.status_detail)
+        publication: StoryPublishingState | None = None
+        unknown = False
+        preview: PostPreview | None = None
+        if result.status == "ready" and result.package is not None and result.content_hash:
+            preview = preview_post(result.package, result.content_hash)
+            publication, unknown = await self._publication_for(result.package, result.content_hash)
+            if publication is not None and publication.status is PublicationStatus.PUBLISHED:
+                status = PrimaryStoryStatus.PUBLISHED
+                internal_status = publication.status.value
+                status_detail = bounded_detail(publication.status_detail)
         return StoryDetail(
             detail_id=requested_id,
             workflow_id=workflow_id,
@@ -700,9 +789,12 @@ class StoryDetailService:
             title=title,
             source=source,
             created_at=created,
-            status=primary_story_status(result.status),
-            internal_status=result.status,
-            status_detail=bounded_detail(result.status_detail),
+            status=status,
+            internal_status=internal_status,
+            publication=publication,
+            publication_unknown=unknown,
+            post_preview=preview,
+            status_detail=status_detail,
             package=result.package if result.status == "ready" else None,
             content_hash=result.content_hash if result.status == "ready" else None,
             decided_by=result.decided_by,
@@ -735,6 +827,8 @@ __all__ = [
     "ListStoriesRequest",
     "MAX_SEEN_CANDIDATES",
     "MAX_STORY_SCAN_PAGES",
+    "PUBLISHING_WORKFLOW_TYPE",
+    "PublicationLookup",
     "STORY_START_FAILED_DETAIL",
     "STORY_START_GRACE",
     "StoryFilter",

@@ -381,6 +381,9 @@ posts at most once. `BlueskyStoryActivities.publish_story_to_bluesky` (`bluesky_
 hashes and the artifact file before any network call, looks for an existing record, then uploads and
 creates. Its errors use fixed messages with `PublicationErrorCode` values as types. The activity is
 not registered with a worker until the story-publishing workflow arrives (repo task 063).
+Carry-forward for 063: other 4xx from `getRecord` or `uploadBlob` map to the retryable
+`UnexpectedDestinationResponse`, so the workflow must bound retry attempts. For 064: show the
+formatted post text during review, since text over 300 characters fails with `PostTextTooLong`.
 
 ### Determinism, idempotency, replay
 

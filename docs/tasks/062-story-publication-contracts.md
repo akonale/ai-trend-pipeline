@@ -1,6 +1,6 @@
 # 062: Story-publication contracts and Bluesky story activity
 
-Status: built
+Status: reviewed
 
 > Plan row **061** in `docs/mvp-plan.md` ("Story-publication contracts and Bluesky activity"),
 > renumbered to **062** (repo numbers are plan row + 1, see `docs/tasks/058-media-foundation.md`).
@@ -240,3 +240,9 @@ I have no shell, so I did not create the branch or commit. The spec is uncommitt
 **builder**: Built `publishing/` (models, registry, formatter, `bluesky_story.py`), 5 fixtures, 3 test files plus a shared `tests/publishing_fixtures.py` helper, and the tech.md paragraph. `just lint` clean; full `just test` 1324 passed. `bluesky.py` and `test_bluesky.py` untouched.
 Checked: installed temporalio `ApplicationError` accepts `next_retry_delay: timedelta | None`, as the spec assumes.
 Extras: formatter drops the link line when `source_links` is empty; added tests for create 5xx retry and unexpected responses. Two `Any` uses are commented; `_json` helpers use `cast` for untyped PDS JSON.
+
+**verifier**: Ran `just lint` (ruff check, ruff format --check, pyright strict: 0 errors) and `just test` (1324 passed), with ANTHROPIC_* unset.
+All checks pass.
+
+**reviewer**: Approved. Diff matches spec; hash and artifact checks run before any network call; fixed rkey plus getRecord and recheck gives idempotency; errors are fixed-message and `from None`. Pure modules import no I/O; `bluesky.py`, `test_bluesky.py` and `.claude/` are not in the diff.
+Notes: `tests/publishing_fixtures.py` is a small shared helper outside "Files to touch" and is acceptable. Other 4xx from getRecord or uploadBlob map to retryable UnexpectedDestinationResponse. Repo 063 should bound retry attempts.

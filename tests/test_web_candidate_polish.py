@@ -106,11 +106,12 @@ def test_build_shell_nav_order_and_current_flags() -> None:
     assert [item.href for item in shell.nav] == [
         "/stories",
         "/candidates",
-        "/",
+        "/new",
         "/settings",
     ]
 
-    assert current_labels("/") == ["New chart"]
+    assert current_labels("/") == ["Stories"]
+    assert current_labels("/new") == ["New chart"]
     assert current_labels("/new/style") == ["New chart"]
     assert current_labels("/runs/x") == ["New chart"]
     assert current_labels("/settings") == ["Your style"]
@@ -167,7 +168,7 @@ def test_badge_only_on_first_inbox_page() -> None:
         inbox_client(FakeGateway(error=InvalidPageToken("bad"))).get("/candidates?page=bad").text
     )
     unavailable = inbox_client(FakeGateway(error=CandidateUnavailable())).get("/candidates").text
-    home = chart_client(RecGateway()).get("/").text
+    home = chart_client(RecGateway()).get("/new").text
     settings = make_client(InMemoryStyleStore()).get("/settings").text
     health = chart_client(RecGateway()).get("/health").text
 

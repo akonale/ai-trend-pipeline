@@ -588,7 +588,7 @@ def test_read_routes_never_touch_the_style_store(
     gateway = RecGateway(ReviewState(status="awaiting_decision", review=review))
     client = lazy_store_client(monkeypatch, gateway, BrokenStore())
     monkeypatch.chdir(tmp_path)
-    assert client.get("/").status_code == 200
+    assert client.get("/new").status_code == 200
     assert client.get("/health").status_code == 200
     assert client.get("/runs/wf-1").status_code == 200
     assert client.get("/runs/wf-1/status").status_code == 200

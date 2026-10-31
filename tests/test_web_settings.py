@@ -63,7 +63,7 @@ def test_get_shows_saved_values() -> None:
 
 
 def test_home_has_settings_link() -> None:
-    res = make_client(InMemoryStyleStore()).get("/")
+    res = make_client(InMemoryStyleStore()).get("/new")
     assert 'href="/settings"' in res.text
     assert "Your style" in res.text
 

@@ -21,7 +21,7 @@ def test_style_step_has_labelled_fields() -> None:
     assert "aria-describedby" in text
     assert "Up to 8, separated by commas, e.g. France, Japan" in text
     assert 'maxlength="300"' in text
-    assert 'href="/?topic=Life%20expectancy"' in text
+    assert 'href="/new?topic=Life%20expectancy"' in text
 
 
 def test_valid_post_passes_parsed_options() -> None:

@@ -125,7 +125,7 @@ def test_run_view_copy_per_state(
     assert v.is_end is is_end
     assert v.outcome_tone == tone
     assert v.end_message == end
-    assert v.another_href == "/"
+    assert v.another_href == "/new"
 
 
 def test_expired_text_says_20_hours() -> None:
@@ -204,7 +204,7 @@ def test_route_rejected_and_expired(status: Status, heading: str, message: str) 
     text = page(status)
     assert heading in text
     assert message in text
-    assert '<a class="btn btn--primary" href="/">Make another chart</a>' in text
+    assert '<a class="btn btn--primary" href="/new">Make another chart</a>' in text
     assert "<button" not in text
     assert "hx-trigger" not in text
 

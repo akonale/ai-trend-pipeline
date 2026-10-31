@@ -36,8 +36,9 @@ def current_labels(shell: ShellView) -> list[str]:
 
 
 def test_build_shell_current_flags() -> None:
-    for path in ("/", "/runs", "/runs/wf-1"):
+    for path in ("/new", "/runs", "/runs/wf-1"):
         assert current_labels(build_shell(path, None, "local")) == ["New chart"], path
+    assert current_labels(build_shell("/", None, "local")) == ["Stories"]
     assert current_labels(build_shell("/settings", None, "local")) == ["Your style"]
     assert current_labels(build_shell("/health", None, "local")) == []
     assert current_labels(build_shell("/stories", None, "local")) == ["Stories"]
@@ -57,9 +58,10 @@ def test_build_shell_fields() -> None:
     assert [item.href for item in local.nav] == [
         "/stories",
         "/candidates",
-        "/",
+        "/new",
         "/settings",
     ]
+    assert local.brand_href == "/stories"
     assert [item.label for item in local.nav] == [
         "Stories",
         "Candidates",
@@ -72,7 +74,7 @@ def test_build_shell_fields() -> None:
 
 def test_optional_user_normalises_header_for_chip() -> None:
     client = auth_client(RecGateway(), CF)
-    text = client.get("/", headers={CF_EMAIL_HEADER: " Friend@Example.com "}).text
+    text = client.get("/new", headers={CF_EMAIL_HEADER: " Friend@Example.com "}).text
     assert "friend@example.com</span>" in text
     assert "Friend@Example.com" not in text
 
@@ -81,7 +83,7 @@ def test_cloudflare_without_header_get_pages_have_no_chip() -> None:
     gateway = RecGateway(ReviewState(status="awaiting_decision", review=REVIEW))
     client = auth_client(gateway, CF)
     for headers in BLANK_HEADERS:
-        for path in ("/", "/runs/wf-1", "/runs/wf-1/status", "/health"):
+        for path in ("/new", "/runs/wf-1", "/runs/wf-1/status", "/health"):
             res = client.get(path, headers=headers)
             assert res.status_code == 200, path
             assert "user-chip" not in res.text, path
@@ -100,7 +102,7 @@ def test_cloudflare_without_header_posts_and_settings_are_401() -> None:
 
 def test_local_mode_shows_dev_user_and_tag() -> None:
     client = auth_client(RecGateway())
-    for path in ("/", "/health"):
+    for path in ("/new", "/health"):
         text = client.get(path, headers={CF_EMAIL_HEADER: "other@example.com"}).text
         assert "dev@localhost" in text, path
         assert "other@example.com" not in text, path
@@ -109,7 +111,7 @@ def test_local_mode_shows_dev_user_and_tag() -> None:
 
 
 def test_cloudflare_mode_never_shows_dev_tag() -> None:
-    text = auth_client(RecGateway(), CF).get("/", headers={CF_EMAIL_HEADER: "a@b.co"}).text
+    text = auth_client(RecGateway(), CF).get("/new", headers={CF_EMAIL_HEADER: "a@b.co"}).text
     assert "dev-tag" not in text
     assert "a@b.co" in text
 
@@ -128,7 +130,7 @@ def shell_pages() -> dict[str, str]:
     awaiting = RecGateway(ReviewState(status="awaiting_decision", review=REVIEW))
     approved = RecGateway(ReviewState(status="approved", review=REVIEW))
     pages = {
-        "home": client_for(RecGateway()).get("/").text,
+        "home": client_for(RecGateway()).get("/new").text,
         "run": client_for(awaiting).get("/runs/wf-1").text,
         "run 404": client_for(RecGateway()).get("/runs/x").text,
         "settings": make_client(InMemoryStyleStore()).get("/settings").text,
@@ -169,8 +171,8 @@ def aria_current_links(client: TestClient, path: str) -> list[str]:
 
 def test_aria_current_on_the_right_link() -> None:
     client = client_for(RecGateway())
-    assert client.get("/").text.count('aria-current="page"') == 1
-    assert aria_current_links(client, "/") == ["New chart"]
+    assert client.get("/new").text.count('aria-current="page"') == 1
+    assert aria_current_links(client, "/new") == ["New chart"]
     settings = make_client(InMemoryStyleStore())
     assert settings.get("/settings").text.count('aria-current="page"') == 1
     assert aria_current_links(settings, "/settings") == ["Your style"]

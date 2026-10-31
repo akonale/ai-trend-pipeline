@@ -10,7 +10,9 @@ from ai_trend_pipeline.media.models import (
     AnimationBeat,
     MediaBrief,
     MediaManifest,
+    MediaOutcome,
     canonical_json,
+    media_brief_hash,
     sha256_hex,
 )
 from ai_trend_pipeline.story_drafting.models import StoryPackage
@@ -22,6 +24,15 @@ ELLIPSIS = "…"
 
 def story_content_hash(package: StoryPackage) -> str:
     return sha256_hex(canonical_json(package.model_dump(mode="json", exclude={"media"})))
+
+
+def story_package_hash(package: StoryPackage) -> str:
+    """Hash of text and media together. Final approval freezes this value."""
+    return sha256_hex(canonical_json(package.model_dump(mode="json")))
+
+
+def package_matches_hash(package: StoryPackage, content_hash: str) -> bool:
+    return story_package_hash(package) == content_hash
 
 
 def media_workflow_id_for(package: StoryPackage) -> str:
@@ -119,3 +130,13 @@ class StoryMediaResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     manifest: MediaManifest
+
+
+def text_only_manifest(package: StoryPackage, facts: FactSet) -> MediaManifest:
+    """The manifest used when the media child cannot run."""
+    return MediaManifest(
+        story_id=package.story_id,
+        story_content_hash=story_content_hash(package),
+        brief_hash=media_brief_hash(media_brief_for(package, facts)),
+        outcome=MediaOutcome.TEXT_ONLY,
+    )

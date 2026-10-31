@@ -22,6 +22,24 @@
   {% elif view.package or view.state == "review" or view.state == "ready" %}
   <div class="story-detail__layout">
     <div class="story-detail__reading">
+      {% if view.media %}
+      <figure class="story-media">
+        <picture>
+          {% if view.media.animated_src %}<source media="{{ view.media.motion_media }}" srcset="{{ view.media.animated_src }}" type="image/gif">{% endif %}
+          <img src="{{ view.media.poster_src }}" width="{{ view.media.poster_width }}" height="{{ view.media.poster_height }}" alt="{{ view.media.alt_text }}" decoding="async">
+        </picture>
+        <figcaption>
+          <p class="story-media__kind">{{ view.media.kind_text }}</p>
+          {% if view.media.motion_note %}<p class="story-media__motion-note">{{ view.media.motion_note }}</p>{% endif %}
+          <p class="story-media__alt">{{ view.media.alt_label }} {{ view.media.alt_text }}</p>
+        </figcaption>
+      </figure>
+      {% elif view.media_missing_heading %}
+      <section class="story-media story-media--none">
+        <h2>{{ view.media_missing_heading }}</h2>
+        <p>{{ view.media_missing_body }}</p>
+      </section>
+      {% endif %}
       {% if view.package %}
       <p class="story-summary">{{ view.package.summary }}</p>
       <div class="story-body">{% for paragraph in view.package.body_paragraphs %}<p>{{ paragraph }}</p>{% endfor %}</div>
@@ -77,13 +95,17 @@
     <aside class="card candidate-actions story-rail">
       <h2>{{ view.decision_heading }}</h2>
       <p class="meta">{{ view.decision_note }}</p>
+      <p class="meta">{{ view.package_note }}</p>
+      {% if view.package_code %}<p class="story-rail__code">{{ view.package_code_label }} {{ view.package_code }}</p>{% endif %}
       <div class="candidate-decisions">
         <form class="decision" method="post" action="{{ view.decision_action }}">
           <input type="hidden" name="decision" value="approve">
+          <input type="hidden" name="content_hash" value="{{ view.content_hash }}">
           <button class="btn btn--primary" type="submit">{{ view.approve_label }}</button>
         </form>
         <form class="decision" method="post" action="{{ view.decision_action }}">
           <input type="hidden" name="decision" value="reject">
+          <input type="hidden" name="content_hash" value="{{ view.content_hash }}">
           <button class="btn btn--danger-outline" type="submit">{{ view.reject_label }}</button>
         </form>
       </div>
@@ -94,6 +116,7 @@
       <p>{{ view.approved_body }}</p>
       {% if view.approved_by %}<p class="meta">{{ view.approved_by }}</p>{% endif %}
       {% if view.approved_at %}<p class="meta">{{ view.approved_at }}</p>{% endif %}
+      {% if view.package_code %}<p class="story-rail__code">{{ view.package_code_label }} {{ view.package_code }}</p>{% endif %}
     </aside>
     {% endif %}
   </div>

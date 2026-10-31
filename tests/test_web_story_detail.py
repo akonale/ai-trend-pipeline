@@ -1,12 +1,14 @@
 """Story detail routes, fragments and view models with a fake detail service; no Temporal."""
 
 import html
+import re
 from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 
 from ai_trend_pipeline.config import Settings
+from ai_trend_pipeline.media.models import MediaOutcome
 from ai_trend_pipeline.services.stories import (
     DecideStoryRequest,
     StoryDecisionResult,
@@ -17,6 +19,7 @@ from ai_trend_pipeline.services.stories import (
     StoryDetailNotFound,
     StoryDetailUnavailable,
     StoryNotReviewable,
+    StoryReviewStale,
 )
 from ai_trend_pipeline.story_drafting.models import StoryKeyPoint, StoryPackage, StorySourceLink
 from ai_trend_pipeline.story_status import PrimaryStoryStatus
@@ -31,6 +34,7 @@ from ai_trend_pipeline.web.view_models import (
     STORY_DETAIL_BACK_LABEL,
     story_decision_notice,
 )
+from tests.media_fixtures import make_manifest
 
 NOW = datetime(2026, 10, 30, 12, 0, tzinfo=UTC)
 CREATED = NOW - timedelta(hours=2)
@@ -39,6 +43,7 @@ STORY_ID = "story-v1-fedcba9876543210"
 FACT_A = "fact-v1-0000000000000001"
 FACT_B = "fact-v1-0000000000000002"
 FACT_C = "fact-v1-0000000000000003"
+HASH = "ab12cd34" + "0" * 56
 
 
 def make_package(**overrides: object) -> StoryPackage:
@@ -80,6 +85,7 @@ def make_detail(
     decided_by: str | None = None,
     decided_at: datetime | None = None,
     note: str = "",
+    content_hash: str | None = None,
 ) -> StoryDetail:
     return StoryDetail(
         detail_id=detail_id,
@@ -93,6 +99,7 @@ def make_detail(
         internal_status=internal_status,
         status_detail=status_detail,
         package=package,
+        content_hash=content_hash,
         decided_by=decided_by,
         decided_at=decided_at,
         note=note,
@@ -736,3 +743,143 @@ def test_keyboard_order_and_notice_focus_target() -> None:
         .get(f"/stories/{STORY_ID}?decided=hello")
         .text
     )
+
+
+def media_detail(
+    outcome: MediaOutcome | None,
+    *,
+    status: PrimaryStoryStatus = PrimaryStoryStatus.REVIEW,
+    **overrides: object,
+) -> StoryDetail:
+    manifest = None if outcome is None else make_manifest(outcome)
+    return make_detail(
+        status=status,
+        internal_status=status.value,
+        package=make_package(media=manifest),
+        content_hash=HASH,
+        decided_by="dev@localhost" if status is PrimaryStoryStatus.READY else None,
+        decided_at=NOW if status is PrimaryStoryStatus.READY else None,
+        **overrides,  # pyright: ignore[reportArgumentType]
+    )
+
+
+def page(detail: StoryDetail) -> str:
+    return client_for(FakeDetailService(detail)).get(f"/stories/{STORY_ID}").text
+
+
+def test_review_renders_picture_with_poster_alt_and_gif_source() -> None:
+    manifest = make_manifest(MediaOutcome.GIF)
+    assert manifest.static_artifact is not None and manifest.animated_artifact is not None
+    text = page(media_detail(MediaOutcome.GIF))
+    base = f"/stories/{STORY_ID}/media/"
+    assert "<picture>" in text
+    assert (
+        f'<source media="(prefers-reduced-motion: no-preference)" '
+        f'srcset="{base}{manifest.animated_artifact.artifact_id}" type="image/gif">'
+    ) in text
+    assert f'src="{base}{manifest.static_artifact.artifact_id}"' in text
+    assert 'width="1200" height="675"' in text
+    assert f'alt="{manifest.static_artifact.alt_text}"' in text
+    assert text.index("<figure") < text.index('class="story-summary"')
+    assert "Animated card. Plays once, 4 seconds." in text
+    assert "Reduced motion is on, so the still card is shown." in text
+    assert f"Alt text: {manifest.static_artifact.alt_text}" in text
+    assert "You approve the text and the story card together." in text
+
+
+def test_static_and_static_fallback_have_no_gif_source_and_show_fallback_text() -> None:
+    static = page(media_detail(MediaOutcome.STATIC))
+    assert "<picture>" in static and "<source" not in static
+    assert "Still card." in static
+    assert "could not be made" not in static
+    fallback = page(media_detail(MediaOutcome.STATIC_FALLBACK))
+    assert "<source" not in fallback
+    assert "The animation could not be made, so this still card is used." in fallback
+
+
+def test_text_only_shows_dashed_no_story_card_box() -> None:
+    text = page(media_detail(MediaOutcome.TEXT_ONLY))
+    assert 'class="story-media story-media--none"' in text
+    assert "<h2>No story card</h2>" in text
+    assert "No image could be made for this story. Approving it approves the text only." in text
+    assert "<picture>" not in text and "<img" not in text
+    assert "You approve the text only." in text
+
+
+def test_old_story_without_media_renders_no_media_section() -> None:
+    text = page(media_detail(None))
+    assert "story-media" not in text and "<picture>" not in text
+    assert "No story card" not in text
+    assert "You approve the text only." in text
+
+
+def test_decision_forms_post_content_hash() -> None:
+    text = page(media_detail(MediaOutcome.GIF))
+    assert text.count(f'<input type="hidden" name="content_hash" value="{HASH}">') == 2
+    assert 'class="story-rail__code">Package ab12cd34<' in text
+
+
+def test_stale_decision_redirects_with_notice() -> None:
+    service = FakeDetailService(
+        media_detail(MediaOutcome.GIF), decide_error=StoryReviewStale(STORY_ID)
+    )
+    client = client_for(service)
+    res = client.post(
+        f"/stories/{STORY_ID}/decide",
+        data={"decision": "approve", "content_hash": "f" * 64},
+        follow_redirects=False,
+    )
+    assert res.status_code == 303
+    assert res.headers["location"] == f"/stories/{STORY_ID}?decided=stale#story-notice"
+    assert service.decide_calls[0].content_hash == "f" * 64
+    followed = client.get(f"/stories/{STORY_ID}?decided=stale")
+    assert (
+        "This story changed after you opened it. Nothing was decided. Review it again."
+        in followed.text
+    )
+
+
+def test_media_urls_are_manifest_derived() -> None:
+    manifest = make_manifest(MediaOutcome.GIF)
+    package = make_package(
+        headline="evil ../../etc/passwd.png",
+        summary="Path /tmp/x.gif and ../y should never become a media URL.",
+        media=manifest,
+    )
+    text = page(make_detail(package=package, content_hash=HASH))
+    urls = [u for u in re.findall(r'(?:src|srcset)="([^"]+)"', text) if "/media/" in u]
+    assert urls
+    allowed = {
+        f"/stories/{STORY_ID}/media/{artifact.artifact_id}"
+        for artifact in (manifest.static_artifact, manifest.animated_artifact)
+        if artifact is not None
+    }
+    assert set(urls) <= allowed
+    assert "../" not in "".join(urls)
+
+
+def test_ready_shows_media_read_only_with_package_code() -> None:
+    text = page(media_detail(MediaOutcome.GIF, status=PrimaryStoryStatus.READY))
+    assert "<picture>" in text
+    assert "<form" not in text
+    assert 'class="story-rail__code">Package ab12cd34<' in text
+    assert 'name="content_hash"' not in text
+
+
+def test_story_media_css_is_responsive_and_reduced_motion_aware() -> None:
+    from pathlib import Path
+
+    css = (Path(__file__).parent.parent / "src/ai_trend_pipeline/web/static/app.css").read_text()
+    start = css.index(".story-media {")
+    block = css[
+        start : css.index("@media (prefers-reduced-motion: reduce) { .story-media__motion-note")
+    ]
+    assert "max-width: 100%" in block
+    assert "height: auto" in block
+    assert ".story-media__motion-note { display: none;" in block
+    assert (
+        "@media (prefers-reduced-motion: reduce) { .story-media__motion-note { display: block; } }"
+        in css
+    )
+    assert "px;" not in re.sub(r"var\(--[a-z-]+\)", "", block).replace("1px", "")
+    assert not re.search(r"(?<!max-)width:\s*\d+(px|rem)", block)

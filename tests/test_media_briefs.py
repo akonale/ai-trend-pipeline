@@ -9,9 +9,12 @@ from ai_trend_pipeline.media.briefs import (
     StoryMediaInput,
     media_brief_for,
     media_workflow_id_for,
+    package_matches_hash,
     story_content_hash,
+    story_package_hash,
+    text_only_manifest,
 )
-from ai_trend_pipeline.media.models import AnimationBeat
+from ai_trend_pipeline.media.models import AnimationBeat, MediaOutcome, media_brief_hash
 from tests.drafting_fixtures import DEFAULT_FACT_ID
 from tests.media_fixtures import make_manifest
 from tests.story_generation_fixtures import make_facts, make_package
@@ -92,3 +95,48 @@ def test_story_media_input_rejects_mismatched_ids_or_existing_media() -> None:
         StoryMediaInput(
             story_id=STORY, package=make_package(STORY, media=make_manifest()), facts=facts
         )
+
+
+def test_story_package_hash_includes_media_and_alt_text() -> None:
+    package = make_package(STORY)
+    manifest = make_manifest(MediaOutcome.GIF)
+    with_media = package.model_copy(update={"media": manifest})
+    assert re.fullmatch(r"[0-9a-f]{64}", story_package_hash(package))
+    assert story_package_hash(with_media) != story_package_hash(package)
+    assert story_content_hash(with_media) == story_content_hash(package)
+    assert story_package_hash(with_media) == story_package_hash(with_media.model_copy())
+    assert manifest.static_artifact is not None
+    new_alt = manifest.static_artifact.model_copy(update={"alt_text": "Different alt text"})
+    changed = with_media.model_copy(
+        update={"media": manifest.model_copy(update={"static_artifact": new_alt})}
+    )
+    assert story_package_hash(changed) != story_package_hash(with_media)
+    reworded = with_media.model_copy(update={"headline": "Another headline"})
+    assert story_package_hash(reworded) != story_package_hash(with_media)
+
+
+def test_package_matches_hash_detects_post_approval_media_change() -> None:
+    package = make_package(STORY).model_copy(update={"media": make_manifest(MediaOutcome.GIF)})
+    frozen = story_package_hash(package)
+    assert package_matches_hash(package, frozen)
+    assert package.media is not None and package.media.animated_artifact is not None
+    other_artifact = package.media.animated_artifact.model_copy(update={"byte_size": 101})
+    swapped = package.model_copy(
+        update={"media": package.media.model_copy(update={"animated_artifact": other_artifact})}
+    )
+    assert not package_matches_hash(swapped, frozen)
+    text_only = package.model_copy(update={"media": make_manifest(MediaOutcome.TEXT_ONLY)})
+    assert not package_matches_hash(text_only, frozen)
+    assert not package_matches_hash(package, "0" * 64)
+
+
+def test_text_only_manifest_is_valid_and_deterministic() -> None:
+    package = make_package(STORY)
+    facts = make_facts(STORY)
+    first = text_only_manifest(package, facts)
+    assert first == text_only_manifest(package, facts)
+    assert first.outcome is MediaOutcome.TEXT_ONLY
+    assert first.static_artifact is None and first.animated_artifact is None
+    assert first.story_id == STORY
+    assert first.story_content_hash == story_content_hash(package)
+    assert first.brief_hash == media_brief_hash(media_brief_for(package, facts))

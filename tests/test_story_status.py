@@ -25,6 +25,7 @@ from ai_trend_pipeline.story_status import (
         (StoryGenerationStatus.ANALYZING.value, PrimaryStoryStatus.WRITING),
         (StoryGenerationStatus.WRITING.value, PrimaryStoryStatus.WRITING),
         (StoryGenerationStatus.CHECKING.value, PrimaryStoryStatus.WRITING),
+        (StoryGenerationStatus.MEDIA.value, PrimaryStoryStatus.WRITING),
         (StoryGenerationStatus.REVIEW.value, PrimaryStoryStatus.REVIEW),
         (StoryGenerationStatus.READY.value, PrimaryStoryStatus.READY),
         (StoryGenerationStatus.REJECTED.value, PrimaryStoryStatus.CLOSED),
@@ -44,3 +45,10 @@ def test_unknown_status_is_closed_and_retention_is_48_hours() -> None:
     assert primary_story_status("") is PrimaryStoryStatus.CLOSED
     assert STORY_UI_RETENTION == timedelta(hours=48)
     assert DEFAULT_STORY_REVIEW_TIMEOUT_S == 172800
+
+
+def test_media_maps_to_writing() -> None:
+    from ai_trend_pipeline.services.stories import _FILTER_PREDICATES, StoryFilter  # pyright: ignore[reportPrivateUsage]
+
+    assert primary_story_status("media") is PrimaryStoryStatus.WRITING
+    assert "'media'" in _FILTER_PREDICATES[StoryFilter.WRITING]

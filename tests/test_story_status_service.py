@@ -298,7 +298,7 @@ def test_visibility_query_uses_start_time_for_candidates_and_story_created_at_fo
     )
     assert story_visibility_query(StoryFilter.WRITING, cutoff) == (
         base
-        + " AND (StoryStatus IN ('approved','researching','analyzing','writing','checking') "
+        + " AND (StoryStatus IN ('approved','researching','analyzing','writing','checking','media') "
         + "OR CandidateStatus = 'approved')"
     )
     assert story_visibility_query(StoryFilter.REVIEW, cutoff) == (

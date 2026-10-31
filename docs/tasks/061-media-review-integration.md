@@ -1,6 +1,6 @@
 # 061: Media generation and final-review integration
 
-Status: approved
+Status: built
 
 > Plan row **060** in `docs/mvp-plan.md` ("Media generation and final-review integration"),
 > renumbered to **061** (repo numbers are plan row + 1, see `docs/tasks/058-media-foundation.md`).
@@ -324,3 +324,7 @@ Existing files
 Found a latent bug: `_review` never sets `self._package`, so the live review query returns `package=None`. The spec fixes it. The approve hash check lives in the service (it refuses before signalling) because an ignored signal would hang `decide`.
 It is one PR, but large (workflow, worker, config, service, UI). If needed, split it into workflow/worker/config first and UI/service second.
 I could not create the branch or commit, because I have no shell tool. The spec is uncommitted in the main checkout. Next: the orchestrator creates `task/061-media-review-integration`, commits, and approves (row is `no`).
+
+**builder**: Built the media step, content hash, service/route, worker, config, UI and docs. Replay of `story_generation_v1_ready.json` passes and `story_generation_v2_media_ready.json` (new, recorded) replays. The full suite and `just lint` pass.
+Deviations: the stale-content log field is `cause` because `reason` is a forbidden story log field; `build_story_media_view` derives text from `manifest.outcome` and has no `outcome` kwarg. Existing generation tests and the e2e run a fake-renderer media worker (`with_media_worker`) and post `content_hash`.
+Not done: screenshots, because headless Chromium lacks `libnspr4` here, so 360px and dark theme are checked only by CSS tests. Tests were written alongside the code, not strictly before it.

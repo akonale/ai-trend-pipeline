@@ -157,9 +157,11 @@ or `none` disables it). The `research_story` activity runs on the story-generati
 `StoryGenerationWorkflow`.
 
 `MEDIA_DIR` (default `media`) is the directory for story media artifacts, named `<sha256>.<ext>`.
-Prod mounts the `media` volume at `/data/media` in worker and web. Nothing writes to it yet: the
-`StoryMediaWorkflow` foundation has no starter, the renderers are a fake one for tests and the
-`story-card` renderer. Story media can include a short GIF with a static poster.
+Prod mounts the `media` volume at `/data/media` in worker and web. After a story passes checking,
+`StoryGenerationWorkflow` runs `StoryMediaWorkflow` and the review page at `/stories/{id}` shows the
+exact story card (a short GIF with a still poster for reduced motion), its alt text and any fallback.
+Approval covers the text and the card together. `MEDIA_PROVIDER` (default `story-card`; `fake` for
+tests) picks the renderer.
 `GET /stories/{id}/media/{artifact_id}` serves an artifact only when that story's manifest lists
 it. The directory is git-ignored (`/media/`).
 

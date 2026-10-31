@@ -8,6 +8,7 @@ routes run against a local Temporal server with visibility.
 import asyncio
 import json
 import re
+import tempfile
 from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
@@ -105,6 +106,7 @@ from ai_trend_pipeline.web.view_models import (
     build_story_list_view,
     pending_nav_badge,
 )
+from tests.story_generation_fixtures import make_media_worker
 
 FIXTURES = Path(__file__).parent / "fixtures"
 ARTICLE_HTML = (FIXTURES / "research" / "article_supported.html").read_text(encoding="utf-8")
@@ -314,8 +316,12 @@ async def story_e2e(
 
     workflow_id = source_ingestion_workflow_id(SourceName.HN)
     async with env, hn, article, owid:
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        with (
+            ThreadPoolExecutor(max_workers=4) as executor,
+            tempfile.TemporaryDirectory() as media_dir,
+        ):
             async with (
+                make_media_worker(env, Path(media_dir)),
                 Worker(
                     env.client,
                     task_queue=SOURCE_INGESTION_TASK_QUEUE,
@@ -387,6 +393,13 @@ async def wait_for_pending(harness: Harness, count: int) -> None:
         return len(page.candidates) >= count
 
     await wait_until(ready, what=f"{count} pending candidates")
+
+
+async def approve_form(harness: Harness, story_id: str) -> dict[str, str]:
+    """The approve form fields, including the content hash the review page would post."""
+    detail = await harness.detail_service.show(story_id, now=datetime.now(UTC))
+    assert detail.content_hash is not None
+    return {"decision": "approve", "content_hash": detail.content_hash}
 
 
 async def wait_for_story_status(
@@ -499,7 +512,8 @@ async def test_success_unsupported_rejection_retention_and_no_duplicates() -> No
             assert assert_single_five_status_badge(detail_review) == "Review"
 
             approved = await web.post(
-                f"/stories/{story_ids['3001']}/decide", data={"decision": "approve"}
+                f"/stories/{story_ids['3001']}/decide",
+                data=await approve_form(harness, story_ids["3001"]),
             )
             assert approved.status_code == 200
             await wait_for_story_status(harness, candidate_ids["3001"], PrimaryStoryStatus.READY)
@@ -610,7 +624,8 @@ async def test_story_rejection_revision_and_failure_after_retry() -> None:
             )
             assert revision_detail.status is PrimaryStoryStatus.REVIEW
             final = await web.post(
-                f"/stories/{story_ids['4002']}/decide", data={"decision": "approve"}
+                f"/stories/{story_ids['4002']}/decide",
+                data=await approve_form(harness, story_ids["4002"]),
             )
             assert final.status_code == 200
             await wait_for_story_status(harness, candidate_ids["4002"], PrimaryStoryStatus.READY)

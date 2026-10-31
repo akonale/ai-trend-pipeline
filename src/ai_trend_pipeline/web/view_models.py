@@ -840,7 +840,6 @@ DECISION_NOTICES: dict[str, str] = {
     "approved": "Approved: the story is recorded. Nothing was published.",
     "rejected": "Rejected: the story is out of the queue. Nothing was published.",
     "closed": "That story was already decided or has expired. Nothing changed.",
-    "stale": ("This story changed after you opened it. Nothing was decided. Review it again."),
 }
 NOT_AVAILABLE_MISSING = (
     "This story is not available",
@@ -1271,6 +1270,7 @@ STORY_DETAIL_NOTICES: dict[str, str] = {
     "approved": "Approved: the story is ready. Nothing was published.",
     "rejected": "Rejected: the story is closed. Nothing was published.",
     "closed": "That story was already decided or has expired. Nothing changed.",
+    "stale": "This story changed after you opened it. Nothing was decided. Review it again.",
 }
 
 MAX_PACKAGE_CITATIONS = 20

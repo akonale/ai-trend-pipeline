@@ -1,6 +1,6 @@
 # 063: StoryPublishingWorkflow and gateway
 
-Status: reviewed
+Status: pr-open
 
 > Plan row **062** in `docs/mvp-plan.md` ("`StoryPublishingWorkflow` and gateway"), renumbered to
 > **063** (repo numbers are plan row + 1, see `docs/tasks/058-media-foundation.md`). It builds on
@@ -290,3 +290,6 @@ Next: reviewer checks the diff against the checklist.
 
 **reviewer**: Approved. Diff matches spec and checklist; workflow is deterministic (no I/O, pure imports only), retries bounded at 4 with non-retryable codes, USE_EXISTING/ALLOW_DUPLICATE and service pre-check give at-most-one post, failures return typed results, no approval path, `.claude/settings.json` not in the diff.
 Notes: (1) `pyright: ignore` on `upsert_search_attributes` in `story_publishing.py` has no inline reason; it copies the `story_generation.py` precedent, so optional to add a comment. (2) Builder's three deviations are acceptable.
+
+**scribe**: Added the inline reason to the `pyright: ignore` on `upsert_search_attributes` in `story_publishing.py`. Lint, format and pyright are clean. No README change (the runbook is repo 064), and `tech.md` already covers this task.
+PR: https://github.com/akonale/ai-trend-pipeline/pull/72 (status `pr-open`). Not merged; the human merges.

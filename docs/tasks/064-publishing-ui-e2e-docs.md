@@ -1,6 +1,6 @@
 # 064: Publishing UI, end-to-end QA, and docs
 
-Status: built
+Status: reviewed
 
 > Plan row **063** in `docs/mvp-plan.md` ("Publishing UI, end-to-end QA, and docs"), renumbered to
 > **064** (repo numbers are plan row + 1, see `docs/tasks/058-media-foundation.md`). This is the last
@@ -480,3 +480,9 @@ I have no shell: no branch, no commit. The file is uncommitted on `main`. Next: 
 **builder**: Built all of 064 in one PR: status/preview/services, publish route and panel, post proof CSS, `tests/story_e2e_harness.py` extraction, 7 e2e tests against a fake PDS, and all docs. `just lint` and `uv run pytest` (1416 tests) pass.
 Screenshots NOT taken: headless Chromium fails (libnspr4 missing). Markup/CSS tests stand in; the human must run the "Visual check (manual)" list in `docs/runbooks/publishing.md` before merging.
 Beyond the spec: view model shows only fixed publication sentences (never raw `status_detail`); updated `test_story_docs.py` ("six UI badges"), the `test_publishing_service.py` import guard allow-list and one e2e assertion ("It is not published yet.") for the new copy.
+
+**verifier**: Ran `just lint` (ruff check, ruff format --check, pyright strict: 0 errors) and `just test` (1416 passed, 2 pydantic serializer UserWarnings in test_web_story_detail.py, not failures). ANTHROPIC_* vars unset.
+All checks pass.
+
+**reviewer**: Approved. Diff matches the spec, layering holds (route calls one service, templates loops/ifs only, no env reads), `.claude/settings.json` is not in the diff.
+Notes: (1) The 2 pydantic UserWarnings in `test_web_story_detail.py` are new (absent on main); they come from `safe_preview` hashing intentionally `model_construct`-ed packages with bad URLs, so test-only, not a product issue. (2) Edits to existing tests all follow from spec copy/filter changes; the import-guard allow-list still blocks approval/workflow modules. (3) Screenshot gap is stated honestly; the human must run the manual checklist before merging.

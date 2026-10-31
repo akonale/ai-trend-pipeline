@@ -79,3 +79,39 @@ async def test_kind_mismatch_is_non_retryable(tmp_path: Path) -> None:
             acts.render_static_media, RenderMediaInput(brief=make_brief(), kind=MediaKind.ANIMATED)
         )
     assert info.value.type == "MediaRenderInvalid" and info.value.non_retryable
+
+
+@pytest.mark.asyncio
+async def test_story_card_render_stores_static_png_artifact(tmp_path: Path) -> None:
+    from ai_trend_pipeline.media.card import StoryCardRenderer
+    from ai_trend_pipeline.media.models import MediaKind
+
+    acts = StoryCardRenderer()
+    brief = make_brief()
+    artifact = await ActivityEnvironment().run(
+        StoryMediaActivities(tmp_path, acts).render_static_media,
+        RenderMediaInput(brief=brief, kind=MediaKind.STATIC),
+    )
+    assert artifact.kind is MediaKind.STATIC and artifact.media_type is MediaType.PNG
+    assert (artifact.width, artifact.height) == (1200, 675)
+    assert (tmp_path / artifact.relative_path).is_file()
+    assert artifact.artifact_id == artifact_id_for(
+        brief, MediaKind.STATIC, "story-card", acts.version
+    )
+
+
+@pytest.mark.asyncio
+async def test_content_unsupported_is_non_retryable_invalid(tmp_path: Path) -> None:
+    from ai_trend_pipeline.media.card import StoryCardRenderer
+
+    acts = StoryMediaActivities(tmp_path, StoryCardRenderer())
+    for kind, run in [
+        (MediaKind.STATIC, acts.render_static_media),
+        (MediaKind.ANIMATED, acts.render_animated_media),
+    ]:
+        brief = make_brief(headline="中文标题")
+        with pytest.raises(ApplicationError) as info:
+            await ActivityEnvironment().run(run, RenderMediaInput(brief=brief, kind=kind))
+        assert info.value.type == "MediaRenderInvalid"
+        assert info.value.non_retryable
+    assert list(tmp_path.iterdir()) == []

@@ -20,7 +20,12 @@ from ai_trend_pipeline.media.models import (
     artifact_id_for,
     has_media_signature,
 )
-from ai_trend_pipeline.media.providers import MediaRenderer, MediaRenderError, RenderedMedia
+from ai_trend_pipeline.media.providers import (
+    MediaContentUnsupported,
+    MediaRenderer,
+    MediaRenderError,
+    RenderedMedia,
+)
 from ai_trend_pipeline.media.storage import write_artifact
 
 RENDER_FAILED_ERROR_TYPE = "MediaRenderFailed"
@@ -61,6 +66,8 @@ class StoryMediaActivities:
             raise _invalid(f"expected a {kind.value} render request")
         try:
             rendered = await asyncio.to_thread(render, data.brief)
+        except MediaContentUnsupported as exc:
+            raise _invalid(f"{kind.value} content is not supported by this renderer") from exc
         except MediaRenderError as exc:
             raise ApplicationError(
                 f"{kind.value} render failed", type=RENDER_FAILED_ERROR_TYPE

@@ -5,9 +5,10 @@ from typing import Annotated, Literal
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from ai_trend_pipeline.services.media import MediaArtifactNotFound, StoryMediaPreviewService
 from ai_trend_pipeline.services.stories import (
     DecideStoryRequest,
     InvalidStoryPageToken,
@@ -27,6 +28,7 @@ from ai_trend_pipeline.web.dependencies import (
     CurrentUser,
     current_user,
     get_story_detail_service,
+    get_story_media_preview_service,
     get_story_status_service,
     get_templates,
 )
@@ -178,6 +180,28 @@ async def story_detail(
         templates,
         notice=story_decision_notice(decided),
     )
+
+
+MEDIA_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": "default-src 'none'",
+    "Cache-Control": "private, max-age=3600",
+}
+
+
+@router.get("/stories/{detail_id}/media/{artifact_id}", response_model=None)
+async def story_media(
+    detail_id: str,
+    artifact_id: str,
+    service: StoryMediaPreviewService = Depends(get_story_media_preview_service),
+) -> FileResponse | PlainTextResponse:
+    try:
+        served = await service.preview(detail_id, artifact_id, now=datetime.now(UTC))
+    except MediaArtifactNotFound:
+        return PlainTextResponse("Not found", status_code=404)
+    except StoryDetailUnavailable:
+        return PlainTextResponse("Story service unavailable", status_code=503)
+    return FileResponse(served.path, media_type=served.media_type, headers=MEDIA_HEADERS)
 
 
 @router.get("/stories/{detail_id}/status", response_class=HTMLResponse)

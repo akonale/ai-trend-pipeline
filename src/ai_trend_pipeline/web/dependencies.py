@@ -10,6 +10,7 @@ from ai_trend_pipeline import temporal_client
 from ai_trend_pipeline.config import Settings
 from ai_trend_pipeline.services.candidates import CandidateService, CandidateUnavailable
 from ai_trend_pipeline.services.charts import ChartService
+from ai_trend_pipeline.services.media import MediaService, StoryMediaPreviewService
 from ai_trend_pipeline.services.postgres_style_store import PostgresStyleStore
 from ai_trend_pipeline.services.stories import (
     StoryDetailService,
@@ -145,6 +146,13 @@ async def get_story_detail_service(
             return StoryDetailService(_UnavailableDetailGateway())
         request.app.state.temporal_client = client
     return StoryDetailService(TemporalStoryDetailGateway(client))
+
+
+async def get_story_media_preview_service(
+    details: StoryDetailService = Depends(get_story_detail_service),
+    settings: Settings = Depends(get_settings),
+) -> StoryMediaPreviewService:
+    return StoryMediaPreviewService(details, MediaService(settings))
 
 
 def optional_user(

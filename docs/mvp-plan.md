@@ -282,6 +282,98 @@ full internal state machine as additional badges or a lifecycle diagram.
 | 055 | Story detail and final review UI: add `/stories/{id}` for candidate or generation workflows. While active, show the primary status and one short progress explanation; at `review`, render the StoryPackage with headline, summary, body, key points, clickable fact/evidence references, caveats, and final Approve/Reject actions; at `ready`, show the approved package read-only. Show one `closed` badge with clear rejected, unsupported, failed, or expired reason text. Open workflows use queries and closed workflows use typed results through the service; no arbitrary history parsing or detailed lifecycle graphic in templates | Route tests cover all five primary states and each closed reason, missing, already-decided, repeated decision, malformed result, source-link safety, and the 48-hour cutoff; final approval does not publish; active detail updates via htmx without a JavaScript build; keyboard/focus behaviour, long body text, citations, mobile/desktop layouts, and existing candidate/chart tests pass | no |
 | 056 | Story-generation end-to-end hardening and docs: exercise HN candidate → approval → internal research/analysis/writing/checking → review → ready using recorded HTTP/LLM fixtures and the real Temporal service/gateway/UI boundaries. Verify that the UI shows only Pending, Writing, Review, Ready, or Closed throughout. Add bounded budgets, sanitized operational logs, failure-recovery runbooks, search-attribute setup, five-status semantics, and 48-hour UI retention to architecture docs and README. Document the two human decisions explicitly: candidate approval starts generation; story approval marks the package ready and never publishes | The full local stack demonstrates success, unsupported, failed-after-retry, critique-revision, candidate rejection, story rejection, and review expiry; no duplicate rows or story workflows appear across the handoff; terminal stories remain visible only until 48 hours after original detection; hidden items leave no pending counts or filters; no histories are deleted; old replay suites, Ruff, strict Pyright, and full pytest pass; a fresh operator can run and troubleshoot the feature from committed docs alone | no |
 
+### Story media and explicit publishing
+
+**Goal:** add an engaging static image or short GIF derived from the generated story, review the text
+and media together, and publish the exact approved package through an idempotent Temporal workflow.
+Bluesky is the first destination. No automatic publishing and no full video pipeline.
+
+**Architectural decision:** media belongs logically in story generation, before final human review,
+but is implemented as an isolated child `StoryMediaWorkflow`. Publishing only formats, uploads, and
+creates a record for the already-approved text and artifact hashes; it never generates, selects, or
+changes media.
+
+**Done when:** a checked story can produce a static story card and optional short GIF; GIF failure
+falls back to the static image and total media failure permits an explicitly marked text-only story;
+final Review shows the exact media; Ready freezes text and artifact hashes; an explicit Publish click
+creates at most one destination post; and Published shows the resulting public link.
+
+**Order:** 057 → 058 → 059 → 060 → 061 → 062 → 063. Tasks 057-059 build standalone media contracts
+and renderers. Task 060 integrates media into final review. Tasks 061-062 add publishing without
+changing generation. Task 063 completes the UI, end-to-end verification, and docs.
+
+**Target flow:**
+
+```
+StoryGenerationWorkflow
+  → checking
+  → start and await StoryMediaWorkflow
+       → media brief from approved draft and FactSet
+       → static image and optional short GIF
+       → content-hashed MediaManifest + static fallback
+  → review: human sees exact text + image/GIF
+  → ready: StoryPackage and media hashes frozen
+  → explicit Publish click
+
+StoryPublishingWorkflow (one per story + destination + approved content hash)
+  → validate destination capabilities and approved artifact hashes
+  → find existing publication by deterministic idempotency key
+  → upload approved media if supported, otherwise use its approved static fallback
+  → create destination post
+  → published + URI/public URL, or ready + sanitized retryable error
+```
+
+**Rules for 057-063:**
+- Final approval covers text and media together. Add optional media fields with defaults and use
+  replay versioning for existing StoryGenerationWorkflow histories. Changing text, media, or alt
+  text changes the approved content hash and requires a new review before publishing.
+- The LLM may produce a bounded MediaBrief (visual concept, headline/fact selection, animation beats,
+  and draft alt text), but never arbitrary HTML, CSS, JavaScript, file paths, remote URLs, or shell
+  commands. Fixed code templates own layout, type, colour, timing, and rendering.
+- Start with original template-driven graphics. Do not scrape or hotlink article images or GIFs.
+  AI illustration or licensed stock/GIF providers may later implement the same media-provider
+  contract with provenance and licence metadata; they are not required for this milestone.
+- Store media bytes outside Temporal on a configured shared media volume. Temporal inputs/results
+  carry only bounded manifests containing artifact ID, media type, dimensions, duration, byte size,
+  alt text, content hash, and safe relative path. Reuse content-hash filenames and atomic replacement.
+- Web artifact routes resolve IDs through server-side manifests, enforce path containment and MIME
+  allowlists, and never accept arbitrary paths. Worker and web receive the same media volume; secrets
+  and provider credentials remain in `config.py` and out of workflow history.
+- Every animation has a static fallback and meaningful alt text. Review uses a static poster for
+  reduced-motion users and does not require autoplay or JavaScript. Bound GIF dimensions, frames,
+  duration, palette, bytes, and rendering time.
+- Media is best-effort: GIF failure falls back to static; static failure falls back to text-only.
+  These fallbacks appear in review and are included in the approved package. Publishing cannot repair
+  or regenerate missing media.
+- Publishing uses deterministic IDs `publish-v1-<story-id>-<destination>-<content-hash>` and a
+  deterministic idempotency key. Check for an existing record before upload/create; retries return
+  the existing PublicationResult rather than posting twice.
+- Publish only the exact approved post text, links/facets, and artifact hashes. Destination-specific
+  formatters enforce text lengths, media counts, MIME types, byte limits, and current provider
+  capabilities in code. Unsupported animation uses the approved static fallback; no silent re-edit.
+- Preserve the existing chart-specific Bluesky posting path. Add separate story-publication models,
+  activities, workflow, worker registration, and recorded fixtures rather than passing stories through
+  `PostChartInput`.
+- Publishing is never triggered by candidate approval or final story approval. A transient publish
+  failure leaves the story Ready with a sanitized error and permits retry. Successful publication
+  adds only one new primary UI status, `published`; internal upload/create/retry states remain detail
+  text under Ready while publishing is in progress.
+- Publication workflows inherit `StoryCandidateId` and the original `StoryCreatedAt`; publishing does
+  not reset the 48-hour UI window. Store publication URI, URL, destination, timestamp, idempotency
+  key, and content hash in Temporal, not a new application table.
+- HTTP and LLM tests use recorded fixtures. Rendering tests use golden images/keyframe and metadata
+  checks. Publishing tests use fake destinations and recorded API responses; CI performs no live post.
+
+| # | Task | Done when | Your approval? |
+| --- | --- | --- | --- |
+| 057 | Media contracts and `StoryMediaWorkflow` foundation: add bounded MediaBrief, MediaArtifact, MediaManifest, and media input/result models; a static provider registry; deterministic `media-v1-<story-content-hash>` IDs; shared-volume configuration; content-hash/atomic artifact storage; and safe manifest-based serving helpers. Implement the child workflow with explicit static/GIF/text-only outcomes but no real renderer yet. Add a fake renderer for workflow and route tests | Models reject unsafe paths, MIME types, oversized manifests, missing alt text, and invalid dimensions/duration; identical briefs produce identical artifact IDs; workflow retries and fallback outcomes are tested with time skipping; no binaries enter Temporal history; existing story histories replay with media fields absent | no |
+| 058 | Static story-card renderer: implement one polished fixed template using the existing design tokens and local fonts, with story headline, one supported key fact or concise summary, and a small source footer. Use deterministic code layout and rasterization, with text wrapping and overflow guards. Generate an approved web-friendly PNG or WebP plus alt text. Keep an optional AI-illustration provider interface separate, with no external provider required for the default path | Golden-image and metadata tests cover short/long headlines, missing key fact, Unicode, dark/light themes, and minimum mobile/social dimensions; text never clips or overflows; output is deterministic and within byte limits; no remote asset or arbitrary LLM markup is rendered; a web preview serves only a manifest-approved artifact | no |
+| 059 | Short engaging GIF renderer: add one fixed 3-5 second animation template derived from the 058 scene, such as a headline reveal followed by a key-fact emphasis and source footer. Generate deterministic frames and encode a bounded GIF with a static PNG/WebP poster. Use a dedicated activity timeout/concurrency policy appropriate for rendering; do not add a browser or JavaScript build merely for animation | Keyframe tests verify the narrative order and final static frame; duration, frame count, dimensions, palette, and byte limits are enforced; reduced-motion review selects the poster; encoder failure triggers static fallback; identical inputs reproduce the same manifest and no unbounded temp files remain after success or failure | no |
+| 060 | Media generation and final-review integration: after story checking and before `review`, start and await the 057 child workflow using the checked StoryPackage and FactSet. Map all internal media states to the existing `writing` badge. Attach the resulting MediaManifest to StoryPackage, calculate the combined approved content hash, and update `/stories/{id}` to preview the exact image/GIF with alt text and static reduced-motion alternative. Make fallback status visible without adding new primary statuses | Time-skipping tests cover static, GIF, static-fallback, and text-only paths plus media timeout and duplicate child starts; Review cannot appear before media resolution; final approval freezes text and artifact hashes; post-approval media changes require re-review; route tests cover safe preview, missing artifact, reduced motion, mobile layout, and old text-only stories | no |
+| 061 | Story-publication contracts and Bluesky activity: add PublicationPackage, DestinationCapabilities, PublicationInput/Result, a destination registry, and a deterministic formatter that converts only the approved StoryPackage into bounded post text, link facets, alt text, and media embed inputs. Implement a separate Bluesky story activity that verifies content/artifact hashes, finds an existing record by deterministic key, uploads an approved static/animated artifact when supported, and creates the post. Keep the chart publisher unchanged | Fake/recorded API tests cover text-only, image, animation-capability fallback, existing record, upload retry, create retry, rate limit, auth failure, invalid text/media, hash mismatch, and missing artifact; duplicate calls never create two records; no LLM or media generation runs; secrets and raw responses are not logged | no |
+| 062 | `StoryPublishingWorkflow` and gateway: start one workflow only from an explicit Publish action on a Ready story, using deterministic story/destination/content-hash IDs. Orchestrate capability validation, existing-record lookup, media upload, post creation, and typed PublicationResult. Add query/visibility state for internal publishing progress and terminal success/failure, worker registration, bounded retries, and idempotent gateway start/result operations. Inherit original retention metadata and never modify the approved StoryPackage | Time-skipping and fake-destination tests cover double-click, concurrent starts, retry after network failure, already-published recovery, permanent failure, missing media, unsupported animation fallback, and destination result mapping; at most one post exists; success returns URI and public URL; failure leaves the story publishable; no automatic approval-to-publish path exists | no |
+| 063 | Publishing UI, end-to-end QA, and docs: add a Publish button to Ready, disable it while publication is active, show `Ready — Publishing…` or a sanitized failure with Retry, and add the single `published` primary badge with destination link and time on success. Extend `/stories` filters without exposing internal upload states. Exercise the complete candidate → story+media review → Ready → Publish → Published flow using fake/recorded services; update architecture, runbooks, README, media/provider configuration, and recovery docs | UI tests cover text/static/GIF review, reduced motion, Publish double-click, failure/retry, Published link, old stories vanishing at 48 hours even after publication, and mobile/desktop accessibility; golden media, workflow replay, Ruff, strict Pyright, and full pytest pass; no live CI publication occurs; a fresh operator can configure Bluesky and recover a failed publication from committed docs | no |
+
 ## Web architecture (rules for every Topic Studio task)
 
 Moved to the "Web app" section of [docs/architecture/tech.md](architecture/tech.md).

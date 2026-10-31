@@ -1,6 +1,6 @@
 # 063: StoryPublishingWorkflow and gateway
 
-Status: built
+Status: reviewed
 
 > Plan row **062** in `docs/mvp-plan.md` ("`StoryPublishingWorkflow` and gateway"), renumbered to
 > **063** (repo numbers are plan row + 1, see `docs/tasks/058-media-foundation.md`). It builds on
@@ -284,3 +284,9 @@ I have no shell, so there is no branch and no commit. The file is uncommitted in
 **builder**: Built `story_publishing.py`, `services/publishing.py`, `TemporalStoryPublishingGateway`, the sixth worker, tests and the replay fixture `story_publishing_v1_published.json`. `FakePds` moved to `tests/publishing_fixtures.py`. `just lint` clean and the full suite passes (1363).
 Notes: the time-skipping server has no ListWorkflows, so the concurrency test counts run ids from a recording client instead of listing. Gateway `start` tolerates a missing generation workflow (blank title/source). Protocol params are named `workflow_id` to match the other gateways.
 `tech.md` updated (Story publishing contracts, Worker). The frontend-design skill was loaded but not needed (no UI).
+
+**verifier**: Ran `just lint` (ruff check, ruff format --check, pyright strict: 0 errors) and `just test` (1363 passed), with ANTHROPIC_* unset. All checks pass.
+Next: reviewer checks the diff against the checklist.
+
+**reviewer**: Approved. Diff matches spec and checklist; workflow is deterministic (no I/O, pure imports only), retries bounded at 4 with non-retryable codes, USE_EXISTING/ALLOW_DUPLICATE and service pre-check give at-most-one post, failures return typed results, no approval path, `.claude/settings.json` not in the diff.
+Notes: (1) `pyright: ignore` on `upsert_search_attributes` in `story_publishing.py` has no inline reason; it copies the `story_generation.py` precedent, so optional to add a comment. (2) Builder's three deviations are acceptable.

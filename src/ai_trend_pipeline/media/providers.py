@@ -12,6 +12,10 @@ class MediaRenderError(Exception):
     """A transient render failure; the activity maps it to a retryable error."""
 
 
+class MediaContentUnsupported(Exception):
+    """The brief cannot be drawn (for example an unsupported glyph). Never retried."""
+
+
 class UnknownMediaProviderError(Exception):
     pass
 
@@ -36,6 +40,7 @@ class MediaRenderer(Protocol):
 
 class MediaProviderName(StrEnum):
     FAKE = "fake"
+    STORY_CARD = "story-card"
 
 
 def _make_fake() -> MediaRenderer:
@@ -45,8 +50,15 @@ def _make_fake() -> MediaRenderer:
     return FakeMediaRenderer()
 
 
+def _make_story_card() -> MediaRenderer:
+    from ai_trend_pipeline.media.card import StoryCardRenderer
+
+    return StoryCardRenderer()
+
+
 MEDIA_RENDERERS: Mapping[MediaProviderName, Callable[[], MediaRenderer]] = {
     MediaProviderName.FAKE: _make_fake,
+    MediaProviderName.STORY_CARD: _make_story_card,
 }
 
 

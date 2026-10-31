@@ -1,6 +1,6 @@
 # 064: Publishing UI, end-to-end QA, and docs
 
-Status: approved
+Status: built
 
 > Plan row **063** in `docs/mvp-plan.md` ("Publishing UI, end-to-end QA, and docs"), renumbered to
 > **064** (repo numbers are plan row + 1, see `docs/tasks/058-media-foundation.md`). This is the last
@@ -476,3 +476,7 @@ real `publish_story_to_bluesky` against `FakePds`, fake media renderer, routes t
 Key choices: publishing rows join the `/stories` query and collapse onto the generation row (never their own link). `StoryDetailService` takes an optional `PublicationLookup`, so detail routes still call one service. `preview_post` is pure and shared with the formatter.
 Screenshot gap: try Chromium, otherwise CSS/markup tests plus a manual checklist in `docs/runbooks/publishing.md`, stated in the PR. The task is at the upper bound of one PR. If it overruns, split the docs into a follow-up.
 I have no shell: no branch, no commit. The file is uncommitted on `main`. Next: the orchestrator creates `task/064-publishing-ui-e2e-docs`, commits only this file (not `.claude/settings.json`), and approves it (the row is `no`).
+
+**builder**: Built all of 064 in one PR: status/preview/services, publish route and panel, post proof CSS, `tests/story_e2e_harness.py` extraction, 7 e2e tests against a fake PDS, and all docs. `just lint` and `uv run pytest` (1416 tests) pass.
+Screenshots NOT taken: headless Chromium fails (libnspr4 missing). Markup/CSS tests stand in; the human must run the "Visual check (manual)" list in `docs/runbooks/publishing.md` before merging.
+Beyond the spec: view model shows only fixed publication sentences (never raw `status_detail`); updated `test_story_docs.py` ("six UI badges"), the `test_publishing_service.py` import guard allow-list and one e2e assertion ("It is not published yet.") for the new copy.

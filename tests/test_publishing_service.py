@@ -274,6 +274,11 @@ def test_no_approval_path_references_publishing() -> None:
         Path("services/temporal_gateway.py"),
         Path("worker.py"),
         Path("story_publishing.py"),
+        # 064: the explicit Publish button and the detail/list views read publishing state.
+        Path("services/stories.py"),
+        Path("web/dependencies.py"),
+        Path("web/routes/stories.py"),
+        Path("web/view_models.py"),
     }
     offenders: list[Path] = []
     for path in SRC.rglob("*.py"):

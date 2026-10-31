@@ -1,6 +1,6 @@
 # 058: Media contracts and StoryMediaWorkflow foundation
 
-Status: built
+Status: reviewed
 
 > Plan row **057** in `docs/mvp-plan.md` ("Media contracts and `StoryMediaWorkflow` foundation"),
 > renumbered to **058** because `docs/tasks/057-candidate-visibility-fallback.md` already uses 057.
@@ -345,3 +345,9 @@ Notes: WEBP signature is `RIFF` prefix plus `WEBP` at byte 8 via `has_media_sign
 
 **builder**: Fix loop 1: anchored `.gitignore` rule to `/media/` and committed `src/ai_trend_pipeline/media/` (7 files); ruff format and one E501 fixed in the new files.
 `just lint` clean, 1076 tests pass. Next: reviewer re-reviews the media package.
+**verifier**: Re-verified after the .gitignore fix. Branch clean, `git ls-files src/ai_trend_pipeline/media` lists 7 files.
+`just lint` passed (ruff check, ruff format --check, pyright 0 errors). `just test` passed (1076 tests, ANTHROPIC_* unset).
+All checks pass.
+
+**reviewer**: Approved. Media package now committed and reviewed against the spec (models, briefs, storage, providers, fake, activities all match; limits, validators, atomic idempotent storage, containment checks correct).
+Notes: (1) `media_brief_for` last-resort fallback uses a literal "Story" headline, unreachable in practice. (2) `_alt_text` slices at 1000 chars without ellipsis; harmless given the 160+280 caps.

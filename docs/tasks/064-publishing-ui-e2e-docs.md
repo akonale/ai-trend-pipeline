@@ -1,6 +1,6 @@
 # 064: Publishing UI, end-to-end QA, and docs
 
-Status: reviewed
+Status: pr-open
 
 > Plan row **063** in `docs/mvp-plan.md` ("Publishing UI, end-to-end QA, and docs"), renumbered to
 > **064** (repo numbers are plan row + 1, see `docs/tasks/058-media-foundation.md`). This is the last
@@ -486,3 +486,7 @@ All checks pass.
 
 **reviewer**: Approved. Diff matches the spec, layering holds (route calls one service, templates loops/ifs only, no env reads), `.claude/settings.json` is not in the diff.
 Notes: (1) The 2 pydantic UserWarnings in `test_web_story_detail.py` are new (absent on main); they come from `safe_preview` hashing intentionally `model_construct`-ed packages with bad URLs, so test-only, not a product issue. (2) Edits to existing tests all follow from spec copy/filter changes; the import-guard allow-list still blocks approval/workflow modules. (3) Screenshot gap is stated honestly; the human must run the manual checklist before merging.
+
+**scribe**: Docs were already current, so no doc edits. Opened PR #73 against main: https://github.com/akonale/ai-trend-pipeline/pull/73 (not merged).
+The PR body states that no 360px, dark or light screenshots were taken (libnspr4 missing), that markup/CSS tests stand in, and that the "Visual check (manual)" list in `docs/runbooks/publishing.md` must be run by a human before `just deploy`.
+Status set to pr-open. `.claude/settings.json` was not staged.

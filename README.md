@@ -158,8 +158,9 @@ or `none` disables it). The `research_story` activity runs on the story-generati
 
 `MEDIA_DIR` (default `media`) is the directory for story media artifacts, named `<sha256>.<ext>`.
 Prod mounts the `media` volume at `/data/media` in worker and web. Nothing writes to it yet: the
-`StoryMediaWorkflow` foundation has no starter, the renderers are a fake one for tests and the `story-card` PNG renderer. `GET /stories/{id}/media/{artifact_id}` serves an artifact only when that story's manifest lists it. The
-directory is git-ignored (`/media/`).
+`StoryMediaWorkflow` foundation has no starter, the renderers are a fake one for tests and the
+`story-card` PNG renderer. `GET /stories/{id}/media/{artifact_id}` serves an artifact only when that
+story's manifest lists it. The directory is git-ignored (`/media/`).
 
 ## Hacker News
 

@@ -27,7 +27,13 @@ from ai_trend_pipeline.web.view_models import (
 router = APIRouter()
 
 
-@router.get("/", response_class=HTMLResponse)
+@router.get("/", response_class=RedirectResponse, status_code=307)
+async def root() -> RedirectResponse:
+    """The stories inbox is the home page."""
+    return RedirectResponse("/stories", status_code=307)
+
+
+@router.get("/new", response_class=HTMLResponse)
 async def home(
     request: Request,
     topic: str = "",
@@ -108,7 +114,7 @@ async def new_style(
     )
     clean = (topic or "").strip()
     if not clean:
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/new", status_code=303)
     if len(clean) > MAX_TOPIC_LENGTH:
         view = build_home_view(clean, options, TOPIC_TOO_LONG_ERROR)
         return templates.TemplateResponse(request, "home.html", {"view": view}, status_code=400)

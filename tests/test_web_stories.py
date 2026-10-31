@@ -14,10 +14,15 @@ from ai_trend_pipeline.services.stories import (
     StoryRow,
     StoryStatusUnavailable,
 )
+from ai_trend_pipeline.story_candidate import CandidateReviewState, CandidateStatus
 from ai_trend_pipeline.story_status import PrimaryStoryStatus
 from ai_trend_pipeline.web.app import create_app
-from ai_trend_pipeline.web.dependencies import get_story_status_service
+from ai_trend_pipeline.web.dependencies import (
+    get_candidate_service,
+    get_story_status_service,
+)
 from ai_trend_pipeline.web.view_models import build_shell
+from tests.test_web_candidate_detail import CANDIDATE_ID, make_candidate
 
 NOW = datetime.now(UTC)
 
@@ -77,6 +82,58 @@ def client_for(service: FakeStoryService) -> TestClient:
     return TestClient(app)
 
 
+class FakeCandidateDetailService:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+        self.candidate = make_candidate()
+
+    async def show(self, candidate_id: str) -> CandidateReviewState:
+        self.calls.append(candidate_id)
+        return CandidateReviewState(
+            status=CandidateStatus.AWAITING_REVIEW, candidate=self.candidate
+        )
+
+
+def client_with_candidate_detail(
+    story_service: FakeStoryService, candidate_service: FakeCandidateDetailService
+) -> TestClient:
+    app = create_app(Settings())
+
+    async def fake_story_service() -> FakeStoryService:
+        return story_service
+
+    async def fake_candidate_service() -> FakeCandidateDetailService:
+        return candidate_service
+
+    app.dependency_overrides[get_story_status_service] = fake_story_service
+    app.dependency_overrides[get_candidate_service] = fake_candidate_service
+    return TestClient(app)
+
+
+def test_pending_row_links_to_the_candidate_review() -> None:
+    candidate_service = FakeCandidateDetailService()
+    client = client_with_candidate_detail(
+        FakeStoryService(
+            page(
+                story(CANDIDATE_ID, CANDIDATE_ID, status=PrimaryStoryStatus.PENDING),
+                story("candidate-v1-review", "story-v1-review", status=PrimaryStoryStatus.REVIEW),
+            )
+        ),
+        candidate_service,
+    )
+
+    text = client.get("/stories").text
+    assert f'href="/candidates/{CANDIDATE_ID}"' in text
+    assert 'href="/stories/story-v1-review"' in text
+    assert f'href="/stories/{CANDIDATE_ID}"' not in text
+
+    detail = client.get(f"/candidates/{CANDIDATE_ID}")
+    assert detail.status_code == 200
+    assert candidate_service.calls == [CANDIDATE_ID]
+    assert 'name="decision" value="approve"' in detail.text
+    assert 'name="decision" value="reject"' in detail.text
+
+
 def test_stories_page_renders_five_statuses_and_rows() -> None:
     service = FakeStoryService(
         page(
@@ -127,7 +184,8 @@ def test_stories_page_renders_five_statuses_and_rows() -> None:
     assert "Hacker News" in text
     assert "Test source" in text
     assert '<span class="story-row__detail">Starting story generation.</span>' in text
-    assert 'href="/stories/story-v1-pending"' in text
+    assert 'href="/candidates/candidate-v1-pending"' in text
+    assert 'href="/stories/story-v1-pending"' not in text
     assert 'href="/stories/story-v1-ready"' in text
     assert "<time datetime=" in text
     assert "Updated 2 minutes ago" in text
@@ -361,7 +419,7 @@ def test_nav_marks_stories_current_and_candidates_on_the_inbox() -> None:
     assert [item.href for item in shell.nav] == [
         "/stories",
         "/candidates",
-        "/",
+        "/new",
         "/settings",
     ]
     assert [item.label for item in shell.nav if item.current] == ["Stories"]

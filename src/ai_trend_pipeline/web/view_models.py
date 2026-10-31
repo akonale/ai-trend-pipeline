@@ -57,7 +57,7 @@ class NavItem(BaseModel):
 
 class ShellView(BaseModel):
     brand: str = "Topic Studio"
-    brand_href: str = "/"
+    brand_href: str = "/stories"
     nav: list[NavItem]
     user_email: str | None = None
     env_tag: str = ""
@@ -72,9 +72,9 @@ def build_shell(
     pending: NavBadge | None = None,
 ) -> ShellView:
     """Header, nav, chip and footer data for one page. Pure: no I/O."""
-    on_stories = path == "/stories" or path.startswith("/stories/")
+    on_stories = path in ("/", "/stories") or path.startswith("/stories/")
     on_candidates = path == "/candidates" or path.startswith("/candidates/")
-    on_new = path in ("/", "/runs") or path.startswith(("/runs/", "/new/"))
+    on_new = path in ("/new", "/runs") or path.startswith(("/new/", "/runs/"))
     return ShellView(
         nav=[
             NavItem(label="Stories", href="/stories", current=on_stories),
@@ -84,7 +84,7 @@ def build_shell(
                 current=on_candidates,
                 badge=pending,
             ),
-            NavItem(label="New chart", href="/", current=on_new),
+            NavItem(label="New chart", href="/new", current=on_new),
             NavItem(label="Your style", href="/settings", current=path == "/settings"),
         ],
         user_email=user_email,
@@ -170,7 +170,7 @@ class TopicChip(BaseModel):
 
 
 def _chips() -> list[TopicChip]:
-    return [TopicChip(label=t, href=f"/?topic={quote(t)}") for t in EXAMPLE_TOPICS]
+    return [TopicChip(label=t, href=f"/new?topic={quote(t)}") for t in EXAMPLE_TOPICS]
 
 
 class ChoiceOption(BaseModel):
@@ -312,7 +312,7 @@ def build_style_step_view(
     save_note: str = "",
 ) -> StyleStepView:
     topic = topic.strip()
-    change_href = f"/?{flow_query(topic, options)}"
+    change_href = f"/new?{flow_query(topic, options)}"
     palettes = [
         PaletteChoice(
             key="",
@@ -555,7 +555,7 @@ class RunView(BaseModel):
     end_message: str = ""
     post_url: str | None = None
     post_link_note: str = ""
-    another_href: str = "/"
+    another_href: str = "/new"
     critique_summary: str = ""
 
 
@@ -1043,7 +1043,7 @@ _ACTIVE_STORY_STATUSES = frozenset(
 
 
 class StoryRowView(BaseModel):
-    href: str
+    detail_href: str
     title: str
     source_label: str
     status_label: str
@@ -1083,13 +1083,20 @@ def _story_count_text(count: int, more: bool, filter: StoryFilter) -> str:
     return f"{amount} {noun}{where} from the last 48 hours."
 
 
+def _story_row_detail_href(row: StoryRow) -> str:
+    """Pending rows go straight to the candidate review; the rest to story detail."""
+    if row.status is PrimaryStoryStatus.PENDING:
+        return f"/candidates/{quote(row.candidate_id, safe='')}"
+    return f"/stories/{quote(row.detail_id, safe='')}"
+
+
 def _story_row_view(row: StoryRow, now: datetime) -> StoryRowView:
     updated = row.updated_at
     detail = bounded_detail(row.status_detail) or ""
     source = row.source.strip()
     relative = relative_time(updated, now) if updated is not None else ""
     return StoryRowView(
-        href=f"/stories/{quote(row.detail_id, safe='')}",
+        detail_href=_story_row_detail_href(row),
         title=row.title.strip() or TITLE_FALLBACK,
         source_label=UNKNOWN_SOURCE_LABEL if not source else source_label(source),
         status_label=STORY_STATUS_LABELS[row.status],

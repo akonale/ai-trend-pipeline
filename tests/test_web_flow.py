@@ -67,12 +67,12 @@ def current_steps(text: str) -> list[str]:
 
 
 def test_step_one_page() -> None:
-    text = flow_client().get("/").text
+    text = flow_client().get("/new").text
     assert '<form class="topic-form" method="get" action="/new/style">' in text
     assert 'name="topic"' in text
     assert "Next: choose a style" in text
     assert 'aria-label="Example topics"' in text
-    assert 'href="/?topic=Life%20expectancy"' in text
+    assert 'href="/new?topic=Life%20expectancy"' in text
     assert "Tap an example to put it in the box." in text
     assert 'name="chart_type"' not in text
     assert "<details" not in text
@@ -81,9 +81,9 @@ def test_step_one_page() -> None:
 
 
 def test_step_one_carries_options() -> None:
-    text = flow_client().get("/?topic=a&countries=France").text
+    text = flow_client().get("/new?topic=a&countries=France").text
     assert re.search(r'<input type="hidden" name="countries" value="France">', text)
-    assert 'type="hidden"' not in flow_client().get("/?topic=a").text
+    assert 'type="hidden"' not in flow_client().get("/new?topic=a").text
 
 
 # ---- Step 2 routes ----
@@ -93,7 +93,7 @@ def test_step_one_carries_options() -> None:
 def test_step_two_redirects_without_topic(query: str) -> None:
     res = flow_client().get(f"/new/style{query}", follow_redirects=False)
     assert res.status_code == 303
-    assert res.headers["location"] == "/"
+    assert res.headers["location"] == "/new"
 
 
 def test_step_two_too_long_renders_step_one() -> None:
@@ -119,9 +119,9 @@ def test_step_two_page() -> None:
     assert 'action="/runs"' in text
     assert 'method="post"' in text
     assert "Generate chart" in text
-    assert 'formaction="/"' in text and 'formmethod="get"' in text and "formnovalidate" in text
-    assert text.index("Generate chart") < text.index('formaction="/"')
-    assert 'href="/?topic=Life%20expectancy"' in text
+    assert 'formaction="/new"' in text and 'formmethod="get"' in text and "formnovalidate" in text
+    assert text.index("Generate chart") < text.index('formaction="/new"')
+    assert 'href="/new?topic=Life%20expectancy"' in text
     assert "<details" not in text
 
 
@@ -130,12 +130,12 @@ def test_step_two_prefills_from_query() -> None:
     assert 'value="France"' in text
     assert 'value="1990"' in text
     assert '<option value="punchy" selected>' in text
-    assert 'href="/?topic=a&amp;from_year=1990&amp;countries=France&amp;tone=punchy"' in text
+    assert 'href="/new?topic=a&amp;from_year=1990&amp;countries=France&amp;tone=punchy"' in text
 
 
 def test_step_two_stepper() -> None:
     items = stepper_items(flow_client().get("/new/style?topic=a").text)
-    assert "step--done" in items[0] and '<a href="/?topic=a">' in items[0]
+    assert "step--done" in items[0] and '<a href="/new?topic=a">' in items[0]
     assert ", done" in items[0]
     assert 'aria-current="step"' in items[1] and "step--current" in items[1]
     assert "step--upcoming" in items[2] and "step--upcoming" in items[3]
@@ -308,8 +308,13 @@ def test_build_stepper_states() -> None:
 
 
 def test_build_stepper_href_only_on_done_step_one() -> None:
-    assert [s.href for s in build_stepper(2, "/?topic=a").steps] == ["/?topic=a", None, None, None]
-    assert all(s.href is None for s in build_stepper(1, "/?topic=a").steps)
+    assert [s.href for s in build_stepper(2, "/new?topic=a").steps] == [
+        "/new?topic=a",
+        None,
+        None,
+        None,
+    ]
+    assert all(s.href is None for s in build_stepper(1, "/new?topic=a").steps)
     assert all(s.href is None for s in build_stepper(3).steps)
 
 
@@ -322,8 +327,15 @@ def test_flow_query() -> None:
 
 
 def test_build_shell_marks_new_chart_on_new_paths() -> None:
-    shell = build_shell("/new/style", None, "local")
-    assert [n.label for n in shell.nav if n.current] == ["New chart"]
+    for path in ("/new", "/new/style"):
+        shell = build_shell(path, None, "local")
+        assert [n.label for n in shell.nav if n.current] == ["New chart"], path
+
+
+def test_root_redirects_to_stories() -> None:
+    res = flow_client().get("/", follow_redirects=False)
+    assert res.status_code == 307
+    assert res.headers["location"] == "/stories"
 
 
 def test_css_flow_rules() -> None:

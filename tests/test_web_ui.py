@@ -68,10 +68,10 @@ def test_awaiting_page_components() -> None:
 
 
 def test_home_components() -> None:
-    text = client_for(RecGateway()).get("/").text
+    text = client_for(RecGateway()).get("/new").text
     for part in ('class="site-header"', '<label for="topic"', 'id="topic"', "btn--primary"):
         assert part in text
-    hrefs = re.findall(r'<a class="chip" href="(/\?topic=[^"]+)"', text)
+    hrefs = re.findall(r'<a class="chip" href="(/new\?topic=[^"]+)"', text)
     assert len(hrefs) >= 3
 
 
@@ -79,15 +79,15 @@ def test_home_view_examples_encoded() -> None:
     view = HomeView()
     assert view.examples
     for chip in view.examples:
-        assert chip.href == f"/?topic={quote(chip.label)}"
+        assert chip.href == f"/new?topic={quote(chip.label)}"
 
 
 def test_topic_prefill() -> None:
     client = client_for(RecGateway())
-    assert 'value="Life expectancy"' in client.get("/?topic=%20Life%20expectancy%20").text
-    assert f'value="{"x" * 200}"' in client.get(f"/?topic={'x' * 300}").text
-    assert f'value="{"x" * 201}"' not in client.get(f"/?topic={'x' * 300}").text
-    assert 'value=""' in client.get("/").text
+    assert 'value="Life expectancy"' in client.get("/new?topic=%20Life%20expectancy%20").text
+    assert f'value="{"x" * 200}"' in client.get(f"/new?topic={'x' * 300}").text
+    assert f'value="{"x" * 201}"' not in client.get(f"/new?topic={'x' * 300}").text
+    assert 'value=""' in client.get("/new").text
 
 
 def test_blank_topic_error_keeps_chips() -> None:
@@ -100,7 +100,7 @@ def test_blank_topic_error_keeps_chips() -> None:
 def test_every_page_has_meta_and_static_assets() -> None:
     client = client_for(RecGateway())
     texts = [
-        client.get("/").text,
+        client.get("/new").text,
         page("awaiting_decision"),
         client.get("/health").text,
     ]

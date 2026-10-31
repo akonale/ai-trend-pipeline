@@ -492,7 +492,7 @@ def test_get_style_prefills_typed_overrides_and_carries_them() -> None:
     values = OptionsFormValues(
         palette="ink", hashtags="#x", hashtags_none="1", signature_none="1", save_default="1"
     )
-    assert f'href="/?{flow_query("a", values)}"' in html.unescape(text)
+    assert f'href="/new?{flow_query("a", values)}"' in html.unescape(text)
 
 
 def test_get_style_store_down_is_200_without_checkbox() -> None:
@@ -512,7 +512,7 @@ def test_get_style_cloudflare_without_header_asks_to_sign_in() -> None:
 
 
 def test_home_reemits_new_fields_as_hidden_carry() -> None:
-    text = web_client(stored()).get("/?topic=a&palette=ink&save_default=1").text
+    text = web_client(stored()).get("/new?topic=a&palette=ink&save_default=1").text
     assert '<input type="hidden" name="palette" value="ink">' in text
     assert '<input type="hidden" name="save_default" value="1">' in text
 

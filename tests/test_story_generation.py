@@ -5,6 +5,7 @@ import inspect
 import time
 import uuid
 from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, cast
@@ -52,6 +53,7 @@ from tests.story_generation_fixtures import (
     make_story_input,
     make_supported_research,
     make_unsupported_research,
+    with_media_worker,
 )
 
 Handler = Callable[[int, Any], Any]
@@ -162,13 +164,20 @@ async def start_env() -> WorkflowEnvironment:
     return env
 
 
-def make_worker(env: WorkflowEnvironment, fakes: FakeStoryActivities) -> Worker:
+def make_story_worker(env: WorkflowEnvironment, fakes: FakeStoryActivities) -> Worker:
     return Worker(
         env.client,
         task_queue=STORY_TASK_QUEUE,
         workflows=[StoryGenerationWorkflow],
         activities=fakes.activities(),
     )
+
+
+def make_worker(
+    env: WorkflowEnvironment, fakes: FakeStoryActivities
+) -> AbstractAsyncContextManager[None]:
+    """The story worker plus a fake-renderer media worker for the media step."""
+    return with_media_worker(make_story_worker(env, fakes), env)
 
 
 async def start_story(
@@ -395,7 +404,9 @@ async def test_final_approve_returns_ready_package() -> None:
         ready_attribute = await story_status_attribute(handle)
     assert result.status == "ready"
     assert result.package is not None
-    assert result.package == make_draft_output(make_story_input().candidate_id).draft
+    drafted = make_draft_output(make_story_input().candidate_id).draft
+    assert result.package.media is not None
+    assert result.package.model_copy(update={"media": None}) == drafted
     assert result.critique is not None and result.critique.passed is True
     assert result.note == "ship it"
     assert result.decided_by == "alice"

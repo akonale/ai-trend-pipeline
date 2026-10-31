@@ -226,7 +226,7 @@ _FILTER_PREDICATES: dict[StoryFilter, str] = {
         "(StoryStatus = 'awaiting_review' OR CandidateStatus = 'awaiting_review')"
     ),
     StoryFilter.WRITING: (
-        "(StoryStatus IN ('approved','researching','analyzing','writing','checking') "
+        "(StoryStatus IN ('approved','researching','analyzing','writing','checking','media') "
         "OR CandidateStatus = 'approved')"
     ),
     StoryFilter.REVIEW: "StoryStatus = 'review'",
@@ -414,6 +414,12 @@ class StoryNotReviewable(StoryDetailError):
         self.detail_id = detail_id
 
 
+class StoryReviewStale(StoryDetailError):
+    def __init__(self, detail_id: str) -> None:
+        super().__init__(f"story {detail_id} changed after it was opened for review")
+        self.detail_id = detail_id
+
+
 class StoryDetailMalformed(StoryDetailError):
     def __init__(self, detail_id: str) -> None:
         super().__init__(f"story detail {detail_id} violates its typed contract")
@@ -439,6 +445,7 @@ class StoryDetail(BaseModel):
     internal_status: str
     status_detail: str | None = None
     package: StoryPackage | None = None
+    content_hash: str | None = None
     decided_by: str | None = None
     decided_at: datetime | None = None
     note: str = ""
@@ -450,6 +457,7 @@ class DecideStoryRequest(BaseModel):
     detail_id: str = Field(min_length=1, max_length=MAX_DETAIL_ID_CHARS)
     decision: Literal["approve", "reject"]
     decided_by: DecidedByText | None = None
+    content_hash: str = ""
 
 
 class StoryDecisionResult(BaseModel):
@@ -465,6 +473,7 @@ _STORY_OPEN_STATUSES = frozenset(
         StoryGenerationStatus.ANALYZING,
         StoryGenerationStatus.WRITING,
         StoryGenerationStatus.CHECKING,
+        StoryGenerationStatus.MEDIA,
         StoryGenerationStatus.REVIEW,
     }
 )
@@ -519,10 +528,16 @@ class StoryDetailService:
         self._retain(request.detail_id, state.story_created_at, cutoff)
         if state.status is not StoryGenerationStatus.REVIEW:
             raise StoryNotReviewable(request.detail_id)
-        decision = FinalStoryDecision(decided_by=request.decided_by)
-        await self._gateway.decide(
-            request.detail_id, decision, approve=request.decision == "approve"
+        approve = request.decision == "approve"
+        if approve and (
+            not request.content_hash or request.content_hash != (state.content_hash or "")
+        ):
+            raise StoryReviewStale(request.detail_id)
+        decision = FinalStoryDecision(
+            decided_by=request.decided_by,
+            content_hash=request.content_hash if approve else None,
         )
+        await self._gateway.decide(request.detail_id, decision, approve=approve)
         result = await self._gateway.story_result(request.detail_id)
         if result.status == "ready" and result.package is None:
             raise StoryDetailMalformed(request.detail_id)
@@ -653,6 +668,9 @@ class StoryDetailService:
                 internal_status=state.status.value,
                 status_detail=bounded_detail(state.status_detail),
                 package=(state.package if state.status is StoryGenerationStatus.REVIEW else None),
+                content_hash=(
+                    state.content_hash if state.status is StoryGenerationStatus.REVIEW else None
+                ),
             )
 
         if state.status not in (
@@ -686,6 +704,7 @@ class StoryDetailService:
             internal_status=result.status,
             status_detail=bounded_detail(result.status_detail),
             package=result.package if result.status == "ready" else None,
+            content_hash=result.content_hash if result.status == "ready" else None,
             decided_by=result.decided_by,
             decided_at=result.decided_at,
             note=_bounded_note(result.note),
@@ -701,6 +720,7 @@ __all__ = [
     "StoryDecisionResult",
     "StoryDetail",
     "StoryDetailError",
+    "StoryReviewStale",
     "StoryDetailExpired",
     "StoryDetailGateway",
     "StoryDetailKind",

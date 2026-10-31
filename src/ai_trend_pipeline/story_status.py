@@ -16,6 +16,7 @@ _WRITING_STATES = frozenset(
         "analyzing",
         "writing",
         "checking",
+        "media",
     }
 )
 

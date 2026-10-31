@@ -34,3 +34,21 @@ def test_urls_are_built_from_manifest_ids_and_quoted_detail_id() -> None:
     view = build_story_media_view("a b/c?x", manifest)
     assert view is not None and manifest.static_artifact is not None
     assert view.poster_src == f"/stories/a%20b%2Fc%3Fx/media/{manifest.static_artifact.artifact_id}"
+
+
+def test_kind_text_and_motion_note_per_outcome() -> None:
+    gif = build_story_media_view("story-1", make_manifest(MediaOutcome.GIF))
+    assert gif is not None
+    assert gif.kind_text == "Animated card. Plays once, 4 seconds."
+    assert gif.motion_note == "Reduced motion is on, so the still card is shown."
+    assert gif.alt_label == "Alt text:"
+    static = build_story_media_view("story-1", make_manifest(MediaOutcome.STATIC))
+    assert static is not None
+    assert static.kind_text == "Still card."
+    assert static.motion_note == ""
+    fallback = build_story_media_view("story-1", make_manifest(MediaOutcome.STATIC_FALLBACK))
+    assert fallback is not None
+    assert fallback.kind_text == (
+        "Still card. The animation could not be made, so this still card is used."
+    )
+    assert fallback.motion_note == ""

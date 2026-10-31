@@ -272,3 +272,13 @@ def test_media_dir_default_and_env() -> None:
     assert load_settings({}).media_dir == "media"
     assert load_settings({"MEDIA_DIR": "  "}).media_dir == "media"
     assert load_settings({"MEDIA_DIR": "/data/media"}).media_dir == "/data/media"
+
+
+def test_media_provider_default_env_and_unknown_value() -> None:
+    from ai_trend_pipeline.media.providers import MediaProviderName
+
+    assert load_settings({}).media_provider is MediaProviderName.STORY_CARD
+    assert load_settings({"MEDIA_PROVIDER": "  "}).media_provider is MediaProviderName.STORY_CARD
+    assert load_settings({"MEDIA_PROVIDER": " Fake "}).media_provider is MediaProviderName.FAKE
+    with pytest.raises(ValueError, match="story-card"):
+        load_settings({"MEDIA_PROVIDER": "dalle"})

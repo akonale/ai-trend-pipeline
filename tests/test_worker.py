@@ -8,6 +8,7 @@ import httpx
 
 from ai_trend_pipeline.bluesky import BlueskyCredentials
 from ai_trend_pipeline.config import Settings
+from ai_trend_pipeline.media.providers import MediaProviderName
 from ai_trend_pipeline.source_ingestion import (
     SOURCE_INGESTION_TASK_QUEUE,
     SourceIngestionWorkflow,
@@ -17,12 +18,16 @@ from ai_trend_pipeline.story_generation import (
     STORY_TASK_QUEUE,
     StoryGenerationWorkflow,
 )
+from ai_trend_pipeline.story_media import STORY_MEDIA_TASK_QUEUE, StoryMediaWorkflow
 from ai_trend_pipeline.worker import (
     CANDIDATE_WORKFLOWS,
     INGESTION_WORKFLOWS,
+    MEDIA_WORKER_MAX_CONCURRENT_ACTIVITIES,
+    MEDIA_WORKFLOWS,
     STORY_WORKFLOWS,
     daily_chart_activities,
     ingestion_activities,
+    media_activities,
     story_activities,
 )
 
@@ -105,3 +110,24 @@ def test_story_worker_uses_an_activity_executor_and_no_publishing_activity() -> 
     story_source = inspect.getsource(story_activities)
     assert "post_chart_to_bluesky" not in story_source
     assert "render_chart_png" not in story_source
+
+
+def test_media_worker_registers_workflow_activities_and_concurrency() -> None:
+    assert MEDIA_WORKFLOWS == [StoryMediaWorkflow]
+    assert STORY_MEDIA_TASK_QUEUE == "story-media-task-queue"
+    assert MEDIA_WORKER_MAX_CONCURRENT_ACTIVITIES == 2
+    activities = media_activities(Settings(media_provider=MediaProviderName.FAKE))
+    assert sorted(activity.__name__ for activity in activities) == [
+        "render_animated_media",
+        "render_static_media",
+    ]
+    source = Path(__file__).resolve().parent.parent / "src" / "ai_trend_pipeline" / "worker.py"
+    text = source.read_text(encoding="utf-8")
+    block = text[text.index("media_worker = Worker(") : text.index("await asyncio.gather")]
+    assert "task_queue=STORY_MEDIA_TASK_QUEUE" in block
+    assert "max_concurrent_activities=MEDIA_WORKER_MAX_CONCURRENT_ACTIVITIES" in block
+    assert "media_worker.run()" in text
+    assert "max_concurrent_animations=MAX_CONCURRENT_ANIMATIONS" in inspect.getsource(
+        media_activities
+    )
+    assert "MEDIA_PROVIDER" not in text

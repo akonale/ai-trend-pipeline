@@ -22,6 +22,7 @@ from ai_trend_pipeline.services.stories import (
     StoryDetailService,
     StoryDetailUnavailable,
     StoryNotReviewable,
+    StoryReviewStale,
     story_detail_kind,
 )
 from ai_trend_pipeline.services.temporal_gateway import TemporalStoryDetailGateway
@@ -47,6 +48,7 @@ CANDIDATE_ID = "candidate-v1-0123456789abcdef"
 STORY_ID = "story-v1-fedcba9876543210"
 FACT_A = "fact-v1-0000000000000001"
 FACT_B = "fact-v1-0000000000000002"
+HASH = "c" * 64
 
 OPEN_STORY_STATES = (
     StoryGenerationStatus.RESEARCHING,
@@ -139,7 +141,10 @@ def story_state(
     note: str = "",
     decided_by: str | None = None,
     decided_at: datetime | None = None,
+    content_hash: str | None = None,
 ) -> StoryGenerationState:
+    if content_hash is None and status is StoryGenerationStatus.REVIEW:
+        content_hash = HASH
     return StoryGenerationState(
         story_id=story_id,
         candidate_id=candidate_id,
@@ -148,6 +153,7 @@ def story_state(
         status=status,
         status_detail=detail,
         package=package,
+        content_hash=content_hash,
         decided_by=decided_by,
         note=note,
         decided_at=decided_at,
@@ -175,6 +181,7 @@ def story_result(
             "updated_at": NOW,
             "status_detail": detail,
             "package": package,
+            "content_hash": HASH if status == "ready" else None,
             "critique": None,
             "decided_by": decided_by,
             "note": note,
@@ -528,7 +535,12 @@ async def test_decide_sends_one_final_decision_and_returns_the_result() -> None:
     )
 
     result = await service_with(gateway).decide(
-        DecideStoryRequest(detail_id=STORY_ID, decision="approve", decided_by="editor@example.com"),
+        DecideStoryRequest(
+            detail_id=STORY_ID,
+            decision="approve",
+            content_hash=HASH,
+            decided_by="editor@example.com",
+        ),
         now=NOW,
     )
 
@@ -559,7 +571,8 @@ async def test_decide_rejects_candidate_ids_and_non_review_states() -> None:
     )
     with pytest.raises(StoryNotReviewable):
         await service_with(gateway).decide(
-            DecideStoryRequest(detail_id=CANDIDATE_ID, decision="approve"), now=NOW
+            DecideStoryRequest(detail_id=CANDIDATE_ID, decision="approve", content_hash=HASH),
+            now=NOW,
         )
     assert gateway.signals == []
     assert calls_named(gateway, "candidate_state") == []
@@ -569,7 +582,8 @@ async def test_decide_rejects_candidate_ids_and_non_review_states() -> None:
         gateway.story_states[STORY_ID] = story_state(status)
         with pytest.raises(StoryNotReviewable):
             await service_with(gateway).decide(
-                DecideStoryRequest(detail_id=STORY_ID, decision="approve"), now=NOW
+                DecideStoryRequest(detail_id=STORY_ID, decision="approve", content_hash=HASH),
+                now=NOW,
             )
         assert gateway.signals == [], status
         assert calls_named(gateway, "story_result") == [], status
@@ -583,7 +597,7 @@ async def test_decide_after_the_cutoff_sends_no_signal() -> None:
     )
     with pytest.raises(StoryDetailExpired):
         await service_with(gateway).decide(
-            DecideStoryRequest(detail_id=STORY_ID, decision="approve"), now=NOW
+            DecideStoryRequest(detail_id=STORY_ID, decision="approve", content_hash=HASH), now=NOW
         )
     assert gateway.signals == []
     assert calls_named(gateway, "story_result") == []
@@ -595,7 +609,7 @@ async def test_decide_after_the_cutoff_sends_no_signal() -> None:
     )
     gateway.story_results[STORY_ID] = story_result("ready", package=make_package())
     await service_with(gateway).decide(
-        DecideStoryRequest(detail_id=STORY_ID, decision="approve"), now=NOW
+        DecideStoryRequest(detail_id=STORY_ID, decision="approve", content_hash=HASH), now=NOW
     )
     assert len(gateway.signals) == 1
 
@@ -608,7 +622,7 @@ async def test_repeated_decision_returns_the_first_terminal_status() -> None:
     service = service_with(gateway)
 
     first = await service.decide(
-        DecideStoryRequest(detail_id=STORY_ID, decision="approve"), now=NOW
+        DecideStoryRequest(detail_id=STORY_ID, decision="approve", content_hash=HASH), now=NOW
     )
     assert first.status == "ready"
 
@@ -673,7 +687,7 @@ async def test_malformed_query_or_result_raises_story_detail_malformed() -> None
     gateway.story_results[STORY_ID] = story_result("ready", package=None)
     with pytest.raises(StoryDetailMalformed):
         await service_with(gateway).decide(
-            DecideStoryRequest(detail_id=STORY_ID, decision="approve"), now=NOW
+            DecideStoryRequest(detail_id=STORY_ID, decision="approve", content_hash=HASH), now=NOW
         )
 
 
@@ -685,7 +699,9 @@ async def test_naive_now_raises_value_error() -> None:
     with pytest.raises(ValueError):
         await service.show(CANDIDATE_ID, now=naive)
     with pytest.raises(ValueError):
-        await service.decide(DecideStoryRequest(detail_id=STORY_ID, decision="approve"), now=naive)
+        await service.decide(
+            DecideStoryRequest(detail_id=STORY_ID, decision="approve", content_hash=HASH), now=naive
+        )
     assert gateway.calls == []
 
 
@@ -730,3 +746,56 @@ class FakeHandleClient:
     def get_workflow_handle_for(self, run: object, workflow_id: str) -> FakeHandle:
         _ = (run, workflow_id)
         return self._handle
+
+
+@pytest.mark.asyncio
+async def test_detail_carries_content_hash_for_review_and_ready() -> None:
+    gateway = FakeGateway()
+    gateway.candidate_states[CANDIDATE_ID] = candidate_state(CandidateStatus.APPROVED)
+    gateway.story_states[STORY_ID] = story_state(
+        StoryGenerationStatus.REVIEW, package=make_package()
+    )
+    review = await service_with(gateway).show(STORY_ID, now=NOW)
+    assert review.content_hash == HASH
+
+    gateway.story_states[STORY_ID] = story_state(StoryGenerationStatus.READY)
+    gateway.story_results[STORY_ID] = story_result("ready", package=make_package())
+    ready = await service_with(gateway).show(STORY_ID, now=NOW)
+    assert ready.content_hash == HASH
+
+
+@pytest.mark.asyncio
+async def test_approve_with_stale_or_missing_hash_raises_before_signal() -> None:
+    for sent in ("", "d" * 64):
+        gateway = FakeGateway()
+        gateway.story_states[STORY_ID] = story_state(StoryGenerationStatus.REVIEW)
+        with pytest.raises(StoryReviewStale):
+            await service_with(gateway).decide(
+                DecideStoryRequest(detail_id=STORY_ID, decision="approve", content_hash=sent),
+                now=NOW,
+            )
+        assert gateway.signals == []
+        assert calls_named(gateway, "story_result") == []
+
+
+@pytest.mark.asyncio
+async def test_reject_needs_no_hash() -> None:
+    gateway = FakeGateway()
+    gateway.story_states[STORY_ID] = story_state(StoryGenerationStatus.REVIEW)
+    gateway.story_results[STORY_ID] = story_result("rejected")
+    result = await service_with(gateway).decide(
+        DecideStoryRequest(detail_id=STORY_ID, decision="reject"), now=NOW
+    )
+    assert result.status == "rejected"
+    assert [(approve, d.content_hash) for _, approve, d in gateway.signals] == [(False, None)]
+
+
+@pytest.mark.asyncio
+async def test_matching_hash_is_passed_in_the_approve_signal() -> None:
+    gateway = FakeGateway()
+    gateway.story_states[STORY_ID] = story_state(StoryGenerationStatus.REVIEW)
+    gateway.story_results[STORY_ID] = story_result("ready", package=make_package())
+    await service_with(gateway).decide(
+        DecideStoryRequest(detail_id=STORY_ID, decision="approve", content_hash=HASH), now=NOW
+    )
+    assert gateway.signals[0][2].content_hash == HASH

@@ -1270,9 +1270,17 @@ STORY_DETAIL_NOTICES: dict[str, str] = {
     "approved": "Approved: the story is ready. Nothing was published.",
     "rejected": "Rejected: the story is closed. Nothing was published.",
     "closed": "That story was already decided or has expired. Nothing changed.",
+    "stale": "This story changed after you opened it. Nothing was decided. Review it again.",
 }
 
 MAX_PACKAGE_CITATIONS = 20
+
+PACKAGE_CODE_LABEL = "Package"
+PACKAGE_CODE_CHARS = 8
+PACKAGE_NOTE_WITH_MEDIA = "You approve the text and the story card together."
+PACKAGE_NOTE_TEXT_ONLY = "You approve the text only."
+MEDIA_MISSING_HEADING = "No story card"
+MEDIA_MISSING_BODY = "No image could be made for this story. Approving it approves the text only."
 
 DetailState = Literal["pending", "writing", "review", "ready", "closed", "problem"]
 NotAvailableKind = Literal["missing", "expired", "malformed", "unavailable"]
@@ -1417,6 +1425,13 @@ class StoryDetailView(BaseModel):
     polling_hint: str = STORY_DETAIL_POLLING_HINT
     region_id: str = STORY_DETAIL_REGION_ID
     package: StoryPackageView | None = None
+    media: "StoryMediaView | None" = None
+    media_missing_heading: str = ""
+    media_missing_body: str = ""
+    content_hash: str = ""
+    package_code: str = ""
+    package_code_label: str = PACKAGE_CODE_LABEL
+    package_note: str = ""
     decision_heading: str = FINAL_REVIEW_HEADING
     decision_note: str = FINAL_DECISION_NOTE
     decision_action: str = ""
@@ -1478,6 +1493,16 @@ def build_story_detail_view(
     closed = detail.status is PrimaryStoryStatus.CLOSED
     closed_heading, closed_body = _story_closed_copy(detail) if closed else ("", "")
     ready = detail.status is PrimaryStoryStatus.READY
+    media = None
+    media_missing = False
+    package_note = ""
+    content_hash = ""
+    if detail.status in (PrimaryStoryStatus.REVIEW, PrimaryStoryStatus.READY):
+        manifest = detail.package.media if detail.package is not None else None
+        media = build_story_media_view(detail.detail_id, manifest)
+        media_missing = manifest is not None and manifest.outcome is MediaOutcome.TEXT_ONLY
+        content_hash = detail.content_hash or ""
+        package_note = PACKAGE_NOTE_WITH_MEDIA if media is not None else PACKAGE_NOTE_TEXT_ONLY
     return StoryDetailView(
         page_title=title,
         detail_id=detail.detail_id,
@@ -1497,6 +1522,12 @@ def build_story_detail_view(
         polling=detail.status in (PrimaryStoryStatus.PENDING, PrimaryStoryStatus.WRITING),
         polling_href=f"/stories/{quote(refresh_id or detail.detail_id, safe='')}/status",
         package=package,
+        media=media,
+        media_missing_heading=MEDIA_MISSING_HEADING if media_missing else "",
+        media_missing_body=MEDIA_MISSING_BODY if media_missing else "",
+        content_hash=content_hash,
+        package_code=content_hash[:PACKAGE_CODE_CHARS],
+        package_note=package_note,
         decision_action=f"/stories/{quote(detail.workflow_id, safe='')}/decide",
         approved_heading=APPROVED_HEADING if ready else "",
         approved_body=APPROVED_BODY if ready else "",
@@ -1554,6 +1585,22 @@ def story_decision_notice(token: str) -> str:
 
 
 MOTION_OK_MEDIA = "(prefers-reduced-motion: no-preference)"
+ALT_LABEL = "Alt text:"
+STILL_KIND_TEXT = "Still card."
+STILL_FALLBACK_KIND_TEXT = (
+    "Still card. The animation could not be made, so this still card is used."
+)
+REDUCED_MOTION_NOTE = "Reduced motion is on, so the still card is shown."
+
+
+def _media_kind_text(manifest: MediaManifest) -> tuple[str, str]:
+    animated = manifest.animated_artifact
+    if manifest.outcome is MediaOutcome.GIF and animated is not None:
+        seconds = (animated.duration_ms or 0) / 1000
+        return f"Animated card. Plays once, {seconds:g} seconds.", REDUCED_MOTION_NOTE
+    if manifest.outcome is MediaOutcome.STATIC_FALLBACK:
+        return STILL_FALLBACK_KIND_TEXT, ""
+    return STILL_KIND_TEXT, ""
 
 
 class StoryMediaView(BaseModel):
@@ -1564,6 +1611,9 @@ class StoryMediaView(BaseModel):
     poster_height: int
     animated_src: str | None
     alt_text: str
+    kind_text: str
+    motion_note: str = ""
+    alt_label: str = ALT_LABEL
     motion_media: Literal["(prefers-reduced-motion: no-preference)"] = MOTION_OK_MEDIA
 
 
@@ -1575,10 +1625,13 @@ def build_story_media_view(detail_id: str, manifest: MediaManifest | None) -> St
         return None
     base = f"/stories/{quote(detail_id, safe='')}/media/"
     animated = manifest.animated_artifact if manifest.outcome is MediaOutcome.GIF else None
+    kind_text, motion_note = _media_kind_text(manifest)
     return StoryMediaView(
         poster_src=base + quote(poster.artifact_id, safe=""),
         poster_width=poster.width,
         poster_height=poster.height,
         animated_src=None if animated is None else base + quote(animated.artifact_id, safe=""),
         alt_text=poster.alt_text,
+        kind_text=kind_text,
+        motion_note=motion_note,
     )

@@ -4,9 +4,19 @@ No files, network, clock or randomness: every value is fixed, so the same fixtur
 same models on every run.
 """
 
+import tempfile
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from pathlib import Path
+
+from temporalio.testing import WorkflowEnvironment
+from temporalio.worker import Worker
 
 from ai_trend_pipeline.analysis.models import FactSet
+from ai_trend_pipeline.media.activities import StoryMediaActivities
+from ai_trend_pipeline.media.fake import FakeMediaRenderer
+from ai_trend_pipeline.media.providers import MediaRenderer
 from ai_trend_pipeline.research.models import (
     ResearchFailure,
     ResearchFailureCode,
@@ -21,6 +31,7 @@ from ai_trend_pipeline.story_drafting import (
     DraftOutput,
     StoryPackage,
 )
+from ai_trend_pipeline.story_media import STORY_MEDIA_TASK_QUEUE, StoryMediaWorkflow
 from tests.drafting_fixtures import (
     clean_content,
     make_passing_critique,
@@ -115,3 +126,32 @@ def make_passing(story_id: str) -> CritiqueOutput:
 
 def dataset_evidence_id() -> str:
     return DATASET_EVIDENCE_ID
+
+
+def make_media_worker(
+    env: WorkflowEnvironment,
+    media_dir: Path,
+    renderer: MediaRenderer | None = None,
+) -> Worker:
+    """A media worker on the media queue; the fake renderer keeps tests fast and deterministic."""
+    acts = StoryMediaActivities(media_dir, renderer or FakeMediaRenderer())
+    return Worker(
+        env.client,
+        task_queue=STORY_MEDIA_TASK_QUEUE,
+        workflows=[StoryMediaWorkflow],
+        activities=[acts.render_static_media, acts.render_animated_media],
+    )
+
+
+@asynccontextmanager
+async def with_media_worker(
+    story_worker: Worker,
+    env: WorkflowEnvironment,
+    media_dir: Path | None = None,
+    renderer: MediaRenderer | None = None,
+) -> AsyncGenerator[None]:
+    """Run a story worker together with a media worker (a throwaway media dir by default)."""
+    with tempfile.TemporaryDirectory() as scratch:
+        root = media_dir if media_dir is not None else Path(scratch)
+        async with story_worker, make_media_worker(env, root, renderer):
+            yield

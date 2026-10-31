@@ -12,7 +12,13 @@ from typing import Annotated, Literal, TypeVar, cast
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
-from temporalio.exceptions import ActivityError, ApplicationError, is_cancelled_exception
+from temporalio.exceptions import (
+    ActivityError,
+    ApplicationError,
+    ChildWorkflowError,
+    WorkflowAlreadyStartedError,
+    is_cancelled_exception,
+)
 
 with workflow.unsafe.imports_passed_through():
     from pydantic import (
@@ -26,6 +32,13 @@ with workflow.unsafe.imports_passed_through():
 
     from ai_trend_pipeline.analysis.calculations import fact_input_for
     from ai_trend_pipeline.analysis.models import FactSet, FactSetStatus
+    from ai_trend_pipeline.media.briefs import (
+        StoryMediaInput,
+        media_workflow_id_for,
+        story_package_hash,
+        text_only_manifest,
+    )
+    from ai_trend_pipeline.media.models import MediaOutcome
     from ai_trend_pipeline.research.models import (
         ResearchFailureCode,
         ResearchInput,
@@ -46,6 +59,7 @@ with workflow.unsafe.imports_passed_through():
         draft_input_for,
     )
     from ai_trend_pipeline.story_logging import StoryLogEvent, log_story_event
+    from ai_trend_pipeline.story_media import STORY_MEDIA_TASK_QUEUE, StoryMediaWorkflow
     from ai_trend_pipeline.story_status import (
         DEFAULT_STORY_REVIEW_TIMEOUT_S,
         STORY_UI_RETENTION,
@@ -89,6 +103,17 @@ FAILED_ANALYSIS_DETAIL = "The analysis step failed after retries."
 FAILED_AFTER_REVISION_DETAIL = "The story did not pass checking after one revision."
 FAILED_GENERIC_DETAIL = "Story generation failed."
 EXPIRED_DETAIL = "The review window closed."
+
+STORY_MEDIA_PATCH = "story-media-v1"
+MEDIA_CHILD_TIMEOUT = timedelta(minutes=6)
+MEDIA_DETAIL = "Making the story card."
+MEDIA_REVIEW_DETAILS: dict[MediaOutcome, str] = {
+    MediaOutcome.GIF: "Story card and animation are ready.",
+    MediaOutcome.STATIC: "Story card is ready.",
+    MediaOutcome.STATIC_FALLBACK: "The animation could not be made, so the still card is used.",
+    MediaOutcome.TEXT_ONLY: "No story card could be made. The story is text only.",
+}
+SHA256_PATTERN = r"^[0-9a-f]{64}$"
 
 _UNSAFE_SOURCE_CODES = frozenset(
     {
@@ -135,6 +160,7 @@ class StoryGenerationStatus(StrEnum):
     ANALYZING = "analyzing"
     WRITING = "writing"
     CHECKING = "checking"
+    MEDIA = "media"
     REVIEW = "review"
     READY = "ready"
     REJECTED = "rejected"
@@ -179,6 +205,7 @@ class FinalStoryDecision(BaseModel):
 
     note: NoteText = ""
     decided_by: DecidedByText | None = None
+    content_hash: str | None = Field(default=None, pattern=SHA256_PATTERN)
 
     @field_validator("decided_by", mode="before")
     @classmethod
@@ -201,6 +228,7 @@ class StoryGenerationState(BaseModel):
     status: StoryGenerationStatus = StoryGenerationStatus.RESEARCHING
     status_detail: str | None = Field(default=None, max_length=MAX_STATUS_DETAIL_CHARS)
     package: StoryPackage | None = None
+    content_hash: str | None = Field(default=None, pattern=SHA256_PATTERN)
     critique: CritiqueOutput | None = None
     decided_by: str | None = Field(default=None, max_length=MAX_DECIDED_BY_CHARS)
     note: str = Field(default="", max_length=MAX_NOTE_CHARS)
@@ -222,6 +250,7 @@ class StoryGenerationResult(BaseModel):
     updated_at: datetime
     status_detail: str | None = Field(default=None, max_length=MAX_STATUS_DETAIL_CHARS)
     package: StoryPackage | None = None
+    content_hash: str | None = Field(default=None, pattern=SHA256_PATTERN)
     critique: CritiqueOutput | None = None
     decided_by: str | None = Field(default=None, max_length=MAX_DECIDED_BY_CHARS)
     note: str = Field(default="", max_length=MAX_NOTE_CHARS)
@@ -282,6 +311,7 @@ class StoryGenerationWorkflow:
         self._status = StoryGenerationStatus.RESEARCHING
         self._status_detail: str | None = None
         self._package: StoryPackage | None = None
+        self._content_hash: str | None = None
         self._critique: CritiqueOutput | None = None
         self._decided_by: str | None = None
         self._note = ""
@@ -299,6 +329,7 @@ class StoryGenerationWorkflow:
             status=self._status,
             status_detail=self._status_detail,
             package=self._package,
+            content_hash=self._content_hash,
             critique=self._critique,
             decided_by=self._decided_by,
             note=self._note,
@@ -336,6 +367,7 @@ class StoryGenerationWorkflow:
             updated_at=updated,
             status_detail=self._status_detail,
             package=self._package,
+            content_hash=self._content_hash,
             critique=self._critique,
             decided_by=self._decided_by,
             note=self._note,
@@ -354,6 +386,8 @@ class StoryGenerationWorkflow:
         self._transition(internal, detail)
         self._package = package
         self._critique = critique
+        if internal not in (StoryGenerationStatus.READY, StoryGenerationStatus.REJECTED):
+            self._content_hash = None
         log_story_event(
             workflow.logger,
             StoryLogEvent.FINISHED,
@@ -387,6 +421,19 @@ class StoryGenerationWorkflow:
                 StoryLogEvent.IGNORED_SIGNAL,
                 signal="approve" if status is StoryGenerationStatus.READY else "reject",
                 status=self._status.value,
+            )
+            return
+        if (
+            status is StoryGenerationStatus.READY
+            and decision.content_hash is not None
+            and decision.content_hash != self._content_hash
+        ):
+            log_story_event(
+                workflow.logger,
+                StoryLogEvent.IGNORED_SIGNAL,
+                signal="approve",
+                status=self._status.value,
+                cause="stale_content",
             )
             return
         self._decision = decision
@@ -426,19 +473,53 @@ class StoryGenerationWorkflow:
             self._failure_detail = failure_detail(exc)
             return None
 
+    async def _with_media(self, package: StoryPackage, facts: FactSet) -> StoryPackage:
+        """Attach the media manifest. Media problems lower the outcome and never fail the story."""
+        if not workflow.patched(STORY_MEDIA_PATCH):
+            return package
+        self._transition(StoryGenerationStatus.MEDIA, MEDIA_DETAIL)
+        try:
+            result = await workflow.execute_child_workflow(
+                StoryMediaWorkflow.run,
+                StoryMediaInput(story_id=package.story_id, package=package, facts=facts),
+                id=media_workflow_id_for(package),
+                task_queue=STORY_MEDIA_TASK_QUEUE,
+                execution_timeout=MEDIA_CHILD_TIMEOUT,
+            )
+            manifest = result.manifest
+        except (ChildWorkflowError, WorkflowAlreadyStartedError) as exc:
+            if is_cancelled_exception(exc):
+                raise
+            log_story_event(
+                workflow.logger,
+                StoryLogEvent.ACTIVITY_FAILED,
+                activity="story_media",
+                error_type=type(exc.cause if exc.cause is not None else exc).__name__,
+                status=self._status.value,
+            )
+            manifest = text_only_manifest(package, facts)
+        return package.model_copy(update={"media": manifest})
+
     async def _review(
         self,
         data: StoryGenerationInput,
         package: StoryPackage,
         critique: CritiqueOutput,
+        facts: FactSet,
     ) -> StoryGenerationResult:
+        package = await self._with_media(package, facts)
         if self._deadline_passed():
             return self._expire()
         remaining = (self._review_deadline() - workflow.now()).total_seconds()
         effective_timeout = min(float(data.review_timeout_seconds), remaining)
         if effective_timeout <= 0:
             return self._expire()
-        self._transition(StoryGenerationStatus.REVIEW)
+        self._package = package
+        self._content_hash = story_package_hash(package)
+        review_detail = (
+            MEDIA_REVIEW_DETAILS[package.media.outcome] if package.media is not None else None
+        )
+        self._transition(StoryGenerationStatus.REVIEW, review_detail)
         log_story_event(
             workflow.logger,
             StoryLogEvent.REVIEW_WAITING,
@@ -590,7 +671,7 @@ class StoryGenerationWorkflow:
             return self._expire()
 
         if check.passed:
-            return await self._review(data, draft.draft, check)
+            return await self._review(data, draft.draft, check, facts)
 
         log_story_event(
             workflow.logger,
@@ -641,7 +722,7 @@ class StoryGenerationWorkflow:
             )
         if self._deadline_passed():
             return self._expire()
-        return await self._review(data, revised.draft, revised_check)
+        return await self._review(data, revised.draft, revised_check, facts)
 
     @workflow.signal
     def approve(self, decision: FinalStoryDecision) -> None:

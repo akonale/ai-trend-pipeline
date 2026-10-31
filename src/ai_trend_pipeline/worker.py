@@ -4,6 +4,7 @@ import asyncio
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any
 
 import anthropic
@@ -24,6 +25,8 @@ from ai_trend_pipeline.critique import CritiqueActivities
 from ai_trend_pipeline.daily_chart import DAILY_CHART_TASK_QUEUE, DailyChartWorkflow
 from ai_trend_pipeline.hello import TASK_QUEUE, HelloWorkflow, say_hello
 from ai_trend_pipeline.hn import HNActivities, make_hn_client
+from ai_trend_pipeline.media.activities import StoryMediaActivities
+from ai_trend_pipeline.media.providers import renderer_for
 from ai_trend_pipeline.owid import OwidActivities, make_owid_client
 from ai_trend_pipeline.render import render_chart_png
 from ai_trend_pipeline.research.activities import (
@@ -43,6 +46,7 @@ from ai_trend_pipeline.story_generation import (
     STORY_TASK_QUEUE,
     StoryGenerationWorkflow,
 )
+from ai_trend_pipeline.story_media import STORY_MEDIA_TASK_QUEUE, StoryMediaWorkflow
 from ai_trend_pipeline.story_selection import StorySelectionActivities
 from ai_trend_pipeline.temporal_client import connect, ensure_story_search_attributes
 from ai_trend_pipeline.topic import TopicActivities, make_anthropic_client
@@ -52,6 +56,9 @@ RETRY_DELAY_S = 1.0
 CANDIDATE_WORKFLOWS = [StoryCandidateWorkflow]
 INGESTION_WORKFLOWS = [SourceIngestionWorkflow]
 STORY_WORKFLOWS = [StoryGenerationWorkflow]
+MEDIA_WORKFLOWS = [StoryMediaWorkflow]
+MEDIA_WORKER_MAX_CONCURRENT_ACTIVITIES = 2
+MAX_CONCURRENT_ANIMATIONS = 1
 
 
 async def connect_with_retry(settings: Settings) -> Client:
@@ -124,6 +131,16 @@ def story_activities(
     ]
 
 
+# Any matches the type of Temporal's `Worker(activities=...)` parameter.
+def media_activities(settings: Settings) -> list[Callable[..., Any]]:
+    media = StoryMediaActivities(
+        Path(settings.media_dir),
+        renderer_for(settings.media_provider),
+        max_concurrent_animations=MAX_CONCURRENT_ANIMATIONS,
+    )
+    return [media.render_static_media, media.render_animated_media]
+
+
 async def main() -> None:
     settings = load_settings()
     client = await connect_with_retry(settings)
@@ -169,12 +186,20 @@ async def main() -> None:
             ),
             activity_executor=ThreadPoolExecutor(max_workers=4),
         )
+        media_worker = Worker(
+            client,
+            task_queue=STORY_MEDIA_TASK_QUEUE,
+            workflows=MEDIA_WORKFLOWS,
+            activities=media_activities(settings),
+            max_concurrent_activities=MEDIA_WORKER_MAX_CONCURRENT_ACTIVITIES,
+        )
         await asyncio.gather(
             hello_worker.run(),
             chart_worker.run(),
             candidate_worker.run(),
             ingestion_worker.run(),
             story_worker.run(),
+            media_worker.run(),
         )
 
 

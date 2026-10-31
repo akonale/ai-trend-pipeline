@@ -21,6 +21,7 @@ from ai_trend_pipeline.services.stories import (
     StoryFilter,
     StoryListPage,
     StoryNotReviewable,
+    StoryReviewStale,
     StoryStatusService,
     story_filter,
 )
@@ -232,6 +233,7 @@ async def decide_story(
     request: Request,
     detail_id: str,
     decision: Annotated[str, Form()] = "",
+    content_hash: Annotated[str, Form()] = "",
     user: CurrentUser = Depends(current_user),
     service: StoryDetailService = Depends(get_story_detail_service),
     templates: Jinja2Templates = Depends(get_templates),
@@ -249,9 +251,16 @@ async def decide_story(
     redirect = f"/stories/{quote(detail_id, safe='')}"
     try:
         result = await service.decide(
-            DecideStoryRequest(detail_id=detail_id, decision=kind, decided_by=user.email),
+            DecideStoryRequest(
+                detail_id=detail_id,
+                decision=kind,
+                decided_by=user.email,
+                content_hash=content_hash,
+            ),
             now=datetime.now(UTC),
         )
+    except StoryReviewStale:
+        return RedirectResponse(f"{redirect}?decided=stale#story-notice", status_code=303)
     except StoryNotReviewable:
         return RedirectResponse(f"{redirect}?decided=closed#story-notice", status_code=303)
     except StoryDetailNotFound:

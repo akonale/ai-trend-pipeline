@@ -85,9 +85,9 @@ schedules the four activities by their contract names with `result_type=` and a 
 string-name overload returns `Any`).
 
 ```
-researching ─▶ analyzing ─▶ writing ─▶ checking ─┬─ passed ─▶ review ─┬─ approve ─▶ ready
-                    ▲          │         │        │                   ├─ reject  ─▶ rejected
-                    │          └ one revision ──┘                   └─ 48 h cutoff ─▶ expired
+researching ─▶ analyzing ─▶ writing ─▶ checking ─┬─ passed ─▶ media ─▶ review ─┬─ approve ─▶ ready
+                    ▲          │         │        │                            ├─ reject  ─▶ rejected
+                    │          └ one revision ──┘                            └─ 48 h cutoff ─▶ expired
                     └──────── activity error / invalid draft / second failed check ─▶ failed
 ```
 
@@ -119,6 +119,16 @@ researching ─▶ analyzing ─▶ writing ─▶ checking ─┬─ passed ─
   before any activity, and a cutoff reached during research/writing/checking expires rather than
   entering a hidden wait. `ready` and `rejected` both carry the package and critique; the other
   terminal states carry neither. Nothing publishes or renders.
+- Media step (task 061): after a story passes checking and before `review`, a `workflow.patched("story-media-v1")`
+  gate moves it to the internal state `media` (a `writing` badge everywhere), runs the
+  `StoryMediaWorkflow` child (id `media-v1-<hash>`, 6 minute execution timeout, `story-media-task-queue`) and
+  attaches its `MediaManifest` to the package. A failed, timed-out or ID-clashing child gives a
+  `text_only` manifest instead; media never fails a story and only the manifest enters the parent history.
+  `story_package_hash` (text and media) is the content hash. The review query returns the package and
+  hash, the `ready` result freezes the hash, and an approve with a different hash is ignored
+  (`IGNORED_SIGNAL`, `cause=stale_content`). The service refuses a stale approve first (`StoryReviewStale`,
+  redirect `?decided=stale`). `/stories/{id}` shows the exact image or GIF (poster for reduced motion), its alt text
+  and any fallback sentence in review and ready.
 - Search attributes: the child start sets `StoryStatus=researching`, `StoryTitle`, `StorySource`,
   `StoryCandidateId`, `StoryCreatedAt` (inherited) and `StoryUpdatedAt`; transitions upsert status
   and time, and terminal states may add the bounded detail. Full text, evidence, prompts and URLs
@@ -256,7 +266,7 @@ non-primitives raise, and strings truncate at 256 characters. Never log exceptio
 | `draft_story` | `StoryDraftActivities` | `DraftInput` -> `DraftOutput` |
 | `critique_story` | `StoryCritiqueActivities` | `CritiqueInput` -> `CritiqueOutput` |
 
-Media contracts (`media/`, task 058): `MediaBrief` -> `StoryMediaActivities` (`render_static_media`, `render_animated_media`, each `RenderMediaInput` -> `MediaArtifact`) -> `MediaManifest`, driven by `StoryMediaWorkflow` (`story-media-task-queue`, nothing starts it yet). Artifacts are stored as `<sha256>.<ext>` under `MEDIA_DIR` and are resolved only through a manifest (`MediaService.artifact`); bytes never enter workflow history.
+Media contracts (`media/`, task 058): `MediaBrief` -> `StoryMediaActivities` (`render_static_media`, `render_animated_media`, each `RenderMediaInput` -> `MediaArtifact`) -> `MediaManifest`, driven by `StoryMediaWorkflow` (`story-media-task-queue`, started as a child by `StoryGenerationWorkflow` since task 061). Artifacts are stored as `<sha256>.<ext>` under `MEDIA_DIR` and are resolved only through a manifest (`MediaService.artifact`); bytes never enter workflow history.
 
 Story card renderer (`media/card.py`, task 059): `renderer_for("story-card")` returns `StoryCardRenderer`, a deterministic Pillow card (1200x675 default; 1080x1080 and 640x360 supported) in the app's graph-paper tokens. Pure `layout_story_card` places text and highlighter bands (only for a fact-backed highlight); `draw_story_card` and `encode_png` rasterise. Fonts are the two vendored Archivo TTFs in `media/fonts/` (SIL OFL, loaded with BASIC layout, coverage from a `struct` cmap parser in `media/fonts.py`); no system fonts or network. Headlines with letters Archivo lacks (Cyrillic, Greek, CJK) raise `MediaContentUnsupported`, which the activity maps to non-retryable `MediaRenderInvalid` (text-only outcome); emoji are dropped and unsupported fact or source text is left out. Bump `CARD_TEMPLATE_VERSION` when layout, fonts or tokens change. Goldens: `tests/fixtures/media/cards/` (`uv run python -m tests.regen_card_goldens`). `media/illustration.py` is an unused AI-illustration interface. `GET /stories/{detail_id}/media/{artifact_id}` (`StoryMediaPreviewService`) serves an artifact only if that story's manifest lists it.
 
@@ -386,7 +396,10 @@ the seven activities from `daily_chart_activities`), `story-candidate-task-queue
 (`INGESTION_WORKFLOWS = [SourceIngestionWorkflow]`, with `poll_hn_source`, `poll_fake_source` and
 `select_story_candidates` from `ingestion_activities`), and `story-generation-task-queue`
 (`STORY_WORKFLOWS = [StoryGenerationWorkflow]`, with the four activities from `story_activities`
-and `activity_executor=ThreadPoolExecutor(max_workers=4)` for the sync fact activity). It exits at
+and `activity_executor=ThreadPoolExecutor(max_workers=4)` for the sync fact activity), and
+`story-media-task-queue` (`MEDIA_WORKFLOWS = [StoryMediaWorkflow]`, with `render_static_media` and
+`render_animated_media` from `media_activities(settings)`, the `MEDIA_PROVIDER` renderer (default `story-card`),
+2 concurrent activities and 1 concurrent animation). It exits at
 startup if `ANTHROPIC_API_KEY`, `BLUESKY_HANDLE` or `BLUESKY_APP_PASSWORD` is missing. Worker
 startup does not start ingestion; `just ingest` does. `DraftChartWorkflow` (in `chart_loop.py`) is
 not registered.

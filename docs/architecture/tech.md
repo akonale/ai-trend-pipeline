@@ -394,8 +394,11 @@ generation story inside the 48-hour window and the hash the user saw, returns an
 `publishing` or `published` run without starting, and `TemporalStoryPublishingGateway` starts with
 `USE_EXISTING` + `ALLOW_DUPLICATE`. The start attributes copy `StoryTitle`, `StorySource`, the
 candidate ID and the original `StoryCreatedAt`, so publishing never resets the retention window; the
-`/stories` list query still covers only the candidate and generation workflow types. For 064: show the
-formatted post text during review, since text over 300 characters fails with `PostTextTooLong`.
+`/stories` list query now also reads `StoryPublishingWorkflow` rows (see Services).
+`publishing/preview.py` (pure, no httpx, clock or services) builds `PostPreview` with
+`preview_post(package, content_hash)`: it uses `formatted_post` (extracted from the formatter, same
+text and facets) and `format_publication` to set `problem` (for example `PostTextTooLong`) while
+still returning the text, so review and Ready show exactly what would be posted.
 
 ### Determinism, idempotency, replay
 
@@ -492,11 +495,12 @@ helper does I/O, and the badge is built only from an already-fetched `CandidateP
 | GET | `/runs/{id}/status` | htmx fragment, polled every 2 s while `polling` | |
 | GET | `/runs/{id}/chart.png` | The PNG | 404 unless the file is inside `CHART_OUTPUT_DIR` |
 | POST | `/runs/{id}/decision` | Send approve/reject, 303 to `?sent=1` | uses `current_user`; 400 bad value, 409 not awaiting, 404 unknown |
-| GET | `/stories` | Unified story status ledger, and the default page | `?filter=` accepts only `all`, `pending`, `writing`, `review`, `ready`, `closed`; `?page=` is an opaque forward cursor carrying the filter and seen candidate ids; 400 friendly notice on an invalid token, 503 full-shell unavailable page; only the last 48 hours are visible; pending rows link to `/candidates/{id}`, every other row to `/stories/{id}` |
+| GET | `/stories` | Unified story status ledger, and the default page | `?filter=` accepts only `all`, `pending`, `writing`, `review`, `ready`, `published`, `closed`; `?page=` is an opaque forward cursor carrying the filter and seen candidate ids; 400 friendly notice on an invalid token, 503 full-shell unavailable page; only the last 48 hours are visible; pending rows link to `/candidates/{id}`, every other row to `/stories/{id}` |
 | GET | `/stories/rows` | htmx fragment for the results region | 200 for both success and a service failure (so htmx swaps and stops); no filter bar or heading in the response |
-| GET | `/stories/{id}` | Story detail for a candidate or generation workflow | `?decided=` allow-listed notice; 404 missing/unknown, 410 past the 48-hour cutoff, 502 malformed typed result, 503 service outage; one status stamp and either the package with final Approve/Reject, the read-only approved package, or one closed reason |
-| GET | `/stories/{id}/status` | htmx fragment for `#story-detail` | always 200; polls only while pending or writing; typed failures swap in a neutral non-polling line |
+| GET | `/stories/{id}` | Story detail for a candidate or generation workflow | `?decided=` or `?publish=` allow-listed notice; 404 missing/unknown, 410 past the 48-hour cutoff, 502 malformed typed result, 503 service outage; one status stamp and either the package with final Approve/Reject, the read-only approved package, or one closed reason |
+| GET | `/stories/{id}/status` | htmx fragment for `#story-detail` | always 200; polls while pending or writing, or while the publish panel is `publishing`; typed failures swap in a neutral non-polling line |
 | POST | `/stories/{id}/decide` | Final approve/reject for a `story-v1-` workflow in `review` | uses `current_user`; 400 invalid decision; 303 with `?decided=approved\|rejected\|closed#story-notice`; 404/410/502/503 pages; the first decision wins and nothing publishes |
+| POST | `/stories/{id}/publish` | Publish a Ready story to Bluesky | uses `current_user`; form field `content_hash`; calls only `StoryPublishingService.publish`; 303 to `/stories/{id}?publish=started\|published\|failed\|stale\|not_ready#story-notice` (a malformed hash is `stale`); 404/410/502/503 pages; a double POST returns the existing run |
 | GET | `/candidates` | Story candidate inbox | same 48-hour cutoff as `/stories`; `?page=` is an opaque forward cursor; `?notice=` accepts only `approved`, `rejected` or `closed`; 400 with a friendly notice when the token is invalid, 503 full-shell unavailable page; the header badge shows `N` (or `N+` with a next page) only on a successful first page |
 | GET | `/candidates/{id}` | Candidate detail and decision form | 404 not-available page for a missing candidate, 410 status-specific page for approved/rejected/expired; renders only an `http`/`https` source link |
 | POST | `/candidates/{id}/decide` | Approve or reject, 303 to the inbox | uses `current_user`; 400 invalid decision re-renders the detail with an error; repeated/raced decisions 303 with `notice=closed`; 404 unknown |
@@ -572,6 +576,17 @@ while Postgres is down.
   values, follows an approved candidate's `story_workflow_id`, and validates the typed result
   against the query. Errors: `StoryDetailNotFound`, `StoryDetailExpired`, `StoryNotReviewable`,
   `StoryDetailMalformed`, `StoryDetailUnavailable`.
+- Publishing in the services: `story_visibility_query` has a third branch for
+  `StoryPublishingWorkflow` (`StoryCreatedAt` is inherited, so a published story leaves at exactly 48
+  hours), and the Ready and Published filters both fetch `StoryStatus IN
+  ('ready','publishing','publish_failed','published')`. `collapse_story_rows` overlays one
+  publication per candidate (a `published` run wins, else the latest) on a Ready generation row and
+  keeps the generation `workflow_id`; with no generation row it uses `story_id_for(candidate_id)`, and
+  a publication workflow ID is never a row link. `StoryDetailService(gateway, publications)` takes an
+  optional `PublicationLookup` (`publication(id)`, satisfied by `TemporalStoryPublishingGateway`),
+  attaches `post_preview` in review and Ready, looks up the publication for Ready, sets
+  `publication_unknown` when the lookup fails, and sets status `published` once published (retention
+  is checked first).
 - `TemporalStoryDetailGateway` (`services/temporal_gateway.py`): typed candidate/story queries,
   results and approve/reject signals; maps gRPC `NOT_FOUND` to `StoryDetailNotFound`, other
   `RPCError` to `StoryDetailUnavailable`, and result-decode `ValidationError`/`ValueError`/
@@ -580,8 +595,12 @@ while Postgres is down.
   `build_story_detail_view`, `story_package_view`,
   `build_story_detail_problem_view` and `build_story_not_available_view`: a 62ch reading galley
   with footnote-style fact citations and safe evidence links, a 17rem decision/approved rail at
-  `min-width: 48rem`, one `.badge` status stamp and one closed reason. Only pending/writing carry
-  `hx-get` on `#story-detail`; the decision forms are plain POST forms.
+  `min-width: 48rem`, one `.badge` status stamp and one closed reason. Pending, writing and
+  publishing carry `hx-get` on `#story-detail`; the decision and publish forms are plain POST forms.
+  Review and Ready render the **post proof** (`.post-proof`, `PostPreviewView`): the exact text, the
+  `Source:` host, a count and a ruler. In Ready the rail is the publish panel (`PublishPanelView`
+  modes `available`, `blocked`, `publishing`, `failed`, `published`, `unknown`). All copy and the
+  `safe_bluesky_post_url` check live in `view_models.py`; a failure shows only a fixed sentence.
 - `StyleService` / `StyleStore` protocol (`services/styles.py`); `PostgresStyleStore`
   (`services/postgres_style_store.py`): psycopg 3, one short connection per call, schema and table
   created on first use and retried if setup fails; `psycopg.Error` or `OSError` become
@@ -632,7 +651,11 @@ tokens only: `.nav-badge`, `.source-badge` (a pill built on the `.badge` stamp),
 `.candidate-state`, `.candidate-flash`, `.candidate-back`, the inbox row hover/active pair inside one
 `@media (hover: hover)` block, `.candidate-decisions`, `.status-filters`/`.status-filter` (the active
 pill is marigold) and `.story-row__detail` (a muted, ellipsized one-liner). Reduced motion turns off
-transitions and the progress animation, plus the candidate row transition.
+transitions and the progress animation, plus the candidate row transition. The UI has six primary
+statuses; the sixth, Published, uses `--color-published` (`#c7b8ff`, the same in both themes, ink text
+on it) and `--shadow-published`. A final "Publishing" section holds `.badge--published`,
+`.post-proof` (a print-proof slip whose ruler echoes the chart frame's ticks), `.publish-panel__failure`
+and `.story-rail--published`; it adds no motion.
 
 Flow: `StepperView` / `build_stepper(current, topic_href)` (view_models) shape the four steps
 (Topic, Style, Review, Done); shown on step 1 (`/new`), step 2 and the run page (`RUN_STEP` maps status to
@@ -715,6 +738,7 @@ environment variables.
 | `WEB_HOST` | `web_host` | bind address of `python -m ai_trend_pipeline.web` (port fixed at 8000) | `127.0.0.1` |
 | `CHART_OUTPUT_DIR` | `chart_output_dir` | where PNGs are written and served from | unset (`charts`) |
 | `MEDIA_DIR` | `media_dir` | shared directory for story media artifacts (`<sha256>.<ext>`); prod volume `media` in worker and web | `media` |
+| `MEDIA_PROVIDER` | `media_provider` | story media renderer: `story-card` or `fake` (tests only) | `story-card` |
 | `ANTHROPIC_API_KEY` | `anthropic_api_key` | LLM calls (worker) | unset |
 | `BLUESKY_HANDLE` | `bluesky_handle` | posting account (worker) | unset |
 | `BLUESKY_APP_PASSWORD` | `bluesky_app_password` | app password (worker) | unset |
@@ -764,7 +788,11 @@ Secrets use `SecretStr`. Compose-only keys (`POSTGRES_PASSWORD`, `CLOUDFLARE_TUN
   (only the three service dependencies are overridden). It covers success, unsupported,
   failed-after-retry, candidate rejection, story rejection, critique revision and review expiry,
   one row/workflow per candidate, the 48-hour retention cutoff by a future clock, and asserts no
-  publishing, chart or render activity is scheduled.
+  publishing, chart or render activity is scheduled. `test_story_publishing_e2e.py` extends the same
+  `tests/story_e2e_harness.py` (shared `story_e2e`) with the publishing worker and the real
+  `publish_story_to_bluesky` against a `FakePds` (`httpx.MockTransport`): it covers candidate to
+  Published through the routes, GIF and text-only stories, a double click, a failed publication and
+  Try again, the six badges, the 48-hour cutoff and that every Bluesky request hits the fake.
 - Lint: Ruff (line length 100) and Pyright strict; no `# type: ignore` or `Any` without a comment.
 - Agent relay: planner, builder, verifier, reviewer, scribe with human checkpoints; see
   `docs/mvp-plan.md` and `CLAUDE.md` (do not copy them).

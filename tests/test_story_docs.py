@@ -131,7 +131,7 @@ def test_search_attributes_runbook_has_story_checks() -> None:
     assert "Story generation checks" in SEARCH
     assert 'WorkflowType = "StoryGenerationWorkflow" AND StoryStatus = "review"' in SEARCH
     assert 'StoryCandidateId = "candidate-v1-' in SEARCH
-    assert "never the five UI badges" in SEARCH
+    assert "never the six UI badges" in SEARCH
     assert "StoryCreatedAt" in SEARCH
     assert "StoryUpdatedAt" in SEARCH
     assert "sorting only" in SEARCH

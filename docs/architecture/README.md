@@ -88,8 +88,11 @@ Candidate and story review deadlines never extend past `StoryCreatedAt + 48 hour
 shared visibility attributes (`StoryStatus`, `StoryTitle`, `StorySource`, `StoryCandidateId`,
 `StoryCreatedAt`, `StoryUpdatedAt`, `StoryStatusDetail`) let the list pages read bounded metadata
 without workflow queries; the story inherits `StoryCreatedAt` from the candidate's original
-detection time. `story_status.primary_story_status` maps every internal state to the five UI
-statuses (`pending`, `writing`, `review`, `ready`, `closed`). `StoryStatusService` reads both
+detection time. `story_status.primary_story_status` maps every internal state to the six UI
+statuses (`pending`, `writing`, `review`, `ready`, `published`, `closed`); `publishing` and
+`publish_failed` map to `ready`, so a failed publication leaves the story Ready, and a successful one shows the
+Published badge. Publishing is a
+third explicit click (`POST /stories/{id}/publish`); see `docs/runbooks/publishing.md`. `StoryStatusService` reads both
 workflow types in one visibility query for `GET /stories`, de-duplicates the candidate-to-story
 handoff by `StoryCandidateId`, and hides anything at or past 48 hours. `/candidates` keeps its own
 pending query but applies the same cutoff. `GET /stories/{id}` shows one workflow's detail through
@@ -138,7 +141,9 @@ cutoff and replay-safe histories.
 | `ingestion_starter.py` | Operator entry point (`just ingest`) that ensures source ingestion workflows exist |
 | `story_candidate.py` | `StoryCandidateWorkflow` (one review per candidate), candidate models, `candidate_id_for`, `story_input_for`, candidate search-attribute keys and the version-gated story handoff |
 | `story_generation.py` | `StoryGenerationWorkflow` (research → analyze → write → check once → final review), story models, `story_id_for`, queue/id/retry constants |
-| `story_status.py` | Pure five-status mapping (`primary_story_status`, `PrimaryStoryStatus`) and the 48-hour retention constants |
+| `story_status.py` | Pure six-status mapping (`primary_story_status`, `PrimaryStoryStatus`) and the 48-hour retention constants |
+| `story_publishing.py` | `StoryPublishingWorkflow` (one run per story, destination and approved hash), its state and fixed failure sentences |
+| `publishing/` | Pure formatter, `preview_post` (the exact post text and count shown in review and Ready), destination registry and the Bluesky activity |
 | `story_visibility.py` | The seven shared visibility attribute keys, `story_start_attributes`, `story_status_updates` and the bounded detail cleaner |
 | `research/` | Bounded research contracts, a safe bounded HTTP fetcher, and the `fetch_context`, `match_owid_evidence`, `research_story` activities (the story worker registers `research_story`) |
 | `analysis/` | Frozen fact contracts and a pure deterministic `build_fact_set`; the sync `calculate_facts` activity (registered on the story worker with an activity executor) |

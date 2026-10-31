@@ -19,7 +19,7 @@ Cloudflare Tunnel is covered in [cloudflare.md](cloudflare.md). Source ingestion
 - `DAILY_CHART_CAP` (optional, default 10; charts each person can start from the web per UTC day, resets at 00:00 UTC, every started run counts, the CLI is not capped)
 - `ANTHROPIC_API_KEY`
 - `BLUESKY_HANDLE`
-- `BLUESKY_APP_PASSWORD`
+- `BLUESKY_APP_PASSWORD` (an app password, never the account password; setup and recovery in [publishing.md](publishing.md))
 - `APP_URL` (optional, documentation only; the web hostname, for example `app.example.com`)
 - `SOURCE_ENABLED` (optional, default `hn`; comma-separated registered sources. Never include `fake` in prod)
 - `SOURCE_POLL_LIMIT` (optional, default 30, 1-100)

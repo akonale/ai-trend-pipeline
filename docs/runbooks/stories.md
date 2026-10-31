@@ -26,6 +26,10 @@ The first final decision wins; later signals are ignored and logged as
 `story_generation.ignored_signal`. A review window that closes with no decision ends `expired`.
 Review expiry is terminal: there is no reopen path.
 
+Publishing is a separate third click. A Ready story shows **Publish to Bluesky**, and only that
+button starts a `StoryPublishingWorkflow`. Final approval above still never publishes. Setup,
+recovery and the manual visual check are in [publishing.md](publishing.md).
+
 ## Local manual walkthrough
 
 In `.env`:

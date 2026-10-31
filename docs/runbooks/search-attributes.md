@@ -10,7 +10,7 @@ Candidate-specific:
 
 Shared story metadata (candidate and generation rows):
 
-- `StoryStatus` (the internal candidate or story state, never the five UI badges)
+- `StoryStatus` (the internal candidate or story state, never the six UI badges)
 - `StoryTitle` (candidate title)
 - `StorySource` (`hn`, `fake`)
 - `StoryCandidateId` (the candidate workflow id)
@@ -105,11 +105,24 @@ dev-temporal workflow list --query 'StoryCandidateId = "candidate-v1-..."'
 ```
 
 `StoryStatus` stores the internal state (`researching`, `analyzing`, `writing`, `checking`,
-`review`, `ready`, `rejected`, `unsupported`, `failed`, `expired`) and never the five UI badges.
+`review`, `ready`, `rejected`, `unsupported`, `failed`, `expired`) and never the six UI badges.
 `StoryCreatedAt` (inherited by the story from the candidate's detection time) drives the strict
 48-hour retention cutoff on both list pages. `StoryUpdatedAt` is for sorting only; it does not
 reset retention. A healthy handoff shows exactly two workflows per approved candidate
 (`StoryCandidateWorkflow` and `StoryGenerationWorkflow`) and one for a rejected candidate.
+
+### Publishing check
+
+`StoryPublishingWorkflow` reuses the same `Story*` attributes and adds no new one. Its `StoryStatus`
+values are `publishing`, `published` and `publish_failed`; the UI shows them as the detail line
+under Ready, or as the Published badge. `StoryCreatedAt` is inherited from the story, so
+publishing never resets the 48-hour window. List failed publications with:
+
+```sh
+dev-temporal workflow list --query 'WorkflowType = "StoryPublishingWorkflow" AND StoryStatus = "publish_failed"'
+```
+
+Recovery steps are in [publishing.md](publishing.md).
 
 ## 4. Dev is in memory
 

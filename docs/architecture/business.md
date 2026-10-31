@@ -130,10 +130,14 @@ A candidate approval is the first of two human decisions; a final story approval
 - **Candidate approval starts generation.** It starts exactly one story for that candidate and does
   not wait for it. There is no automatic generation and no second story for the same candidate.
 - **Final story approval marks the package `ready` and never publishes.** Reject closes it. The
-  first final decision wins; a review window that closes with no decision ends `expired`. Nothing
-  is posted, charted or rendered at any point.
-- A person sees only five statuses: Pending, Writing, Review, Ready and Closed. The internal steps
-  (research, analysis, writing, checking, review) stay inside those.
+  first final decision wins; a review window that closes with no decision ends `expired`. Neither
+  approval posts, charts or renders anything.
+- **Publishing is a third, explicit click.** A Ready story offers **Publish to Bluesky**; only that
+  button posts. The page shows the exact post text first. A failed publication leaves the story
+  Ready with one fixed reason and **Try again** (except package problems such as text that is too
+  long). A published story shows **Published** with the post link and time.
+- A person sees only six statuses: Pending, Writing, Review, Ready, Published and Closed. The
+  internal steps (research, analysis, writing, checking, review, publishing) stay inside those.
 - The status pages and pending counts show only the last 48 hours from the original detection time.
   This is presentation retention, not deletion: the workflow history remains and can still be
   inspected or described.

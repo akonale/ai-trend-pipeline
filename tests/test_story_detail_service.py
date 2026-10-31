@@ -9,6 +9,7 @@ import pytest
 from temporalio.client import Client
 from temporalio.service import RPCError, RPCStatusCode
 
+from ai_trend_pipeline.publishing.models import DestinationName, publication_key
 from ai_trend_pipeline.services.stories import (
     GENERATION_STARTING_DETAIL,
     STORY_ID_PREFIX,
@@ -40,6 +41,7 @@ from ai_trend_pipeline.story_generation import (
     StoryGenerationState,
     StoryGenerationStatus,
 )
+from ai_trend_pipeline.story_publishing import PublicationStatus, StoryPublishingState
 from ai_trend_pipeline.story_status import PrimaryStoryStatus
 
 NOW = datetime(2026, 10, 30, 12, 0, tzinfo=UTC)
@@ -799,3 +801,101 @@ async def test_matching_hash_is_passed_in_the_approve_signal() -> None:
         DecideStoryRequest(detail_id=STORY_ID, decision="approve", content_hash=HASH), now=NOW
     )
     assert gateway.signals[0][2].content_hash == HASH
+
+
+class FakePublications:
+    def __init__(self, value: object = None) -> None:
+        self.value = value
+        self.keys: list[str] = []
+
+    async def publication(self, publication_id: str) -> StoryPublishingState | None:
+        self.keys.append(publication_id)
+        if isinstance(self.value, Exception):
+            raise self.value
+        return cast(StoryPublishingState | None, self.value)
+
+
+def publication_state(
+    status: PublicationStatus, detail: str = "Published to Bluesky."
+) -> StoryPublishingState:
+    return StoryPublishingState(
+        publication_id="publish-v1-x",
+        status=status,
+        status_detail=detail,
+        content_hash=HASH,
+    )
+
+
+@pytest.mark.asyncio
+async def test_review_and_ready_attach_post_preview() -> None:
+    gateway = FakeGateway()
+    gateway.candidate_states[CANDIDATE_ID] = candidate_state(CandidateStatus.APPROVED)
+    gateway.story_states[STORY_ID] = story_state(
+        StoryGenerationStatus.REVIEW, package=make_package()
+    )
+    review = await service_with(gateway).show(STORY_ID, now=NOW)
+    assert review.post_preview is not None
+    assert review.post_preview.text.endswith("Source: example.com")
+    gateway.story_states[STORY_ID] = story_state(StoryGenerationStatus.READY)
+    gateway.story_results[STORY_ID] = story_result("ready", package=make_package())
+    ready = await service_with(gateway).show(STORY_ID, now=NOW)
+    assert ready.post_preview is not None
+    assert ready.publication is None
+    assert not ready.publication_unknown
+
+
+@pytest.mark.asyncio
+async def test_ready_attaches_publication_and_published_sets_published_status() -> None:
+    gateway = FakeGateway()
+    gateway.candidate_states[CANDIDATE_ID] = candidate_state(CandidateStatus.APPROVED)
+    gateway.story_states[STORY_ID] = story_state(StoryGenerationStatus.READY)
+    gateway.story_results[STORY_ID] = story_result("ready", package=make_package())
+    lookup = FakePublications(publication_state(PublicationStatus.PUBLISHING, "Posting."))
+    service = StoryDetailService(cast(StoryDetailGateway, gateway), lookup)
+    detail = await service.show(STORY_ID, now=NOW)
+    assert detail.status is PrimaryStoryStatus.READY
+    assert detail.publication is not None
+    assert lookup.keys == [publication_key(STORY_ID, DestinationName.BLUESKY, HASH)]
+    lookup.value = publication_state(PublicationStatus.PUBLISHED)
+    done = await service.show(STORY_ID, now=NOW)
+    assert done.status is PrimaryStoryStatus.PUBLISHED
+    assert done.internal_status == "published"
+    assert done.package is not None
+
+
+@pytest.mark.asyncio
+async def test_publication_lookup_failure_sets_unknown_and_still_renders() -> None:
+    gateway = FakeGateway()
+    gateway.candidate_states[CANDIDATE_ID] = candidate_state(CandidateStatus.APPROVED)
+    gateway.story_states[STORY_ID] = story_state(StoryGenerationStatus.READY)
+    gateway.story_results[STORY_ID] = story_result("ready", package=make_package())
+    for error in (StoryDetailUnavailable(), StoryDetailMalformed("x")):
+        service = StoryDetailService(cast(StoryDetailGateway, gateway), FakePublications(error))
+        detail = await service.show(STORY_ID, now=NOW)
+        assert detail.publication_unknown
+        assert detail.publication is None
+        assert detail.status is PrimaryStoryStatus.READY
+
+
+@pytest.mark.asyncio
+async def test_published_story_is_expired_at_48_hours() -> None:
+    created = NOW - timedelta(hours=48)
+    gateway = FakeGateway()
+    gateway.candidate_states[CANDIDATE_ID] = candidate_state(CandidateStatus.APPROVED)
+    gateway.story_states[STORY_ID] = story_state(StoryGenerationStatus.READY, created_at=created)
+    gateway.story_results[STORY_ID] = story_result(
+        "ready", package=make_package(), created_at=created
+    )
+    lookup = FakePublications(publication_state(PublicationStatus.PUBLISHED))
+    service = StoryDetailService(cast(StoryDetailGateway, gateway), lookup)
+    with pytest.raises(StoryDetailExpired):
+        await service.show(STORY_ID, now=NOW)
+    assert lookup.keys == []
+    just_inside = created + timedelta(seconds=1)
+    gateway.story_states[STORY_ID] = story_state(
+        StoryGenerationStatus.READY, created_at=just_inside
+    )
+    gateway.story_results[STORY_ID] = story_result(
+        "ready", package=make_package(), created_at=just_inside
+    )
+    assert (await service.show(STORY_ID, now=NOW)).status is PrimaryStoryStatus.PUBLISHED

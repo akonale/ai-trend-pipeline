@@ -112,3 +112,51 @@ def test_chart_section_uses_card_chart() -> None:
     gateway = RecGateway(ReviewState(status="awaiting_decision", review=REVIEW_FAILED))
     text = client_for(gateway).get("/runs/wf-1").text
     assert 'class="card card--chart"' in text
+
+
+@pytest.mark.parametrize("name", ["light", "dark"])
+def test_published_fill_contrast_with_on_fill_in_both_themes(name: str) -> None:
+    tokens = theme(name)
+    assert tokens["published"] == "#c7b8ff"
+    assert contrast(tokens["on-fill"], tokens["published"]) >= 4.5
+    assert contrast(tokens["on-fill"], tokens["danger"]) >= 4.5
+    assert "--shadow-published: 6px 6px 0 0 var(--color-published)" in CSS
+
+
+def publishing_section() -> str:
+    return CSS[CSS.index("/* Publishing:") :]
+
+
+def test_publishing_css_section_uses_tokens_and_no_fixed_width_over_20rem() -> None:
+    section = publishing_section()
+    assert not re.search(r"#[0-9a-fA-F]{3,6}\b", section)
+    for value in re.findall(r"(?<![-\w])(?:min-|max-)?width:\s*([\d.]+)(rem|px|em)", section):
+        number, unit = float(value[0]), value[1]
+        assert (number <= 20 and unit in ("rem", "em")) or (number <= 320 and unit == "px")
+    assert ".badge--published { background: var(--color-published); }" in section
+    assert ".story-rail--published { box-shadow: var(--shadow-published); }" in section
+    assert "--post-used" in section
+    assert "text-transform" not in section
+    assert "font-family: var(--font-mono)" not in section
+
+
+def test_post_proof_text_wraps_and_ruler_is_aria_hidden() -> None:
+    from ai_trend_pipeline.publishing.preview import preview_post
+    from ai_trend_pipeline.story_status import PrimaryStoryStatus
+    from ai_trend_pipeline.web.view_models import build_post_preview_view
+    from tests.publishing_fixtures import make_approved_package
+    from tests.test_web_story_detail import FakeDetailService, make_detail, make_package
+    from tests.test_web_story_detail import client_for as detail_client
+
+    section = publishing_section()
+    text_rule = section[section.index(".post-proof__text {") :].split("}")[0]
+    assert "overflow-wrap: anywhere" in text_rule
+    assert "white-space: pre-wrap" in text_rule
+    assert "max-width: 62ch" in text_rule
+    package, digest = make_approved_package(None)
+    view = build_post_preview_view(preview_post(package, digest), stage="review")
+    assert 0 <= view.used_percent <= 100
+    detail = make_detail(package=make_package(), status=PrimaryStoryStatus.REVIEW)
+    page = detail_client(FakeDetailService(detail)).get(f"/stories/{detail.detail_id}").text
+    assert '<div class="post-proof__ruler" aria-hidden="true">' in page
+    assert re.search(r'<span style="--post-used: \d+%"></span>', page)

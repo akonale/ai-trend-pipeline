@@ -12,6 +12,7 @@ from ai_trend_pipeline.services.candidates import CandidateService, CandidateUna
 from ai_trend_pipeline.services.charts import ChartService
 from ai_trend_pipeline.services.media import MediaService, StoryMediaPreviewService
 from ai_trend_pipeline.services.postgres_style_store import PostgresStyleStore
+from ai_trend_pipeline.services.publishing import StoryPublishingService
 from ai_trend_pipeline.services.stories import (
     StoryDetailService,
     StoryDetailUnavailable,
@@ -23,6 +24,7 @@ from ai_trend_pipeline.services.temporal_gateway import (
     TemporalCandidateGateway,
     TemporalChartRunGateway,
     TemporalStoryDetailGateway,
+    TemporalStoryPublishingGateway,
     TemporalStoryStatusGateway,
 )
 from ai_trend_pipeline.story_candidate import CandidateReviewState, StoryCandidateResult
@@ -31,6 +33,7 @@ from ai_trend_pipeline.story_generation import (
     StoryGenerationResult,
     StoryGenerationState,
 )
+from ai_trend_pipeline.story_publishing import StoryPublishingInput, StoryPublishingState
 from ai_trend_pipeline.web.view_models import NavBadge, ShellView, build_shell
 
 DEV_USER_EMAIL = "dev@localhost"
@@ -145,7 +148,42 @@ async def get_story_detail_service(
         except (RPCError, OSError, RuntimeError):
             return StoryDetailService(_UnavailableDetailGateway())
         request.app.state.temporal_client = client
-    return StoryDetailService(TemporalStoryDetailGateway(client))
+    return StoryDetailService(
+        TemporalStoryDetailGateway(client), publications=TemporalStoryPublishingGateway(client)
+    )
+
+
+class _UnavailablePublishingGateway:
+    """A gateway whose first call fails, so a connect outage surfaces through the route."""
+
+    async def story_state(self, workflow_id: str) -> StoryGenerationState:
+        _ = workflow_id
+        raise StoryDetailUnavailable()
+
+    async def story_result(self, workflow_id: str) -> StoryGenerationResult:
+        _ = workflow_id
+        raise StoryDetailUnavailable()
+
+    async def publication(self, publication_id: str) -> StoryPublishingState | None:
+        _ = publication_id
+        raise StoryDetailUnavailable()
+
+    async def start(self, data: StoryPublishingInput) -> None:
+        _ = data
+        raise StoryDetailUnavailable()
+
+
+async def get_story_publishing_service(
+    request: Request, settings: Settings = Depends(get_settings)
+) -> StoryPublishingService:
+    client = getattr(request.app.state, "temporal_client", None)
+    if not isinstance(client, Client):
+        try:
+            client = await temporal_client.connect(settings)
+        except (RPCError, OSError, RuntimeError):
+            return StoryPublishingService(_UnavailablePublishingGateway())
+        request.app.state.temporal_client = client
+    return StoryPublishingService(TemporalStoryPublishingGateway(client))
 
 
 async def get_story_media_preview_service(

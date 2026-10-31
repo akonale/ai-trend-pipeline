@@ -83,10 +83,15 @@
         </ul>
       </section>
       {% endif %}
-      {% if view.package.post_text %}
-      <section class="candidate-section">
-        <h2>{{ view.package.post_text_label }}</h2>
-        <p class="story-post-text">{{ view.package.post_text }}</p>
+      {% if view.post_proof %}
+      <section class="post-proof{% if view.post_proof.over %} post-proof--over{% endif %}">
+        <div class="post-proof__head">
+          <h2>{{ view.post_proof.heading }}</h2>
+          <span class="post-proof__count">{{ view.post_proof.count_text }}</span>
+        </div>
+        <p class="post-proof__text">{{ view.post_proof.body_text }}{% if view.post_proof.link_text %}<span class="post-proof__link">{{ view.post_proof.link_text }}</span>{% endif %}</p>
+        <div class="post-proof__ruler" aria-hidden="true"><span style="--post-used: {{ view.post_proof.used_percent }}%"></span></div>
+        {% if view.post_proof.problem_text %}<p class="post-proof__problem">{{ view.post_proof.problem_text }}</p>{% endif %}
       </section>
       {% endif %}
       {% endif %}
@@ -111,9 +116,25 @@
       </div>
     </aside>
     {% elif view.state == "ready" %}
-    <aside class="card story-rail">
-      <h2>{{ view.approved_heading }}</h2>
-      <p>{{ view.approved_body }}</p>
+    <aside class="card story-rail{% if view.published %} story-rail--published{% endif %}">
+      {% set panel = view.publish_panel %}
+      <h2>{{ panel.heading }}</h2>
+      <p{% if panel.mode == "publishing" %} role="status"{% endif %}{% if panel.mode == "failed" %} class="publish-panel__failure"{% endif %}>{{ panel.body }}</p>
+      {% if panel.hint %}<p class="meta">{{ panel.hint }}</p>{% endif %}
+      {% if panel.show_form %}
+      <form class="decision" method="post" action="{{ panel.action }}">
+        <input type="hidden" name="content_hash" value="{{ panel.content_hash }}">
+        <button class="btn btn--primary" type="submit">{{ panel.button_label }}</button>
+      </form>
+      {% elif panel.button_disabled %}
+      <button class="btn btn--primary" type="button" disabled>{{ panel.button_label }}</button>
+      {% endif %}
+      {% if panel.post_href %}
+      <a class="btn btn--secondary" href="{{ panel.post_href }}" target="_blank" rel="noopener noreferrer">{{ panel.post_link_label }}<span class="visually-hidden"> (opens in a new tab)</span></a>
+      {% endif %}
+      {% if panel.published_iso %}<p class="meta"><time datetime="{{ panel.published_iso }}">{{ panel.published_text }}</time></p>{% endif %}
+      {% if panel.requested_by %}<p class="meta">{{ panel.requested_by }}</p>{% endif %}
+      <p class="meta">{{ view.approved_body }}</p>
       {% if view.approved_by %}<p class="meta">{{ view.approved_by }}</p>{% endif %}
       {% if view.approved_at %}<p class="meta">{{ view.approved_at }}</p>{% endif %}
       {% if view.package_code %}<p class="story-rail__code">{{ view.package_code_label }} {{ view.package_code }}</p>{% endif %}

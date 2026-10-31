@@ -19,6 +19,7 @@ from ai_trend_pipeline.services.stories import (
     GENERATION_STARTING_DETAIL,
     GENERATION_WORKFLOW_TYPE,
     MAX_SEEN_CANDIDATES,
+    PUBLISHING_WORKFLOW_TYPE,
     STORY_START_FAILED_DETAIL,
     InvalidStoryPageToken,
     ListStoriesRequest,
@@ -290,6 +291,8 @@ def test_visibility_query_uses_start_time_for_candidates_and_story_created_at_fo
     base = (
         "((WorkflowType = 'StoryCandidateWorkflow' AND StartTime > '2026-10-28T12:00:00Z') "
         "OR (WorkflowType = 'StoryGenerationWorkflow' "
+        "AND StoryCreatedAt > '2026-10-28T12:00:00Z') "
+        "OR (WorkflowType = 'StoryPublishingWorkflow' "
         "AND StoryCreatedAt > '2026-10-28T12:00:00Z'))"
     )
     assert story_visibility_query(StoryFilter.ALL, cutoff) == base
@@ -306,7 +309,7 @@ def test_visibility_query_uses_start_time_for_candidates_and_story_created_at_fo
         base + " AND StoryStatus = 'review'"
     )
     assert story_visibility_query(StoryFilter.READY, cutoff) == (
-        base + " AND StoryStatus = 'ready'"
+        base + " AND StoryStatus IN ('ready','publishing','publish_failed','published')"
     )
     assert story_visibility_query(StoryFilter.CLOSED, cutoff) == (
         base
@@ -870,3 +873,120 @@ def test_sort_orders_newest_first_then_candidate_id() -> None:
         "c",
         "b",
     ]
+
+
+PUBLISH_STATES = "StoryStatus IN ('ready','publishing','publish_failed','published')"
+
+
+def publication_row(
+    status: str,
+    *,
+    workflow_id: str = "publish-v1-abc",
+    detail: str | None = None,
+    created_at: datetime | None = IN_WINDOW,
+    updated_at: datetime | None = None,
+    title: str = "A story",
+) -> StoryVisibilityRow:
+    return visibility_row(
+        PUBLISHING_WORKFLOW_TYPE,
+        workflow_id,
+        title=title,
+        status=status,
+        detail=detail,
+        created_at=created_at,
+        updated_at=updated_at,
+    )
+
+
+def test_visibility_query_includes_publishing_branch_with_story_created_at() -> None:
+    query = story_visibility_query(StoryFilter.ALL, CUTOFF)
+    stamp = CUTOFF.strftime("%Y-%m-%dT%H:%M:%SZ")
+    assert f"OR (WorkflowType = 'StoryPublishingWorkflow' AND StoryCreatedAt > '{stamp}')" in query
+
+
+def test_ready_and_published_filter_predicates_fetch_all_publish_states() -> None:
+    for filter in (StoryFilter.READY, StoryFilter.PUBLISHED):
+        assert story_visibility_query(filter, CUTOFF).endswith(" AND " + PUBLISH_STATES)
+    assert "'publish_failed'" not in story_visibility_query(StoryFilter.CLOSED, CUTOFF)
+    assert [f.value for f in StoryFilter][-2:] == ["published", "closed"]
+
+
+def test_collapse_overlays_publication_on_ready_generation_and_keeps_generation_id() -> None:
+    later = IN_WINDOW + timedelta(minutes=5)
+    rows = [
+        story_row("ready", title="Gen title", updated_at=IN_WINDOW),
+        publication_row(
+            "publish_failed",
+            detail="Bluesky could not be reached. Try again.",
+            updated_at=later,
+            title="Pub title",
+        ),
+    ]
+    (row,) = collapse_story_rows(rows, now=NOW)
+    assert row.workflow_id == "story-v1-abc"
+    assert row.title == "Gen title"
+    assert row.internal_status == "publish_failed"
+    assert row.status_detail == "Bluesky could not be reached. Try again."
+    assert row.updated_at == later
+    built = build_story_row(row)
+    assert built.status is PrimaryStoryStatus.READY
+    assert built.detail_id == "story-v1-abc"
+    assert not built.publishing
+    # A generation row that is not ready ignores the publication.
+    (other,) = collapse_story_rows([story_row("failed"), publication_row("published")], now=NOW)
+    assert other.internal_status == "failed"
+
+
+def test_collapse_prefers_published_run_then_latest_run() -> None:
+    old = IN_WINDOW
+    new = IN_WINDOW + timedelta(minutes=9)
+    rows = [
+        story_row("ready"),
+        publication_row("published", workflow_id="publish-v1-a", updated_at=old),
+        publication_row("publish_failed", workflow_id="publish-v1-b", updated_at=new),
+    ]
+    (row,) = collapse_story_rows(rows, now=NOW)
+    assert row.internal_status == "published"
+    rows = [
+        story_row("ready"),
+        publication_row("publish_failed", workflow_id="publish-v1-a", updated_at=old),
+        publication_row("publishing", workflow_id="publish-v1-b", updated_at=new),
+    ]
+    (row,) = collapse_story_rows(rows, now=NOW)
+    assert row.internal_status == "publishing"
+    assert build_story_row(row).publishing
+
+
+def test_collapse_without_generation_row_uses_story_id_for_candidate() -> None:
+    from ai_trend_pipeline.story_generation import story_id_for
+
+    (row,) = collapse_story_rows(
+        [publication_row("published", workflow_id="publish-v1-zzz", title="Only pub")], now=NOW
+    )
+    assert row.workflow_id == story_id_for("candidate-v1-abc")
+    assert row.title == "Only pub"
+    assert build_story_row(row).detail_id != "publish-v1-zzz"
+    assert build_story_row(row).status is PrimaryStoryStatus.PUBLISHED
+
+
+def test_publishing_row_is_ready_with_detail_and_marked_publishing() -> None:
+    rows = [story_row("ready"), publication_row("publishing", detail="Posting to Bluesky.")]
+    (row,) = collapse_story_rows(rows, now=NOW)
+    built = build_story_row(row)
+    assert built.status is PrimaryStoryStatus.READY
+    assert built.status_detail == "Posting to Bluesky."
+    assert built.publishing
+    assert matches_story_filter(row, StoryFilter.READY)
+    assert not matches_story_filter(row, StoryFilter.PUBLISHED)
+    (done,) = collapse_story_rows([story_row("ready"), publication_row("published")], now=NOW)
+    assert matches_story_filter(done, StoryFilter.PUBLISHED)
+    assert not matches_story_filter(done, StoryFilter.READY)
+
+
+def test_published_story_visible_at_47_59_59_and_absent_at_48_00_00() -> None:
+    assert retained(NOW - timedelta(hours=48) + timedelta(seconds=1), NOW - STORY_UI_RETENTION)
+    assert not retained(NOW - timedelta(hours=48), NOW - STORY_UI_RETENTION)
+    # The publication row carries the original StoryCreatedAt, so it leaves at the same moment.
+    assert "StoryCreatedAt >" in story_visibility_query(
+        StoryFilter.PUBLISHED, NOW - STORY_UI_RETENTION
+    )

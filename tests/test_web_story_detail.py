@@ -6,9 +6,12 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from ai_trend_pipeline.config import Settings
+from ai_trend_pipeline.media.briefs import story_package_hash
 from ai_trend_pipeline.media.models import MediaOutcome
+from ai_trend_pipeline.publishing.preview import PostPreview, preview_post
 from ai_trend_pipeline.services.stories import (
     DecideStoryRequest,
     StoryDecisionResult,
@@ -44,6 +47,7 @@ FACT_A = "fact-v1-0000000000000001"
 FACT_B = "fact-v1-0000000000000002"
 FACT_C = "fact-v1-0000000000000003"
 HASH = "ab12cd34" + "0" * 56
+PREVIEW_STATUSES = (PrimaryStoryStatus.REVIEW, PrimaryStoryStatus.READY)
 
 
 def make_package(**overrides: object) -> StoryPackage:
@@ -68,6 +72,16 @@ def make_package(**overrides: object) -> StoryPackage:
     }
     data.update(overrides)
     return StoryPackage.model_validate(data)
+
+
+def safe_preview(package: StoryPackage | None) -> PostPreview | None:
+    """The preview, or None for the model_construct packages that tests build on purpose."""
+    if package is None:
+        return None
+    try:
+        return preview_post(package, story_package_hash(package))
+    except ValidationError:
+        return None
 
 
 def make_detail(
@@ -103,6 +117,7 @@ def make_detail(
         decided_by=decided_by,
         decided_at=decided_at,
         note=note,
+        post_preview=safe_preview(package) if status in PREVIEW_STATUSES else None,
     )
 
 
@@ -219,7 +234,8 @@ def test_review_renders_the_full_package() -> None:
     assert "<h2>Evidence</h2>" in text
     assert "<h2>Fact references</h2>" in text
     assert "<h2>Caveats</h2>" in text
-    assert "<h2>Post text</h2>" in text
+    assert "<h2>Post text</h2>" not in text
+    assert "<h2>Bluesky post</h2>" in text
     assert text.count('<form class="decision"') == 2
     assert 'name="decision" value="approve"' in text
     assert 'name="decision" value="reject"' in text
@@ -247,8 +263,8 @@ def test_ready_renders_the_package_read_only() -> None:
     assert APPROVED_BODY in text
     assert "Approved by editor@example.com" in text
     assert "Approved 3 minutes ago" in text
-    assert "<form" not in text
-    assert "<button" not in text
+    assert "/decide" not in text
+    assert '<button class="btn btn--primary" type="submit">Publish to Bluesky</button>' in text
     assert "Approve final story" not in text
     assert "hx-get" not in text
 
@@ -861,9 +877,9 @@ def test_media_urls_are_manifest_derived() -> None:
 def test_ready_shows_media_read_only_with_package_code() -> None:
     text = page(media_detail(MediaOutcome.GIF, status=PrimaryStoryStatus.READY))
     assert "<picture>" in text
-    assert "<form" not in text
+    assert "/decide" not in text
     assert 'class="story-rail__code">Package ab12cd34<' in text
-    assert 'name="content_hash"' not in text
+    assert 'name="decision"' not in text
 
 
 def test_story_media_css_is_responsive_and_reduced_motion_aware() -> None:
@@ -883,3 +899,43 @@ def test_story_media_css_is_responsive_and_reduced_motion_aware() -> None:
     )
     assert "px;" not in re.sub(r"var\(--[a-z-]+\)", "", block).replace("1px", "")
     assert not re.search(r"(?<!max-)width:\s*\d+(px|rem)", block)
+
+
+def test_post_proof_replaces_post_text_in_review_and_ready() -> None:
+    for status in (PrimaryStoryStatus.REVIEW, PrimaryStoryStatus.READY):
+        text = html.unescape(page(media_detail(None, status=status)))
+        assert "Post text" not in text
+        assert 'class="story-post-text"' not in text
+        assert text.count('<section class="post-proof">') == 1
+        assert "<h2>Bluesky post</h2>" in text
+        assert "Rates held steady again.\n\nSource: " in text
+        assert '<span class="post-proof__link">example.com</span>' in text
+        assert re.search(r"\d+ of 300 characters", text)
+        assert text.index("The figure is provisional.") < text.index("post-proof")
+
+
+def test_over_limit_proof_shows_problem_in_review() -> None:
+    package = make_package(post_text="x" * 290)
+    detail = make_detail(package=package, content_hash=HASH)
+    text = html.unescape(page(detail))
+    assert "post-proof--over" in text
+    assert "The post text is longer than Bluesky allows." in text
+    assert "Reject this story: it can't be published as written." in text
+    assert "309 of 300 characters" in text or re.search(r"3\d\d of 300 characters", text)
+    ready = make_detail(
+        package=package,
+        content_hash=HASH,
+        status=PrimaryStoryStatus.READY,
+        internal_status="ready",
+    )
+    ready_text = html.unescape(page(ready))
+    assert "It can't be published as approved." in ready_text
+    assert "Publish to Bluesky" not in ready_text
+    assert "<button" not in ready_text
+
+
+def test_gif_story_keeps_reduced_motion_poster_with_proof() -> None:
+    text = page(media_detail(MediaOutcome.GIF, status=PrimaryStoryStatus.READY))
+    assert "(prefers-reduced-motion: no-preference)" in text
+    assert "<picture>" in text and "post-proof" in text
+    assert "Reduced motion is on, so the still card is shown." in text

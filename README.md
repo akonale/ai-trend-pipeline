@@ -250,7 +250,7 @@ is posted, charted or rendered.
 
 Internally the story moves through `researching -> analyzing -> writing -> checking`, with at most
 one revision if the checker fails, then `review` and a terminal state. `/stories` and the detail
-page show only the five UI statuses: Pending, Writing, Review, Ready and Closed. The 48-hour window
+page show only the six UI statuses: Pending, Writing, Review, Ready, Published and Closed. The 48-hour window
 is presentation only: rows leave both list pages, their filters, pagination and pending counts 48
 hours after the original detection time, but the Temporal histories remain and can still be
 described. No history is deleted.
@@ -282,6 +282,28 @@ expiry. For a short manual walkthrough, set `SOURCE_ENABLED=hn`, `SOURCE_CANDIDA
 `SOURCE_POLL_INTERVAL_S=60` and `CANDIDATE_REVIEW_TIMEOUT_S=3600` in `.env`, then run `just dev`,
 `just ingest` and `just web`, approve a candidate at `/candidates`, follow `/stories` to Review, and
 approve the final story.
+
+## Publishing a story
+
+Publishing is a third explicit click. Candidate approval starts story generation, final approval
+marks the package Ready, and only **Publish to Bluesky** posts: Ready leads to Publish, which leads
+to **Published**. Neither approval publishes. The six statuses are Pending, Writing, Review, Ready,
+Published and Closed. While a run is active, or after it fails, the badge stays Ready and the line
+beside it gives one fixed sentence ("Posting to Bluesky." or the failure reason). A failed
+publication offers **Try again** unless the package itself is the problem (text too long, say). The
+Published badge comes with the time and a link to the post. Review and Ready show the exact post
+text, with its character count, so a text that is too long is caught before approval.
+
+Bluesky settings are worker-only: `BLUESKY_HANDLE`, `BLUESKY_APP_PASSWORD` (an app password, never
+the account password) and `BLUESKY_SERVICE` (default `https://bsky.social`). Media settings are
+`MEDIA_DIR` (the shared `media` volume in worker and web) and `MEDIA_PROVIDER` (`story-card`, or
+`fake` for tests). Bluesky has no animation here, so a GIF story is published as its still card.
+The 48-hour retention also applies to published stories: they leave the UI 48 hours after the
+original detection, and no history is deleted.
+
+Set up, operate and recover with the [publishing runbook](docs/runbooks/publishing.md). The
+deterministic end-to-end proof runs the real workers, services and routes against a fake PDS:
+`uv run pytest tests/test_story_publishing_e2e.py -q`.
 
 ## Topic picking
 

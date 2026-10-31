@@ -1,6 +1,6 @@
 # 061: Media generation and final-review integration
 
-Status: built
+Status: reviewed
 
 > Plan row **060** in `docs/mvp-plan.md` ("Media generation and final-review integration"),
 > renumbered to **061** (repo numbers are plan row + 1, see `docs/tasks/058-media-foundation.md`).
@@ -64,7 +64,7 @@ image or GIF (poster for reduced motion), its alt text, and any fallback, with n
   for the other terminal states.
 - `FinalStoryDecision` gains `content_hash: str | None = None` (same pattern). In `_record`, an
   **approve** whose `content_hash` is set and differs from `self._content_hash` is ignored and
-  logged as `IGNORED_SIGNAL` with `reason="stale_content"`. `None` is still accepted so that
+  logged as `IGNORED_SIGNAL` with `cause="stale_content"` (`reason` is a forbidden log field). `None` is still accepted so that
   recorded pre-media approve signals replay. Reject never needs a hash. Signals during `MEDIA`
   are ignored by the existing "not in REVIEW" rule.
 - Nothing publishes. The child's bytes never enter the parent history (only the manifest).
@@ -328,3 +328,8 @@ I could not create the branch or commit, because I have no shell tool. The spec 
 **builder**: Built the media step, content hash, service/route, worker, config, UI and docs. Replay of `story_generation_v1_ready.json` passes and `story_generation_v2_media_ready.json` (new, recorded) replays. The full suite and `just lint` pass.
 Deviations: the stale-content log field is `cause` because `reason` is a forbidden story log field; `build_story_media_view` derives text from `manifest.outcome` and has no `outcome` kwarg. Existing generation tests and the e2e run a fake-renderer media worker (`with_media_worker`) and post `content_hash`.
 Not done: screenshots, because headless Chromium lacks `libnspr4` here, so 360px and dark theme are checked only by CSS tests. Tests were written alongside the code, not strictly before it.
+
+**verifier**: Ran `just lint` (ruff check, ruff format --check, pyright strict: all clean) and `just test` (1291 passed, 0 failed) on a clean full run with ANTHROPIC_* unset. Screenshots of /stories/{id} not done: the headless shell lacks libnspr4 here (same as builder), and a populated story needs the dev Temporal stack. All checks pass.
+
+**reviewer**: Approved. Patch gating (`story-media-v1`) leaves old histories unchanged and both v1 and v2 replay fixtures exist; workflow code is deterministic. Stale approve is refused in the service before signalling (no hang) and ignored in the workflow. Deviations (`cause`, manifest-derived view text, shared media-worker helpers) are acceptable. `.claude/settings.json` is not in the diff.
+Notes: spec says `reason="stale_content"` but `cause` is used (reason is a forbidden log field); `StoryReviewStale` is out of alphabetical order in `__all__`; screenshots (360px, dark) were not taken.

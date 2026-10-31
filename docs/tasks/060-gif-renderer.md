@@ -1,6 +1,6 @@
 # 060: Short story GIF renderer
 
-Status: built
+Status: reviewed
 
 > Plan row **059** in `docs/mvp-plan.md` ("Short engaging GIF renderer"), renumbered to **060**
 > (repo numbers are plan row + 1, see `docs/tasks/058-media-foundation.md`). It builds on the
@@ -291,3 +291,9 @@ Next: the orchestrator approves (row is `no`), then the builder writes the tests
 **builder**: Built per spec: `media/animation.py`, `render_animated`, animation semaphore, 45 s and 2-attempt animated policy, `StoryMediaView`, goldens and docs. All new tests pass; ruff and pyright clean; full suite left to the verifier.
 Existing workflow tests assumed 3 animated attempts, so I changed them to 2 (fail-always now counts 2; the recover test fails once).
 Pyright-ignored imports of private `_px` and `_scale` from `card.py` (comment explains) to share pixel scaling.
+
+**verifier**: Ran `just lint` (ruff check, ruff format --check, pyright: clean) and `just test` (1256 passed) with ANTHROPIC_* unset.
+All checks pass.
+
+**reviewer**: Approved. Retry-attempt test changes (3 to 2) follow the spec's 2-attempt animated policy; the `_px`/`_scale` Pyright ignores carry explanatory comments.
+Notes: extra `test_nothing_to_animate_raises_content_unsupported` and the `tests/card_cases.py` edit are unlisted but in scope. The workflow encoder-failure test stubs `render_animated` rather than failing the real encoder, which is acceptable.

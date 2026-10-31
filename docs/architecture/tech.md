@@ -368,6 +368,23 @@ revision loop. The maximal-input prompt ceiling is `MAX_DRAFT_PROMPT_CHARS = 100
 workflow caps drafting at 16 facts, and both writer and checker prompts are tested under the
 ceiling.
 
+### Story publishing contracts (`publishing/`)
+
+`publishing/models.py`, `registry.py` and `formatter.py` are pure (no httpx, clock or file I/O), so a
+workflow can import them through `imports_passed_through`. `format_publication(package, hash,
+capabilities)` turns only an approved `StoryPackage` into text, link facets and one media item. It
+checks the package hash and manifest first and never rewords or truncates; over-limit text raises
+`PublicationRejected`. Bluesky has no animation, so a GIF outcome publishes its static artifact.
+The key is `publish-v1-<story_id>-<destination>-<content_hash>`; it will be the workflow ID and
+the idempotency key, and the Bluesky rkey is `make_tid(story_created_at, key)`, so one approved hash
+posts at most once. `BlueskyStoryActivities.publish_story_to_bluesky` (`bluesky_story.py`) re-checks
+hashes and the artifact file before any network call, looks for an existing record, then uploads and
+creates. Its errors use fixed messages with `PublicationErrorCode` values as types. The activity is
+not registered with a worker until the story-publishing workflow arrives (repo task 063).
+Carry-forward for 063: other 4xx from `getRecord` or `uploadBlob` map to the retryable
+`UnexpectedDestinationResponse`, so the workflow must bound retry attempts. For 064: show the
+formatted post text during review, since text over 300 characters fails with `PostTextTooLong`.
+
 ### Determinism, idempotency, replay
 
 - No I/O, clock, randomness or LLM calls in workflow code. The workflow uses `workflow.now()` and

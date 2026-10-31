@@ -28,6 +28,7 @@ from ai_trend_pipeline.analysis.models import (
     FactSet,
     FactSetStatus,
 )
+from ai_trend_pipeline.media.models import MediaManifest
 from ai_trend_pipeline.research.models import (
     MAX_DATASET_ROWS,
     MAX_DATASET_SLUG_CHARS,
@@ -279,6 +280,7 @@ class StoryPackage(StoryDraftContent):
 
     story_id: str = Field(min_length=1, max_length=MAX_STORY_ID_CHARS)
     schema_version: int = Field(default=STORY_PACKAGE_SCHEMA_VERSION, ge=1)
+    media: MediaManifest | None = None
 
 
 class CritiqueFinding(BaseModel):

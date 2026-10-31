@@ -75,3 +75,23 @@ async def test_old_candidate_input_without_new_fields_still_runs() -> None:
     assert result.status == "approved"
     assert result.story_workflow_id is not None
     assert result.story_workflow_id.startswith("story-v1-")
+
+
+GENERATION_HISTORY = (
+    Path(__file__).resolve().parent / "fixtures" / "histories" / "story_generation_v1_ready.json"
+)
+
+
+@pytest.mark.asyncio
+async def test_pre_media_story_generation_history_replays() -> None:
+    from ai_trend_pipeline.story_generation import StoryGenerationWorkflow
+
+    history = WorkflowHistory.from_json(
+        "story-v1-pre058-replay", GENERATION_HISTORY.read_text(encoding="utf-8")
+    )
+    replayer = Replayer(
+        workflows=[StoryGenerationWorkflow],
+        data_converter=pydantic_data_converter,
+    )
+    result = await replayer.replay_workflow(history)
+    assert result.replay_failure is None

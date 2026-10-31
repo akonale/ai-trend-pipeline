@@ -172,6 +172,7 @@ cutoff and replay-safe histories.
 | Source candidate budget (UTC day, starts) | Temporal workflow history (`SourceIngestionWorkflow`) | Per source, resets on a new UTC day with `workflow.now()`; carried through continue-as-new; no Postgres table |
 | Per-person style profile | Postgres `topic_studio.style_profiles` (default `postgres` db) | Created lazily on first use |
 | Chart PNGs | Directory `CHART_OUTPUT_DIR` (prod volume `charts`, mounted in worker and web) | File name `chart-<spec hash>.png` |
+| Story media | Directory `MEDIA_DIR` (prod volume `media`, mounted in worker and web) | File name `<sha256>.<ext>`; looked up only through a `MediaManifest` |
 | Daily cap count | Derived from Temporal visibility (memo `requested_by`) | Not stored separately |
 
 Nothing else is persisted.

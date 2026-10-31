@@ -459,3 +459,15 @@ def test_fact_set_helpers_used_by_fixtures_are_consistent() -> None:
     assert isinstance(datetime(2026, 10, 30, 12, tzinfo=UTC), datetime)
     assert EvidenceKind.ARTICLE.value == "article"
     assert MAX_EVIDENCE_ID_CHARS == 80
+
+
+def test_story_package_without_media_field_validates() -> None:
+    package = StoryPackage.model_validate({**clean_content(), "story_id": "s", "schema_version": 1})
+    assert package.media is None
+    assert "media" in package.model_dump(mode="json")
+
+
+def test_writer_tool_schema_has_no_media_field() -> None:
+    from ai_trend_pipeline.story_drafting import StoryDraftContent
+
+    assert "media" not in StoryDraftContent.model_json_schema()["properties"]

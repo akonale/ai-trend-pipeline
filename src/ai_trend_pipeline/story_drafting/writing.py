@@ -134,7 +134,7 @@ def _revision_payload(revision: RevisionRequest) -> dict[str, object]:
         if finding.severity is CritiqueSeverity.BLOCKING
     ]
     return {
-        "prior_draft": revision.prior_draft.model_dump(mode="json"),
+        "prior_draft": revision.prior_draft.model_dump(mode="json", exclude={"media"}),
         "blocking_findings": blocking,
         "revision_guidance": revision.critique.revision_guidance,
     }

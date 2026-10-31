@@ -18,7 +18,7 @@ COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 RUN uv sync --frozen --no-dev
 
-RUN useradd --create-home --uid 1000 app && mkdir -p /data/charts && chown app /data/charts
+RUN useradd --create-home --uid 1000 app && mkdir -p /data/charts /data/media && chown app /data/charts /data/media
 USER app
 
 CMD ["python", "-m", "ai_trend_pipeline.worker"]

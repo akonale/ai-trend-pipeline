@@ -319,3 +319,15 @@ def test_draft_activity_starts_no_workflow_or_temporal_client() -> None:
     assert "start_workflow" not in source
     assert "start_child_workflow" not in source
     assert "Client.connect" not in source
+
+
+def test_prompt_does_not_include_media() -> None:
+    from tests.media_fixtures import make_manifest
+
+    def prompt(media: object) -> str:
+        revision = make_revision(prior_draft=make_clean_package(media=media))
+        return writing.build_user_prompt(make_draft_input(revision=revision))
+
+    with_media = prompt(make_manifest())
+    assert with_media == prompt(None)
+    assert "media" not in with_media and "static_artifact" not in with_media

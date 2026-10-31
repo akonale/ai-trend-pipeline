@@ -156,6 +156,11 @@ default 3), `RESEARCH_USER_AGENT` (stripped 1-200, default `ai-trend-pipeline-re
 or `none` disables it). The `research_story` activity runs on the story-generation worker as part of
 `StoryGenerationWorkflow`.
 
+`MEDIA_DIR` (default `media`) is the directory for story media artifacts, named `<sha256>.<ext>`.
+Prod mounts the `media` volume at `/data/media` in worker and web. Nothing writes to it yet: the
+`StoryMediaWorkflow` foundation has no starter, and the only renderer is a fake one for tests. The
+directory is git-ignored (`/media/`).
+
 ## Hacker News
 
 `ai_trend_pipeline.hn` provides the `HNActivities.fetch_hn_top_stories` activity, which fetches

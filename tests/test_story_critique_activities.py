@@ -278,3 +278,19 @@ def test_critique_activity_starts_no_workflow_or_temporal_client() -> None:
     assert "start_workflow" not in source
     assert "start_child_workflow" not in source
     assert "Client.connect" not in source
+
+
+def test_prompt_does_not_include_media() -> None:
+    from tests.media_fixtures import make_manifest
+
+    def prompt(media: object) -> str:
+        revision = make_revision(prior_draft=make_clean_package(media=media))
+        data = make_critique_input(
+            draft_input=make_draft_input(revision=revision),
+            draft=make_clean_package(media=media),
+        )
+        return critique.build_user_prompt(data)
+
+    with_media = prompt(make_manifest())
+    assert with_media == prompt(None)
+    assert "static_artifact" not in with_media

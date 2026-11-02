@@ -1,0 +1,102 @@
+[
+  {
+    "id": "person-reading",
+    "file": "person-reading.svg",
+    "title": "Person reading a book",
+    "description": "a person reading a book",
+    "topic": "education",
+    "source": "open-doodles",
+    "source_url": "https://www.opendoodles.com/",
+    "author": "Pablo Stanley",
+    "licence": "CC0-1.0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "licence_verified_on": "2026-11-02",
+    "retrieved_on": "2026-11-02",
+    "sha256": "0471773eee79b1f99c5083582f14fa9cc824f5949a1ed6333ec2887015c3a19e",
+    "modified": true,
+    "modification_note": "Downloaded as the official SVG (reading.svg). Metadata, title, description, ids and the xlink namespace removed; style attributes inlined; colours flattened to #rrggbb; path coordinates rounded to one decimal; whitespace stripped.",
+    "tags": [
+      "education",
+      "school",
+      "schools",
+      "students",
+      "learning",
+      "book",
+      "books",
+      "teachers"
+    ],
+    "recolour": {
+      "#000000": "ink",
+      "#ff5678": "support"
+    },
+    "attribution_required": false,
+    "attribution_text": null
+  },
+  {
+    "id": "reading-with-books",
+    "file": "reading-with-books.svg",
+    "title": "Reading beside a stack of books",
+    "description": "a person reading in a chair next to a stack of books",
+    "topic": "education",
+    "source": "open-doodles",
+    "source_url": "https://www.opendoodles.com/",
+    "author": "Pablo Stanley",
+    "licence": "CC0-1.0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "licence_verified_on": "2026-11-02",
+    "retrieved_on": "2026-11-02",
+    "sha256": "f42bfe709904957307e2d4d9e7934654859603415df125ec9460c849f2018761",
+    "modified": true,
+    "modification_note": "Downloaded as the official SVG (sitting-reading.svg). Metadata, title, description, ids and the xlink namespace removed; style attributes inlined; colours flattened to #rrggbb; path coordinates rounded to one decimal; whitespace stripped.",
+    "tags": [
+      "education",
+      "school",
+      "schools",
+      "students",
+      "learning",
+      "book",
+      "books",
+      "teachers"
+    ],
+    "recolour": {
+      "#000000": "ink",
+      "#ff5678": "support"
+    },
+    "attribution_required": false,
+    "attribution_text": null
+  },
+  {
+    "id": "person-meditating",
+    "file": "person-meditating.svg",
+    "title": "Person meditating",
+    "description": "a person meditating cross-legged",
+    "topic": "health",
+    "source": "open-doodles",
+    "source_url": "https://www.opendoodles.com/",
+    "author": "Pablo Stanley",
+    "licence": "CC0-1.0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "licence_verified_on": "2026-11-02",
+    "retrieved_on": "2026-11-02",
+    "sha256": "252a9add1baa2dfe464a0103e9c2d6e8be830b11dc8a7ef7cd4f643f9ca3b534",
+    "modified": true,
+    "modification_note": "Downloaded as the official SVG (meditating.svg). Metadata, title, description, ids and the xlink namespace removed; style attributes inlined; colours flattened to #rrggbb; path coordinates rounded to one decimal; whitespace stripped.",
+    "tags": [
+      "health",
+      "life expectancy",
+      "longevity",
+      "medicine",
+      "medical",
+      "disease",
+      "hospital",
+      "vaccine",
+      "fitness"
+    ],
+    "recolour": {
+      "#000000": "ink",
+      "#ff5678": "support"
+    },
+    "attribution_required": false,
+    "attribution_text": null
+  }
+]

@@ -15,8 +15,10 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SVG_NS = "http://www.w3.org/2000/svg"
-KEEP_TAGS = {"svg", "g", "defs", "clipPath", "path", "circle", "ellipse", "rect", "line"}
-KEEP_TAGS |= {"polyline", "polygon"}
+KEEP_TAGS = {"svg", "g", "defs", "clipPath", "path", "circle", "ellipse", "rect", "line"} | {
+    "polyline",
+    "polygon",
+}
 KEEP_ATTRS = {
     "viewBox",
     "d",

@@ -1,6 +1,6 @@
 # 065: Illustrated card (free, offline still image)
 
-Status: planned
+Status: approved
 
 ## Goal
 

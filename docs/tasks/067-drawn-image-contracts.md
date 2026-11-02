@@ -292,4 +292,4 @@ All checks pass.
 Note: `_parse_bool` truncates the echoed value to 20 chars, which is a good touch.
 
 **scribe**: added the four `DRAWN_IMAGES_*` settings to the README configuration paragraph and the `tech.md` settings table. No other docs changed.
-Doc guard tests pass. PR opened against `main` from `task/067-drawn-image-contracts`; not merged. Next: human reviews and merges the PR.
+Doc guard tests pass. PR: https://github.com/akonale/ai-trend-pipeline/pull/81 (not merged). Next: human reviews and merges the PR.

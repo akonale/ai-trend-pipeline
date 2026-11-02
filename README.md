@@ -172,7 +172,7 @@ health, or a project-original flat glyph for the other twelve topics), and a bac
 the story's content hash. It renders offline in about 0.4 s per story (CPU only), with no API, key
 or cost, and costs nothing when off. Stories that match none of the 14 topics, or only weakly,
 get the same background with an abstract burst and no figure. The project-original glyphs are
-authored for this repo; the owner's CC0 dedication is stated in `LICENSES.md`. The
+authored for this repo; `LICENSES.md` states a CC0 dedication for them that the owner has not yet confirmed. The
 picture is stored in the manifest (`illustration_artifact`). Set `ILLUSTRATION_PROVIDER=off`
 in `.env.prod` and run `just deploy` to switch it off. Contact sheet of samples:
 `docs/media/illustrated-card-samples.png`. Licences: `src/ai_trend_pipeline/media/illustrations/LICENSES.md`.

@@ -1,6 +1,6 @@
 # 065b: Illustration picker (pick the picture that goes in the post)
 
-Status: built
+Status: pr-open
 
 ## Goal
 
@@ -433,3 +433,12 @@ Needs fix (1 real problem; the rest of the diff is approved, 1738 tests pass):
 
 **builder (fix loop 1)**: Fixed the misleading package note. Review with the picker now says "You approve the text and the picture you pick together."; Ready with a picked illustration says "You approved the text and the illustrated card together." (the rail does not render `package_note` on Ready, so the Ready kind text "Illustrated card. This picture goes in the post." is what users see). The card-only note is unchanged.
 Added one test covering card only, picker shown, illustration picked. `just lint` and full tests pass (1739).
+
+**verifier (fix loop 1 re-check)**: `just lint` passed (ruff check, ruff format --check, pyright 0 errors). `just test` passed: 1739 passed, 2 warnings (Pydantic serializer warnings, not failures), run with ANTHROPIC_* unset.
+All checks pass.
+
+**reviewer (re-review)**: Approved. Package note fix is accurate (card only, picker, picked); the Ready page shows the kind text, which is correct.
+Checked: 3-candidate picker test renders 3 tiles through the template; pinned hashes 108f57c1/855c28a8 pass and are unchanged from main; all replay histories pass (v1, v2 media, v2 illustrated, v3 media choice, story_media v1/v2). `just lint` clean.
+
+**scribe**: README picker section and tech.md and the runbook checklist match the code. Reworded the README glyph line so it no longer reads as a confirmed CC0 dedication; no other doc edits. Open items for the human: CC0 glyph dedication (unconfirmed), no screenshots, deferred style/weak-glyph work, and `just deploy`.
+Branch pushed; PR opened against main (link below).

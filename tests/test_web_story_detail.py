@@ -939,3 +939,17 @@ def test_gif_story_keeps_reduced_motion_poster_with_proof() -> None:
     assert "(prefers-reduced-motion: no-preference)" in text
     assert "<picture>" in text and "post-proof" in text
     assert "Reduced motion is on, so the still card is shown." in text
+
+
+def test_failed_illustration_note_renders_under_the_card_and_old_stories_do_not() -> None:
+    from ai_trend_pipeline.media.models import IllustrationStatus
+
+    note = "The illustrated card could not be made, so the story card is used."
+    failed = make_manifest(MediaOutcome.GIF, illustration_status=IllustrationStatus.FAILED)
+    detail = make_detail(package=make_package(media=failed), content_hash=HASH)
+    text = page(detail)
+    assert f'<p class="story-media__note">{note}</p>' in text
+    assert "story-media__note" not in page(media_detail(MediaOutcome.GIF))
+    disabled = make_manifest(MediaOutcome.GIF, illustration_status=IllustrationStatus.DISABLED)
+    disabled_detail = make_detail(package=make_package(media=disabled), content_hash=HASH)
+    assert "story-media__note" not in page(disabled_detail)

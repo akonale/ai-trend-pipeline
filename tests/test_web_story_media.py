@@ -91,3 +91,41 @@ def test_missing_story_is_404_and_unavailable_is_503(tmp_path: Path) -> None:
 def test_path_like_artifact_ids_are_404(tmp_path: Path, artifact_id: str) -> None:
     client, _ = _setup(tmp_path)
     assert client.get(f"/stories/{STORY_ID}/media/{artifact_id}").status_code == 404
+
+
+def test_illustration_artifact_is_served_through_the_existing_media_route(
+    tmp_path: Path,
+) -> None:
+    from ai_trend_pipeline.media.models import IllustrationStatus
+
+    card = write_artifact(tmp_path, DATA, MediaType.PNG)
+    picture = write_artifact(tmp_path, DATA + b"-illustration", MediaType.PNG)
+    card_artifact = make_artifact(
+        MediaKind.STATIC,
+        content_hash=card.content_hash,
+        relative_path=card.relative_path,
+        byte_size=card.byte_size,
+    )
+    illustration = make_artifact(
+        MediaKind.STATIC,
+        artifact_id="art-v1-" + "d" * 16,
+        content_hash=picture.content_hash,
+        relative_path=picture.relative_path,
+        byte_size=picture.byte_size,
+    )
+    manifest = make_manifest(
+        MediaOutcome.STATIC,
+        static_artifact=card_artifact,
+        illustration_artifact=illustration,
+        illustration_status=IllustrationStatus.MATCHED,
+    )
+    service = FakeDetailService(make_detail(package=make_package(media=manifest)))
+    app = create_app(Settings(media_dir=str(tmp_path)))
+
+    async def fake() -> FakeDetailService:
+        return service
+
+    app.dependency_overrides[get_story_detail_service] = fake
+    response = TestClient(app).get(f"/stories/{STORY_ID}/media/{illustration.artifact_id}")
+    assert response.status_code == 200
+    assert response.content == DATA + b"-illustration"

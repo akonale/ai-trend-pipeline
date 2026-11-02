@@ -32,6 +32,7 @@
           <p class="story-media__kind">{{ view.media.kind_text }}</p>
           {% if view.media.motion_note %}<p class="story-media__motion-note">{{ view.media.motion_note }}</p>{% endif %}
           <p class="story-media__alt">{{ view.media.alt_label }} {{ view.media.alt_text }}</p>
+          {% if view.media.illustration_note %}<p class="story-media__note">{{ view.media.illustration_note }}</p>{% endif %}
         </figcaption>
       </figure>
       {% elif view.media_missing_heading %}

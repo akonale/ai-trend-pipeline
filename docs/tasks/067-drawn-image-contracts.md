@@ -1,6 +1,6 @@
 # 067: Drawn-image contracts, prompt and SVG-to-PNG pipeline
 
-Status: planned
+Status: built
 
 ## Goal
 
@@ -281,3 +281,6 @@ in order:
 <!-- Each agent appends at most 5 lines: "**agent**: what I did. Next: ...". Newest at the bottom. -->
 
 **planner**: wrote spec
+
+**builder**: added drawn contracts to `media/models.py`, `media/drawn/{prompt,pipeline}.py`, four settings and `_parse_bool` in `config.py`, three fixture SVGs and the tests. Lint, pyright and the full suite (1803) pass.
+Notes: `MAX_DRAWN_SVG_BYTES` lives in `pipeline.py` and `prompt.py` imports it. The `too_many_elements` test uses 301 bare `<rect/>` so it fits in 4096 bytes. `frontend-design` skill not used (no UI).

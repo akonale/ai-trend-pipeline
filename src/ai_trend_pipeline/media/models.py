@@ -39,6 +39,9 @@ MAX_HIGHLIGHT_FACT_IDS = 4
 MAX_MANIFEST_JSON_BYTES = 8_192
 MAX_MEDIA_STORY_ID_CHARS = 64
 MAX_ILLUSTRATE_SUMMARY_CHARS = 600
+MAX_DRAWN_IMAGES = 4
+DEFAULT_DRAWN_IMAGES = 3
+MAX_DRAWN_ALT_CHARS = 240
 
 ARTIFACT_ID_PATTERN = r"^art-v1-[0-9a-f]{16}$"
 SHA256_PATTERN = r"^[0-9a-f]{64}$"
@@ -416,3 +419,82 @@ def with_media_choice(manifest: MediaManifest, choice: MediaSelection | None) ->
         return manifest
     selected = choice if choice in offered else MediaSelection.CARD
     return manifest.model_copy(update={"selected": selected})
+
+
+class DrawnRole(StrEnum):
+    HERO = "hero"  # main scene
+    CONCEPT = "concept"  # visual metaphor for the idea
+    DETAIL = "detail"  # supporting detail
+    SETTING = "setting"  # the place or context
+
+
+DRAWN_ROLE_ORDER = (DrawnRole.HERO, DrawnRole.CONCEPT, DrawnRole.DETAIL, DrawnRole.SETTING)
+
+
+class DrawnStatus(StrEnum):
+    DRAWN = "drawn"
+    FAILED = "failed"
+    CAPPED = "capped"
+    DISABLED = "disabled"
+
+
+class DrawnArtifact(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    role: DrawnRole
+    artifact: MediaArtifact
+
+    @model_validator(mode="after")
+    def _check_drawn(self) -> "DrawnArtifact":
+        if self.artifact.kind is not MediaKind.STATIC:
+            raise ValueError("a drawn image must be a static artifact")
+        if self.artifact.media_type is not MediaType.PNG:
+            raise ValueError("a drawn image must be a png")
+        if len(self.artifact.alt_text) > MAX_DRAWN_ALT_CHARS:
+            raise ValueError("drawn alt text is too long")
+        return self
+
+
+class DrawImagesInput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    story_id: str = Field(min_length=1, max_length=MAX_MEDIA_STORY_ID_CHARS)
+    story_content_hash: str = Field(pattern=SHA256_PATTERN)
+    headline: str = Field(min_length=1, max_length=MAX_HEADLINE_CHARS)
+    summary: str = Field(max_length=MAX_ILLUSTRATE_SUMMARY_CHARS)
+
+
+def _no_drawn_images() -> tuple[DrawnArtifact, ...]:
+    return ()
+
+
+class DrawnImagesResult(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    status: DrawnStatus
+    images: tuple[DrawnArtifact, ...] = Field(default_factory=_no_drawn_images)
+
+    @model_validator(mode="after")
+    def _check_result(self) -> "DrawnImagesResult":
+        if len(self.images) > MAX_DRAWN_IMAGES:
+            raise ValueError("too many drawn images")
+        if (self.status is DrawnStatus.DRAWN) != bool(self.images):
+            raise ValueError("images are set if and only if the status is drawn")
+        if len({image.role for image in self.images}) != len(self.images):
+            raise ValueError("drawn roles must be unique")
+        if len({image.artifact.artifact_id for image in self.images}) != len(self.images):
+            raise ValueError("drawn artifact ids must be unique")
+        return self
+
+
+def drawn_artifact_id_for(
+    story_content_hash: str, role: DrawnRole, png_hash: str, prompt_hash: str, model: str
+) -> str:
+    payload = {
+        "story": story_content_hash,
+        "role": role.value,
+        "png": png_hash,
+        "prompt": prompt_hash,
+        "model": model,
+    }
+    return "art-v1-" + sha256_hex(canonical_json(payload))[:16]

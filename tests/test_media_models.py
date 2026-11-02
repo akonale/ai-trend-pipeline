@@ -1,9 +1,17 @@
 """Media contract validation, hashes and IDs."""
 
+import re
+
 import pytest
 from pydantic import ValidationError
 
 from ai_trend_pipeline.media.models import (
+    ARTIFACT_ID_PATTERN,
+    DrawImagesInput,
+    DrawnArtifact,
+    DrawnImagesResult,
+    DrawnRole,
+    DrawnStatus,
     IllustrationStatus,
     MediaArtifact,
     MediaKind,
@@ -12,6 +20,7 @@ from ai_trend_pipeline.media.models import (
     MediaSelection,
     MediaType,
     artifact_id_for,
+    drawn_artifact_id_for,
     media_brief_hash,
     with_media_choice,
 )
@@ -396,3 +405,93 @@ def test_with_media_choice_is_unchanged_with_a_single_candidate() -> None:
     ):
         assert with_media_choice(manifest, MediaSelection.ILLUSTRATION) is manifest
         assert with_media_choice(manifest, None).selected is None
+
+
+def _drawn(role: DrawnRole, n: int = 0, **overrides: object) -> DrawnArtifact:
+    digest = f"{n:x}" * 64
+    artifact = make_artifact(
+        artifact_id="art-v1-" + f"{n:016x}",
+        content_hash=digest,
+        relative_path=f"{digest}.png",
+        **overrides,
+    )
+    return DrawnArtifact(role=role, artifact=artifact)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"media_type": MediaType.GIF, "relative_path": "a" * 64 + ".gif"},
+        {"media_type": MediaType.WEBP, "relative_path": "a" * 64 + ".webp"},
+        {"alt_text": "x" * 241},
+    ],
+)
+def test_drawn_artifact_rejects(overrides: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        DrawnArtifact(role=DrawnRole.HERO, artifact=make_artifact(**overrides))
+
+
+def test_drawn_artifact_rejects_animated() -> None:
+    with pytest.raises(ValidationError):
+        DrawnArtifact(role=DrawnRole.HERO, artifact=make_artifact(MediaKind.ANIMATED))
+
+
+def test_drawn_artifact_accepts_png_and_240_alt() -> None:
+    assert _drawn(DrawnRole.HERO, alt_text="x" * 240).artifact.alt_text == "x" * 240
+
+
+def test_drawn_images_result_rules() -> None:
+    images = tuple(_drawn(role, n) for n, role in enumerate(DrawnRole, start=1))
+    assert len(DrawnImagesResult(status=DrawnStatus.DRAWN, images=images).images) == 4
+    for status in (DrawnStatus.FAILED, DrawnStatus.CAPPED, DrawnStatus.DISABLED):
+        assert DrawnImagesResult(status=status).images == ()
+        with pytest.raises(ValidationError):
+            DrawnImagesResult(status=status, images=images[:1])
+    with pytest.raises(ValidationError):
+        DrawnImagesResult(status=DrawnStatus.DRAWN)
+    with pytest.raises(ValidationError):  # duplicate role
+        DrawnImagesResult(
+            status=DrawnStatus.DRAWN, images=(_drawn(DrawnRole.HERO, 1), _drawn(DrawnRole.HERO, 2))
+        )
+    with pytest.raises(ValidationError):  # duplicate artifact id
+        DrawnImagesResult(
+            status=DrawnStatus.DRAWN,
+            images=(_drawn(DrawnRole.HERO, 1), _drawn(DrawnRole.DETAIL, 1)),
+        )
+    with pytest.raises(ValidationError):  # more than 4
+        DrawnImagesResult(
+            status=DrawnStatus.DRAWN,
+            images=(*images, _drawn(DrawnRole.HERO, 9)),
+        )
+
+
+def test_draw_images_input_bounds() -> None:
+    ok = {"story_id": "s", "story_content_hash": HASH_A, "headline": "H", "summary": ""}
+    assert DrawImagesInput.model_validate(ok).headline == "H"
+    for bad in (
+        {"story_id": ""},
+        {"story_id": "x" * 65},
+        {"story_content_hash": "zz"},
+        {"headline": ""},
+        {"headline": "x" * 161},
+        {"summary": "x" * 601},
+        {"extra": 1},
+    ):
+        with pytest.raises(ValidationError):
+            DrawImagesInput.model_validate({**ok, **bad})
+
+
+def test_drawn_artifact_id_for() -> None:
+    args = (HASH_A, DrawnRole.HERO, HASH_B, "c" * 64, "claude-x")
+    first = drawn_artifact_id_for(*args)
+    assert first == drawn_artifact_id_for(*args)
+    assert re.match(ARTIFACT_ID_PATTERN, first)
+    variants = (
+        (HASH_B, *args[1:]),
+        (args[0], DrawnRole.DETAIL, *args[2:]),
+        (*args[:2], HASH_A, *args[3:]),
+        (*args[:3], "d" * 64, args[4]),
+        (*args[:4], "claude-y"),
+    )
+    ids = {drawn_artifact_id_for(*v) for v in variants}
+    assert first not in ids and len(ids) == 5

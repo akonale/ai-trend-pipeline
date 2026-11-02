@@ -1,6 +1,6 @@
 # 065: Illustrated card (free, offline still image)
 
-Status: built
+Status: pr-open (PR #74, 065a only: https://github.com/akonale/ai-trend-pipeline/pull/74)
 
 ## Goal
 
@@ -1011,3 +1011,13 @@ Next: the builder continues 065a on the same branch, then the verifier runs agai
 Weaker glyphs: `glyph-bolt-panel` (bolt over the panel is busy) and `glyph-fruit-bowl` (plain round fruit, floating leaf); doodles and glyphs share the palette and hard shadow but not line weight, so they read as two related styles, not one.
 OPEN ITEM for the human: the owner's CC0 dedication of the glyphs is not confirmed. `LICENSES.md` carries the spec's dedication sentence and records no confirmation; confirm it before merge. Still 065a only (no picker, no `media_choice`).
 
+
+**verifier (revision 3, 065a scope)**: `just lint` passed (ruff check, ruff format --check, pyright 0 errors). `just test` passed (1692 passed, 2 pydantic serializer warnings in tests/test_web_story_detail.py). ANTHROPIC_* unset for both runs.
+All checks pass.
+
+**reviewer (065a)**: Approved. Replay of both histories, pinned hashes, sanitiser, catalogue validation, config/worker/compose wiring all check out; 065b not built; `.claude/settings.json` not in the diff.
+Notes: (1) human must still confirm the glyph CC0 dedication before merge (LICENSES.md states it per spec, claims no confirmation). (2) glyph-bolt-panel and glyph-fruit-bowl are the weakest; doodles are finer-lined and sit smaller in the tile than the bold glyphs. (3) leave `.claude/settings.json` untracked.
+
+**scribe (065a)**: Docs checked, no stale text (README, tech.md, publishing runbook and LICENSES.md match 065a). Branch pushed; PR https://github.com/akonale/ai-trend-pipeline/pull/74 opened against main (065a only).
+Open items for the human before merge: owner's CC0 glyph dedication unconfirmed; doodle vs glyph line weight; glyph-bolt-panel and glyph-fruit-bowl keep/redraw/drop; no browser screenshots of the review page.
+Status set to pr-open. Not merged or deployed.

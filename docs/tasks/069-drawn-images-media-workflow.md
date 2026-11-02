@@ -71,9 +71,12 @@ Changes in `run`:
   if workflow.patched(STORY_DRAWN_PATCH):
       drawing = workflow.start_activity(
           DRAW_ACTIVITY,
-          DrawImagesInput(story_id=..., story_content_hash=story_content_hash(data.package),
-                          headline=brief.headline,
-                          summary=data.package.summary[:MAX_ILLUSTRATE_SUMMARY_CHARS]),
+          DrawImagesInput(
+              story_id=...,
+              story_content_hash=story_content_hash(data.package),
+              headline=brief.headline,
+              summary=data.package.summary[:MAX_ILLUSTRATE_SUMMARY_CHARS],
+          ),
           result_type=DrawnImagesResult,
           start_to_close_timeout=DRAW_START_TO_CLOSE,
           schedule_to_close_timeout=DRAW_SCHEDULE_TO_CLOSE,

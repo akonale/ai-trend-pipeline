@@ -28,9 +28,17 @@ workflow yet; task 069 does that.
 
 ```python
 class DrawnImageActivities:
-    def __init__(self, client: anthropic.AsyncAnthropic, media_root: Path, *, enabled: bool,
-                 model: str, count: int, daily_cap: int,
-                 clock: Callable[[], datetime] = _utc_now) -> None: ...
+    def __init__(
+        self,
+        client: anthropic.AsyncAnthropic,
+        media_root: Path,
+        *,
+        enabled: bool,
+        model: str,
+        count: int,
+        daily_cap: int,
+        clock: Callable[[], datetime] = _utc_now,
+    ) -> None: ...
 
     @activity.defn(name=DRAW_ACTIVITY)  # "draw_story_images"
     async def draw_story_images(self, data: DrawImagesInput) -> DrawnImagesResult: ...

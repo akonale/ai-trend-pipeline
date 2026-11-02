@@ -282,3 +282,21 @@ def test_media_provider_default_env_and_unknown_value() -> None:
     assert load_settings({"MEDIA_PROVIDER": " Fake "}).media_provider is MediaProviderName.FAKE
     with pytest.raises(ValueError, match="story-card"):
         load_settings({"MEDIA_PROVIDER": "dalle"})
+
+
+def test_illustration_provider_default_env_and_unknown_value() -> None:
+    from ai_trend_pipeline.media.illustration import IllustrationProviderName
+
+    assert load_settings({}).illustration_provider is IllustrationProviderName.ILLUSTRATED_CARD
+    blank = load_settings({"ILLUSTRATION_PROVIDER": "  "})
+    assert blank.illustration_provider is IllustrationProviderName.ILLUSTRATED_CARD
+    off = load_settings({"ILLUSTRATION_PROVIDER": " OFF "})
+    assert off.illustration_provider is IllustrationProviderName.OFF
+    fake = load_settings({"ILLUSTRATION_PROVIDER": "fake"})
+    assert fake.illustration_provider is IllustrationProviderName.FAKE
+    with pytest.raises(ValueError) as info:
+        load_settings({"ILLUSTRATION_PROVIDER": "imagen"})
+    message = str(info.value)
+    assert "imagen" in message
+    for name in ("off", "illustrated-card", "fake"):
+        assert name in message

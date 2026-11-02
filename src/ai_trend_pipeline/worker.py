@@ -26,6 +26,8 @@ from ai_trend_pipeline.daily_chart import DAILY_CHART_TASK_QUEUE, DailyChartWork
 from ai_trend_pipeline.hello import TASK_QUEUE, HelloWorkflow, say_hello
 from ai_trend_pipeline.hn import HNActivities, make_hn_client
 from ai_trend_pipeline.media.activities import StoryMediaActivities
+from ai_trend_pipeline.media.illustration import IllustrationProvider, illustration_provider_for
+from ai_trend_pipeline.media.illustration_activities import IllustrationActivities
 from ai_trend_pipeline.media.providers import renderer_for
 from ai_trend_pipeline.owid import OwidActivities, make_owid_client
 from ai_trend_pipeline.publishing.bluesky_story import BlueskyStoryActivities
@@ -138,6 +140,11 @@ def story_activities(
     ]
 
 
+def illustration_provider(settings: Settings) -> IllustrationProvider | None:
+    """`ILLUSTRATION_PROVIDER=off` gives `None`: the activity then reports `disabled`."""
+    return illustration_provider_for(settings.illustration_provider)
+
+
 # Any matches the type of Temporal's `Worker(activities=...)` parameter.
 def media_activities(settings: Settings) -> list[Callable[..., Any]]:
     media = StoryMediaActivities(
@@ -145,7 +152,8 @@ def media_activities(settings: Settings) -> list[Callable[..., Any]]:
         renderer_for(settings.media_provider),
         max_concurrent_animations=MAX_CONCURRENT_ANIMATIONS,
     )
-    return [media.render_static_media, media.render_animated_media]
+    illustrate = IllustrationActivities(Path(settings.media_dir), illustration_provider(settings))
+    return [media.render_static_media, media.render_animated_media, illustrate.illustrate_story]
 
 
 # Any matches the type of Temporal's `Worker(activities=...)` parameter.

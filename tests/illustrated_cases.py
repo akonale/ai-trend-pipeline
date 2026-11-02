@@ -32,13 +32,27 @@ LONG_HEADLINE = (
     "outcomes improved far more slowly than every national plan had promised"
 )
 
-CASES: tuple[Case, ...] = (
+TOPIC_CASES: tuple[Case, ...] = (
+    Case("ai", "OpenAI ships a new model for every developer", "", "ai"),
+    Case("security", "Researchers disclose a database breach", "", "security"),
+    Case("chips", "Nvidia unveils a faster GPU", "", "chips"),
+    Case("code", "Linux kernel adds Rust drivers", "", "code"),
+    Case("internet", "Broadband reaches rural areas", "", "internet"),
+    Case("energy", "Solar overtakes coal in Europe", "", "energy"),
+    Case("electric-cars", "Tesla expands charging network", "", "electric-cars"),
+    Case("climate", "CO2 emissions fall for the first time", "", "climate"),
+    Case("economy", "GDP growth slows as inflation bites", "", "economy"),
+    Case("space", "NASA picks a Mars landing site", "", "space"),
+    Case("science", "Physics lab finds a new state of matter", "", "science"),
+    Case("food", "Farming yields hit a record harvest", "", "food"),
     Case("education-a", "Schools bring back reading time for students", "", "education", "edu-a"),
     Case("education-b", "Students and teachers return to class", "", "education", "edu-b"),
     Case("health", "Life expectancy rises across the world", "", "health"),
+)
+
+CASES: tuple[Case, ...] = (
+    *TOPIC_CASES,
     Case("generic-no-tags", "A quiet Tuesday for everyone", "Nothing much happened.", "none"),
-    Case("generic-ai", "OpenAI ships a new model", "A new release.", "ai"),
-    Case("generic-energy", "Solar overtakes coal in Europe", "Power grids adapt.", "energy"),
     Case(
         "generic-summary-only", "A quiet Tuesday for everyone", "Solar is mentioned once.", "energy"
     ),

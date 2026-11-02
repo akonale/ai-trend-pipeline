@@ -7,6 +7,7 @@ of the story content hash, never from `random`.
 
 import hashlib
 import io
+import math
 import re
 from dataclasses import dataclass
 from enum import StrEnum
@@ -28,16 +29,22 @@ from ai_trend_pipeline.media.fonts import BODY_FONT_PATH, HEADLINE_FONT_PATH, lo
 from ai_trend_pipeline.media.illustrations.rasterise import rasterise_svg
 from ai_trend_pipeline.media.providers import MediaContentUnsupported
 
-SCENE_TEMPLATE_VERSION = "1"
+SCENE_TEMPLATE_VERSION = "2"
 SCENE_SIZE = (1200, 675)
 MAX_HEADLINE_LINES = 5
-ILLUSTRATION_BOX = 440
-BACKDROP_SIZE = 460
-TILTED_SIZE = 456
+BACKDROP_SIZE = 440
+TILTED_SIZE = 420
+ILLUSTRATION_FILL = 0.80
+ILLUSTRATION_BOX = round(ILLUSTRATION_FILL * BACKDROP_SIZE)  # longest side of the drawing
+MIN_FILL, MAX_FILL = 0.75, 0.85
+STROKE = 6
+ACCENT_MARGIN = 8
+DOT_DIAMETER = 24
+RING_RADIUS, RING_STROKE = 11, 5  # outer diameter 27
+BAR_SIZE = (56, 12)
 SHADOW = 12
 BORDER = 6
 SPACINGS = (24, 32, 40)
-GRID = 40
 SEED_PREFIX = b"illustrated-card-v1|"
 
 # Copied from `web/static/app.css` (light theme); a test keeps them in sync.
@@ -68,6 +75,20 @@ ART_AREA = Box(680, 40, 1160, PANEL.bottom)
 BACKDROP_CENTRE = ((ART_AREA.left + ART_AREA.right) // 2, (ART_AREA.top + ART_AREA.bottom) // 2)
 
 
+# Accent centres, hand-picked in the free bands above and below the backdrop. Every slot clears
+# the art-area edge, the backdrop (all three shapes, tilt and shadow included) and the drawing.
+ACCENT_SLOTS: tuple[tuple[int, int], ...] = (
+    (740, 68),
+    (860, 68),
+    (980, 68),
+    (1100, 68),
+    (740, 600),
+    (860, 600),
+    (980, 600),
+    (1100, 600),
+)
+
+
 class PatternFamily(StrEnum):
     DOTS = "dots"
     STRIPES = "stripes"
@@ -90,7 +111,7 @@ class AccentKind(StrEnum):
 @dataclass(frozen=True)
 class Accent:
     kind: AccentKind
-    x: int
+    x: int  # centre
     y: int
 
 
@@ -132,11 +153,11 @@ def scene_spec(content_hash: str) -> SceneSpec:
     tilt = 6 if stream.next_byte() % 2 == 0 else -6
     accents: list[Accent] = []
     kinds = list(AccentKind)
+    free = list(ACCENT_SLOTS)
     for _ in range(2 + stream.next_byte() % 2):
         kind = kinds[stream.next_byte() % len(kinds)]
-        column = stream.next_byte() % ((ART_AREA.right - ART_AREA.left) // GRID)
-        row = stream.next_byte() % ((ART_AREA.bottom - ART_AREA.top) // GRID)
-        accents.append(Accent(kind, ART_AREA.left + GRID * column, ART_AREA.top + GRID * row))
+        x, y = free.pop(stream.next_byte() % len(free))
+        accents.append(Accent(kind, x, y))
     return SceneSpec(
         pattern=pattern,
         spacing=spacing,
@@ -160,6 +181,52 @@ class SceneLayout:
     backdrop_centre: tuple[int, int]
     illustration: Box | None
     truncated: bool
+
+
+def accent_box(accent: Accent) -> Box:
+    """Full bounding box of an accent, stroke included."""
+    if accent.kind is AccentKind.DOT:
+        half_w = half_h = DOT_DIAMETER // 2
+    elif accent.kind is AccentKind.RING:
+        half_w = half_h = RING_RADIUS + RING_STROKE // 2 + 1
+    else:
+        half_w, half_h = BAR_SIZE[0] // 2, BAR_SIZE[1] // 2
+    return Box(accent.x - half_w, accent.y - half_h, accent.x + half_w, accent.y + half_h)
+
+
+def backdrop_bounds(shape: BackdropShape) -> Box:
+    """Bounding box of the backdrop with its stroke, the tilt and the hard shadow."""
+    cx, cy = BACKDROP_CENTRE
+    if shape is BackdropShape.TILTED_SQUARE:
+        # A square of side T turned by 6 degrees: half-extent T/2 * (cos 6 + sin 6) = 1.0994 * T/2.
+        half = math.ceil(TILTED_SIZE / 2 * 1.0994) + STROKE // 2 + 1
+    else:
+        half = BACKDROP_SIZE // 2 + STROKE // 2
+    return Box(cx - half, cy - half, cx + half + SHADOW, cy + half + SHADOW)
+
+
+def _gap(a: Box, b: Box) -> int:
+    """Smallest horizontal or vertical distance between two boxes (negative when they overlap)."""
+    return max(a.left - b.right, b.left - a.right, a.top - b.bottom, b.top - a.bottom)
+
+
+def accent_problems(accent: Accent, shape: BackdropShape, illustration: Box | None) -> list[str]:
+    box = accent_box(accent)
+    problems: list[str] = []
+    margin = ACCENT_MARGIN
+    inner = Box(
+        ART_AREA.left + margin,
+        ART_AREA.top + margin,
+        ART_AREA.right - margin,
+        ART_AREA.bottom - margin,
+    )
+    if not _inside(box, inner):
+        problems.append("accent is not fully inside the art area with its margin")
+    if _gap(box, backdrop_bounds(shape)) < margin:
+        problems.append("accent is too close to the backdrop")
+    if illustration is not None and _gap(box, illustration) < margin:
+        problems.append("accent is too close to the illustration")
+    return problems
 
 
 def fit_box(aspect: float, limit: int = ILLUSTRATION_BOX) -> tuple[int, int]:
@@ -269,7 +336,11 @@ def _check(layout: SceneLayout) -> None:
     box = layout.illustration
     if box is not None:
         assert _inside(box, layout.art_area), "illustration escapes the art area"
-        assert box.right - box.left <= ILLUSTRATION_BOX and box.bottom - box.top <= ILLUSTRATION_BOX
+        longest = max(box.right - box.left, box.bottom - box.top)
+        assert MIN_FILL * BACKDROP_SIZE <= longest <= MAX_FILL * BACKDROP_SIZE, "drawing size"
+    for accent in layout.spec.accents:
+        problems = accent_problems(accent, layout.spec.backdrop_shape, box)
+        assert not problems, f"{accent}: {problems}"
 
 
 # --- drawing ------------------------------------------------------------------------------
@@ -306,26 +377,24 @@ def _pattern_svg(spec: SceneSpec) -> str:
 
 def _accents_svg(spec: SceneSpec) -> str:
     palette = SCENE_PALETTE
-    box = ART_AREA
-    parts = [
-        f'<clipPath id="art"><rect x="{box.left}" y="{box.top}" '
-        f'width="{box.right - box.left}" height="{box.bottom - box.top}"/></clipPath>',
-        '<g clip-path="url(#art)">',
-    ]
+    parts: list[str] = []
     for accent in spec.accents:
-        cx, cy = accent.x + GRID // 2, accent.y + GRID // 2
+        cx, cy = accent.x, accent.y
         if accent.kind is AccentKind.DOT:
-            parts.append(f'<circle cx="{cx}" cy="{cy}" r="12" fill="{palette.ink}"/>')
+            parts.append(
+                f'<circle cx="{cx}" cy="{cy}" r="{DOT_DIAMETER // 2}" fill="{palette.ink}"/>'
+            )
         elif accent.kind is AccentKind.RING:
             parts.append(
-                f'<circle cx="{cx}" cy="{cy}" r="18" fill="none" '
-                f'stroke="{palette.accent}" stroke-width="5"/>'
+                f'<circle cx="{cx}" cy="{cy}" r="{RING_RADIUS}" fill="none" '
+                f'stroke="{palette.accent}" stroke-width="{RING_STROKE}"/>'
             )
         else:
+            width, height = BAR_SIZE
             parts.append(
-                f'<rect x="{cx - 28}" y="{cy - 6}" width="56" height="12" fill="{palette.accent}"/>'
+                f'<rect x="{cx - width // 2}" y="{cy - height // 2}" width="{width}" '
+                f'height="{height}" fill="{palette.accent}"/>'
             )
-    parts.append("</g>")
     return "".join(parts)
 
 
@@ -353,8 +422,10 @@ def _burst_svg(spec: SceneSpec) -> str:
     """An ink-outlined 8-point burst: abstract, never figurative."""
     cx, cy = BACKDROP_CENTRE
     points: list[str] = []
-    # Integer vertices of a 16-point star (outer 170, inner 95), listed from the top, clockwise.
-    outer, inner = 170, 95
+    # Integer vertices of a 16-point star, listed from the top, clockwise. The burst follows
+    # the same 0.80 x BACKDROP_SIZE rule as a drawing.
+    outer = ILLUSTRATION_BOX // 2
+    inner = round(outer * 0.56)
     ring = [
         (0, -1000),
         (383, -924),

@@ -167,10 +167,12 @@ card still described below. `GET /stories/{id}/media/{artifact_id}` serves an ar
 it. The directory is git-ignored (`/media/`).
 
 **Illustrated card (task 065a).** Besides the story card, the media step makes a second still: the
-headline, a vendored CC0 Open Doodles drawing picked by keyword rules, and a background seeded from
+headline, a drawing picked by keyword rules (a vendored CC0 Open Doodles drawing for education and
+health, or a project-original flat glyph for the other twelve topics), and a background seeded from
 the story's content hash. It renders offline in about 0.4 s per story (CPU only), with no API, key
-or cost, and costs nothing when off. Only topics that have a drawing (today education and health)
-get one; every other story gets the same background with an abstract burst and no figure. The
+or cost, and costs nothing when off. Stories that match none of the 14 topics, or only weakly,
+get the same background with an abstract burst and no figure. The project-original glyphs are
+authored for this repo; the owner's CC0 dedication is stated in `LICENSES.md`. The
 picture is stored in the manifest (`illustration_artifact`) but nothing selects or posts it yet
 (`selected` stays empty), so publishing still uses the story card. Set `ILLUSTRATION_PROVIDER=off`
 in `.env.prod` and run `just deploy` to switch it off. Contact sheet of samples:

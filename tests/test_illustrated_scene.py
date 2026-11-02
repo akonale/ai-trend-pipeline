@@ -12,12 +12,20 @@ from ai_trend_pipeline.media.illustrations.catalogue import load_catalogue, read
 from ai_trend_pipeline.media.illustrations.rasterise import rasterise_svg
 from ai_trend_pipeline.media.illustrations.renderer import IllustratedCardProvider
 from ai_trend_pipeline.media.illustrations.scene import (
+    ACCENT_SLOTS,
+    BACKDROP_SIZE,
     ILLUSTRATION_BOX,
     PANEL,
     SCENE_PALETTE,
     SCENE_SIZE,
     SCENE_TEMPLATE_VERSION,
+    Accent,
+    AccentKind,
+    BackdropShape,
     SeedStream,
+    accent_box,
+    accent_problems,
+    backdrop_bounds,
     layout_scene,
     scene_spec,
 )
@@ -56,11 +64,11 @@ def test_provider_output_metadata() -> None:
     assert (output.rendered.width, output.rendered.height) == (1200, 675)
     assert output.rendered.duration_ms is None
     assert PROVIDER.name == "illustrated-card"
-    assert SCENE_TEMPLATE_VERSION in PROVIDER.version
+    assert SCENE_TEMPLATE_VERSION == "2" and SCENE_TEMPLATE_VERSION in PROVIDER.version
 
 
 def test_rendering_twice_gives_identical_bytes(rendered: dict[str, bytes]) -> None:
-    for case in (CASE_BY_NAME["education-a"], CASE_BY_NAME["generic-ai"]):
+    for case in (CASE_BY_NAME["education-a"], CASE_BY_NAME["generic-no-tags"]):
         assert render(case) == rendered[case.name]
         assert (
             IllustratedCardProvider().illustrate(case.data()).rendered.data == rendered[case.name]
@@ -68,19 +76,10 @@ def test_rendering_twice_gives_identical_bytes(rendered: dict[str, bytes]) -> No
 
 
 def test_statuses_follow_the_match_rules() -> None:
-    expected = {
-        "education-a": IllustrationStatus.MATCHED,
-        "education-b": IllustrationStatus.MATCHED,
-        "health": IllustrationStatus.MATCHED,
-        "long-ellipsised": IllustrationStatus.MATCHED,
-        "generic-no-tags": IllustrationStatus.GENERIC,
-        "generic-ai": IllustrationStatus.GENERIC,
-        "generic-energy": IllustrationStatus.GENERIC,
-        "generic-summary-only": IllustrationStatus.GENERIC,
-        "unicode": IllustrationStatus.GENERIC,
-    }
-    for name, status in expected.items():
-        assert PROVIDER.illustrate(CASE_BY_NAME[name].data()).status is status, name
+    generic = {"generic-no-tags", "generic-summary-only", "unicode"}
+    for case in CASES:
+        status = IllustrationStatus.GENERIC if case.name in generic else IllustrationStatus.MATCHED
+        assert PROVIDER.illustrate(case.data()).status is status, case.name
 
 
 def test_same_topic_with_different_seeds_differs(rendered: dict[str, bytes]) -> None:
@@ -137,7 +136,8 @@ def test_layout_invariants_hold(case: Case) -> None:
     box = layout.illustration
     assert box is not None
     assert box.left >= layout.art_area.left and box.right <= layout.art_area.right
-    assert (box.right - box.left) <= ILLUSTRATION_BOX and (box.bottom - box.top) <= ILLUSTRATION_BOX
+    longest = max(box.right - box.left, box.bottom - box.top)
+    assert 0.75 * BACKDROP_SIZE <= longest <= 0.85 * BACKDROP_SIZE
     assert abs((box.right - box.left) / (box.bottom - box.top) - 4 / 3) < 0.02
     centre = ((box.left + box.right) / 2, (box.top + box.bottom) / 2)
     assert abs(centre[0] - layout.backdrop_centre[0]) <= 1
@@ -153,7 +153,7 @@ def test_long_headline_is_ellipsised_in_five_lines() -> None:
 
 
 def test_short_headline_uses_the_largest_size() -> None:
-    data = CASE_BY_NAME["generic-ai"].data()
+    data = CASE_BY_NAME["generic-no-tags"].data()
     layout = layout_scene(data.headline, scene_spec(data.story_content_hash), aspect=1.0)
     assert layout.headline.font_size == 64 and not layout.truncated
 
@@ -201,12 +201,17 @@ def test_rendering_makes_no_network_calls(monkeypatch: pytest.MonkeyPatch) -> No
     assert render(CASE_BY_NAME["health"]).startswith(b"\x89PNG")
 
 
-def test_rasteriser_returns_rgba_at_the_requested_size() -> None:
+def test_rasteriser_returns_rgba_at_the_fitted_size() -> None:
+    from ai_trend_pipeline.media.illustrations.scene import fit_box, svg_aspect
+
     asset = load_catalogue()[0]
-    image = rasterise_svg(read_asset_svg(asset), 220, 165)
-    assert image.mode == "RGBA" and image.size == (220, 165)
+    svg = read_asset_svg(asset)
+    width, height = fit_box(svg_aspect(svg), 220)
+    image = rasterise_svg(svg, width, height)
+    assert image.mode == "RGBA"
+    assert abs(image.size[0] - width) <= 1 and abs(image.size[1] - height) <= 1
     assert image.getchannel("A").getextrema()[0] == 0  # transparent outside the drawing
-    assert rasterise_svg(read_asset_svg(asset), 220, 165).tobytes() == image.tobytes()
+    assert rasterise_svg(svg, width, height).tobytes() == image.tobytes()
 
 
 def test_a_broken_asset_raises_content_unsupported(tmp_path: Path) -> None:
@@ -217,3 +222,59 @@ def test_a_broken_asset_raises_content_unsupported(tmp_path: Path) -> None:
     data = CASE_BY_NAME["education-a"].data()
     with pytest.raises(MediaContentUnsupported):
         broken.illustrate(data)
+
+
+def test_fitted_drawing_and_burst_fill_about_80_percent_of_the_tile() -> None:
+    assert ILLUSTRATION_BOX == round(0.8 * BACKDROP_SIZE)
+    for case in CASES:
+        data = case.data()
+        spec = scene_spec(data.story_content_hash)
+        for aspect in (0.6, 1.0, 1.6):
+            box = layout_scene(data.headline, spec, aspect=aspect).illustration
+            assert box is not None
+            longest = max(box.right - box.left, box.bottom - box.top)
+            assert 0.75 * BACKDROP_SIZE <= longest <= 0.85 * BACKDROP_SIZE
+    assert BACKDROP_SIZE == 440
+
+
+@pytest.mark.parametrize("shape", list(BackdropShape))
+@pytest.mark.parametrize("kind", list(AccentKind))
+def test_every_accent_slot_is_inside_the_art_area_and_clear_of_the_backdrop(
+    shape: BackdropShape, kind: AccentKind
+) -> None:
+    from ai_trend_pipeline.media.illustrations.scene import BACKDROP_CENTRE, Box, fit_box
+
+    assert len(ACCENT_SLOTS) >= 8 and len(set(ACCENT_SLOTS)) == len(ACCENT_SLOTS)
+    for aspect in (0.6, 1.0, 1.6):
+        width, height = fit_box(aspect)
+        cx, cy = BACKDROP_CENTRE
+        drawing = Box(cx - width // 2, cy - height // 2, cx + width // 2, cy + height // 2)
+        for x, y in ACCENT_SLOTS:
+            accent = Accent(kind, x, y)
+            assert accent_problems(accent, shape, drawing) == [], (shape, kind, x, y)
+            box = accent_box(accent)
+            assert box.left - 680 >= 8 and 1160 - box.right >= 8
+            assert box.top - 40 >= 8 and 623 - box.bottom >= 8
+    bounds = backdrop_bounds(shape)
+    assert bounds.right <= 1200 - 16 and bounds.bottom <= 623 and bounds.top >= 40
+
+
+def test_accent_sizes_respect_the_limits() -> None:
+    dot, ring, bar = (accent_box(Accent(kind, 500, 500)) for kind in AccentKind)
+    assert dot.right - dot.left <= 24 and dot.bottom - dot.top <= 24
+    assert ring.right - ring.left <= 28 and ring.bottom - ring.top <= 28
+    assert (bar.right - bar.left, bar.bottom - bar.top) == (56, 12)
+
+
+def test_layout_checks_hold_for_200_hashes_and_accents_are_distinct_slots() -> None:
+    seen: set[BackdropShape] = set()
+    for n in range(200):
+        spec = scene_spec(content_hash(f"many-{n}"))
+        layout = layout_scene("A headline", spec, aspect=1.25)
+        seen.add(spec.backdrop_shape)
+        slots = [(a.x, a.y) for a in spec.accents]
+        assert len(set(slots)) == len(slots) and set(slots) <= set(ACCENT_SLOTS)
+        assert layout.illustration is not None
+        for accent in spec.accents:
+            assert accent_problems(accent, spec.backdrop_shape, layout.illustration) == []
+    assert seen == set(BackdropShape)

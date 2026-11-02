@@ -70,7 +70,7 @@ async def test_matched_writes_one_artifact_and_rerun_is_identical(tmp_path: Path
 
 @pytest.mark.asyncio
 async def test_generic_writes_one_artifact(tmp_path: Path) -> None:
-    data = CASE_BY_NAME["generic-ai"].data()
+    data = CASE_BY_NAME["generic-no-tags"].data()
     result = await run(IllustrationActivities(tmp_path, IllustratedCardProvider()), data)
     assert result.status is IllustrationStatus.GENERIC and result.artifact is not None
     assert len(list(tmp_path.iterdir())) == 1
@@ -85,10 +85,10 @@ async def test_alt_text_matches_the_templates(tmp_path: Path) -> None:
         "Illustrated card with the headline: Life expectancy rises across the world. "
         "Drawing: a person meditating cross-legged, on a patterned background."
     )
-    generic = await run(acts, CASE_BY_NAME["generic-ai"].data())
+    generic = await run(acts, CASE_BY_NAME["generic-no-tags"].data())
     assert generic.artifact is not None
     assert generic.artifact.alt_text == (
-        "Illustrated card with the headline: OpenAI ships a new model. "
+        "Illustrated card with the headline: A quiet Tuesday for everyone. "
         "Abstract shapes on a patterned background."
     )
     for text in (matched.artifact.alt_text, generic.artifact.alt_text):

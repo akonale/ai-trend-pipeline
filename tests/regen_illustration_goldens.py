@@ -2,7 +2,8 @@
 
 `uv run python -m tests.regen_illustration_goldens` rewrites the goldens.
 `uv run python -m tests.regen_illustration_goldens --contact-sheet` also writes
-`docs/media/illustrated-card-samples.png`. No network calls.
+`docs/media/illustrated-card-samples.png`, and `--asset-sheet` writes
+`docs/media/illustration-assets.png` (one tile per catalogue asset). No network calls.
 """
 
 import io
@@ -13,10 +14,26 @@ from PIL import Image, ImageDraw
 
 from ai_trend_pipeline.media.fonts import BODY_FONT_PATH, load_font
 from ai_trend_pipeline.media.illustrations.renderer import IllustratedCardProvider
-from tests.illustrated_cases import CASES, Case
+from tests.illustrated_cases import CASE_BY_NAME, CASES, Case
 
 GOLDEN_DIR = Path(__file__).parent / "fixtures" / "media" / "illustrated"
 SHEET_PATH = Path(__file__).parent.parent / "docs" / "media" / "illustrated-card-samples.png"
+ASSET_SHEET_PATH = Path(__file__).parent.parent / "docs" / "media" / "illustration-assets.png"
+# 12 samples: 8 distinct matched topics (1 doodle, 7 glyph), 2 generic, 1 long, 1 other seed.
+SHEET_CASES = (
+    "ai",
+    "security",
+    "chips",
+    "code",
+    "energy",
+    "climate",
+    "economy",
+    "health",
+    "generic-no-tags",
+    "generic-summary-only",
+    "long-ellipsised",
+    "same-topic-seed-1",
+)
 SHEET_COLUMNS = 3
 SHEET_SCALE = 0.5  # `Image.reduce(2)` below is exactly half size
 LABEL_HEIGHT = 40
@@ -40,13 +57,14 @@ def _label(provider: IllustratedCardProvider, case: Case) -> str:
 def write_contact_sheet(provider: IllustratedCardProvider) -> None:
     font = load_font(BODY_FONT_PATH, 18)
     tile_w, tile_h = round(1200 * SHEET_SCALE), round(675 * SHEET_SCALE)
-    rows = (len(CASES) + SHEET_COLUMNS - 1) // SHEET_COLUMNS
+    cases = [CASE_BY_NAME[name] for name in SHEET_CASES]
+    rows = (len(cases) + SHEET_COLUMNS - 1) // SHEET_COLUMNS
     cell_w, cell_h = tile_w + SHEET_PADDING, tile_h + LABEL_HEIGHT + SHEET_PADDING
     sheet = Image.new(
         "RGB", (SHEET_COLUMNS * cell_w + SHEET_PADDING, rows * cell_h + SHEET_PADDING), "#ffffff"
     )
     draw = ImageDraw.Draw(sheet)
-    for index, case in enumerate(CASES):
+    for index, case in enumerate(cases):
         data = provider.illustrate(case.data()).rendered.data
         tile = Image.open(io.BytesIO(data)).convert("RGB").reduce(2)
         x = SHEET_PADDING + (index % SHEET_COLUMNS) * cell_w
@@ -64,11 +82,60 @@ def write_contact_sheet(provider: IllustratedCardProvider) -> None:
     print(f"wrote {SHEET_PATH} ({buf.tell()} bytes)")
 
 
+def write_asset_sheet() -> None:
+    """One tile per catalogue asset on a sample backdrop, labelled with its id and source."""
+    from ai_trend_pipeline.media.illustrations.catalogue import load_catalogue, read_asset_svg
+    from ai_trend_pipeline.media.illustrations.rasterise import rasterise_svg
+    from ai_trend_pipeline.media.illustrations.scene import (
+        SCENE_PALETTE,
+        fit_box,
+        recolour_svg,
+        scene_spec,
+        svg_aspect,
+    )
+    from tests.illustrated_cases import content_hash
+
+    assets = load_catalogue()
+    font = load_font(BODY_FONT_PATH, 18)
+    columns, tile, pad = 5, 300, 16
+    rows = (len(assets) + columns - 1) // columns
+    sheet = Image.new(
+        "RGB", (columns * (tile + pad) + pad, rows * (tile + LABEL_HEIGHT + pad) + pad), "#ffffff"
+    )
+    draw = ImageDraw.Draw(sheet)
+    for index, asset in enumerate(assets):
+        spec = scene_spec(content_hash(f"asset-sheet-{asset.id}"))
+        x = pad + (index % columns) * (tile + pad)
+        y = pad + (index // columns) * (tile + LABEL_HEIGHT + pad)
+        draw.rounded_rectangle(
+            [x, y, x + tile, y + tile],
+            radius=16,
+            fill=spec.backdrop_colour,
+            outline=SCENE_PALETTE.ink,
+            width=4,
+        )
+        svg = recolour_svg(read_asset_svg(asset), dict(asset.recolour), spec)
+        width, height = fit_box(svg_aspect(svg), round(tile * 0.8))
+        art = rasterise_svg(svg, width, height)
+        sheet.paste(art, (x + (tile - width) // 2, y + (tile - height) // 2), art)
+        draw.text(
+            (x, y + tile + 8), f"{asset.id} ({asset.source.value})", font=font, fill="#15172b"
+        )
+    ASSET_SHEET_PATH.parent.mkdir(parents=True, exist_ok=True)
+    buf = io.BytesIO()
+    sheet.save(buf, "PNG", optimize=True)
+    assert buf.tell() <= MAX_SHEET_BYTES, "asset sheet is too large"
+    ASSET_SHEET_PATH.write_bytes(buf.getvalue())
+    print(f"wrote {ASSET_SHEET_PATH} ({buf.tell()} bytes)")
+
+
 def main(argv: list[str]) -> None:
     provider = IllustratedCardProvider()
     write_goldens(provider)
     if "--contact-sheet" in argv:
         write_contact_sheet(provider)
+    if "--asset-sheet" in argv:
+        write_asset_sheet()
 
 
 if __name__ == "__main__":

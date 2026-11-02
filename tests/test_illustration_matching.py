@@ -12,6 +12,7 @@ from ai_trend_pipeline.media.illustrations.matching import (
     match_story,
 )
 from ai_trend_pipeline.media.models import IllustrationStatus
+from tests.illustrated_cases import TOPIC_CASES
 
 
 @dataclass(frozen=True)
@@ -140,24 +141,27 @@ def test_tag_table_is_lowercase_and_unique_per_topic() -> None:
 
 
 # Against the real catalogue: one fixed headline per covered topic matches that topic.
-REAL_HEADLINES = {
-    "education": "Schools and students return to class",
-    "health": "Life expectancy rises across the world",
-}
+REAL_HEADLINES = {case.topic_label: case.headline for case in TOPIC_CASES if case.seed is None}
+REAL_HEADLINES["education"] = "Schools and students return to class"
 
 
 def test_real_catalogue_matches_each_covered_topic() -> None:
     assets = load_catalogue()
     covered = {a.topic for a in assets}
-    assert covered == set(REAL_HEADLINES)
+    assert covered == set(TOPIC_ORDER)
+    assert set(REAL_HEADLINES) == covered
     for topic, headline in REAL_HEADLINES.items():
         result = match_story(headline, "", assets, pick=0)
-        assert result.status is IllustrationStatus.MATCHED
+        assert result.status is IllustrationStatus.MATCHED, topic
         assert result.topic == topic
         assert result.asset is not None and result.asset.topic == topic
 
 
-def test_real_catalogue_uncovered_topics_are_generic() -> None:
-    for headline in ("OpenAI ships a new model", "CO2 emissions fall", "Solar overtakes coal"):
-        result = match_story(headline, "", load_catalogue(), pick=0)
+def test_real_catalogue_weak_matches_are_generic() -> None:
+    assets = load_catalogue()
+    for headline, summary in (
+        ("A very ordinary day", "Nothing to see."),
+        ("A quiet Tuesday", "The company said solar will grow."),
+    ):
+        result = match_story(headline, summary, assets, pick=0)
         assert result.status is IllustrationStatus.GENERIC and result.asset is None

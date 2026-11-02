@@ -160,3 +160,51 @@ def test_post_proof_text_wraps_and_ruler_is_aria_hidden() -> None:
     page = detail_client(FakeDetailService(detail)).get(f"/stories/{detail.detail_id}").text
     assert '<div class="post-proof__ruler" aria-hidden="true">' in page
     assert re.search(r'<span style="--post-used: \d+%"></span>', page)
+
+
+def _rule(selector: str, source: str = CSS) -> str:
+    """The declaration block of the first rule that starts with exactly `selector {`."""
+    match = re.search(rf"(?m)^\s*{re.escape(selector)}\s*\{{([^}}]*)\}}", source)
+    assert match is not None, selector
+    return match.group(1)
+
+
+def _container_block() -> str:
+    start = CSS.index("@container pick (min-width: 36rem)")
+    depth, index = 0, CSS.index("{", start)
+    for end in range(index, len(CSS)):
+        depth += {"{": 1, "}": -1}.get(CSS[end], 0)
+        if depth == 0:
+            return CSS[index + 1 : end]
+    raise AssertionError("unbalanced @container block")
+
+
+def test_picked_shadow_token_uses_the_highlight_and_marks_the_checked_tile() -> None:
+    assert "--shadow-picked: 6px 6px 0 0 var(--color-highlight);" in CSS
+    assert "box-shadow: var(--shadow-picked)" in _rule(".pick__tile:has(input:checked)")
+    assert "var(--shadow-picked)" not in _rule(".pick__tile")
+
+
+def test_picker_sizes_by_its_container_and_keeps_tiles_shrinkable() -> None:
+    declared = _rule(".pick")
+    assert "container: pick / inline-size" in declared
+    assert "min-width: 0" in _rule(".pick__tile")
+    assert "min-width: 0" in _rule(".pick__set")
+    image = _rule(".pick__tile picture, .pick__tile img")
+    assert "width: 100%" in image and "height: auto" in image
+
+
+def test_two_column_grid_exists_only_inside_the_container_query() -> None:
+    base = _rule(".pick__tiles")
+    assert "2fr" not in base and "grid-template-columns: minmax(0, 1fr)" in base
+    inside = _container_block()
+    assert "grid-template-columns: minmax(0, 2fr) minmax(0, 1fr)" in inside
+    assert CSS.count("minmax(0, 2fr)") == 1
+    assert "grid-row: span 2" in inside
+
+
+def test_picker_css_adds_no_colours_motion_or_caps() -> None:
+    section = CSS[CSS.index("/* Picker:") : CSS.index("/* Publishing:")]
+    assert not re.search(r"#[0-9a-fA-F]{3,6}\b", section)
+    assert "transition" not in section and "animation" not in section
+    assert "text-transform" not in section

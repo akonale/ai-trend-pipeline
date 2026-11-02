@@ -173,10 +173,20 @@ the story's content hash. It renders offline in about 0.4 s per story (CPU only)
 or cost, and costs nothing when off. Stories that match none of the 14 topics, or only weakly,
 get the same background with an abstract burst and no figure. The project-original glyphs are
 authored for this repo; the owner's CC0 dedication is stated in `LICENSES.md`. The
-picture is stored in the manifest (`illustration_artifact`) but nothing selects or posts it yet
-(`selected` stays empty), so publishing still uses the story card. Set `ILLUSTRATION_PROVIDER=off`
+picture is stored in the manifest (`illustration_artifact`). Set `ILLUSTRATION_PROVIDER=off`
 in `.env.prod` and run `just deploy` to switch it off. Contact sheet of samples:
 `docs/media/illustrated-card-samples.png`. Licences: `src/ai_trend_pipeline/media/illustrations/LICENSES.md`.
+
+**Illustration picker (task 065b).** In review, a story with an illustration shows a "Picture for
+the post" picker above the text: one radio tile per candidate picture (the illustrated card and the
+story card), built from `MediaManifest.candidates()`. A strong match preselects the illustrated
+card, a weak or no match preselects the story card. It is plain HTML (radios tied to the Approve
+form), so it needs no JavaScript. Approve sends the pick, the workflow freezes it into the approved
+package hash (`story-media-choice-v1`), the Ready page shows only that picture, and Bluesky
+uploads exactly that still with its alt text. An approval with no pick (the CLI, an old form) means
+the story card. Stories without an illustration, or whose illustration failed, show the single
+card as before. No screenshots were taken; see the manual visual checklist in
+`docs/runbooks/publishing.md`.
 
 ## Hacker News
 

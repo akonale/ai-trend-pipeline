@@ -16,8 +16,10 @@ from ai_trend_pipeline.media.illustrations.matching import TOPIC_TAGS
 ILLUSTRATIONS_DIR = Path(__file__).resolve().parent
 ASSET_DIR = ILLUSTRATIONS_DIR / "assets"
 CATALOGUE_PATH = ILLUSTRATIONS_DIR / "catalogue.json"
-MAX_ASSETS = 20
+MAX_ASSETS = 30
 MAX_ASSETS_PER_TOPIC = 2
+PROJECT_AUTHOR = "this project"
+OPEN_DOODLES_AUTHOR = "Pablo Stanley"
 CC0_URL = "https://creativecommons.org/publicdomain/zero/1.0/"
 
 _HEX_COLOUR = r"^#[0-9a-f]{6}$"
@@ -26,10 +28,12 @@ _ALLOWED_HOST = re.compile(r"^https://(?:[a-z0-9-]+\.)*opendoodles\.com(?:/|$)")
 
 class IllustrationSource(StrEnum):
     OPEN_DOODLES = "open-doodles"
+    PROJECT = "project"
 
 
 class IllustrationLicence(StrEnum):
     CC0_1_0 = "CC0-1.0"
+    ORIGINAL_PROJECT = "original-project"
 
 
 class RecolourSlot(StrEnum):
@@ -51,12 +55,12 @@ class IllustrationAsset(BaseModel):
     description: str = Field(min_length=3, max_length=80)
     topic: str
     source: IllustrationSource
-    source_url: str = Field(pattern=r"^https://")
+    source_url: str | None = Field(default=None, pattern=r"^https://")
     author: str = Field(min_length=1, max_length=80)
     licence: IllustrationLicence
     licence_url: str = Field(pattern=r"^https://")
-    licence_verified_on: date
-    retrieved_on: date
+    licence_verified_on: date | None = None
+    retrieved_on: date | None = None
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     modified: bool
     modification_note: str | None = None
@@ -66,6 +70,32 @@ class IllustrationAsset(BaseModel):
     )
     attribution_required: bool
     attribution_text: str | None = None
+
+    def _check_source(self) -> None:
+        if self.source is IllustrationSource.OPEN_DOODLES:
+            if self.licence is not IllustrationLicence.CC0_1_0:
+                raise ValueError("open-doodles assets are CC0-1.0")
+            if self.author != OPEN_DOODLES_AUTHOR:
+                raise ValueError("open-doodles assets are by Pablo Stanley")
+            if self.source_url is None or not _ALLOWED_HOST.match(self.source_url):
+                raise ValueError("source_url must be a page on opendoodles.com")
+            if self.licence_verified_on is None or self.retrieved_on is None:
+                raise ValueError("open-doodles assets need verified and retrieved dates")
+        else:
+            if self.licence is not IllustrationLicence.ORIGINAL_PROJECT:
+                raise ValueError("project assets use the original-project licence")
+            if self.author != PROJECT_AUTHOR:
+                raise ValueError("project assets have the author 'this project'")
+            if (
+                self.source_url is not None
+                or self.licence_verified_on is not None
+                or self.retrieved_on is not None
+            ):
+                raise ValueError("project assets have no source_url or dates")
+            if self.modified or self.modification_note is not None:
+                raise ValueError("project assets are not modified")
+            if self.attribution_required:
+                raise ValueError("project assets need no attribution")
 
     @model_validator(mode="after")
     def _check_record(self) -> "IllustrationAsset":
@@ -77,8 +107,7 @@ class IllustrationAsset(BaseModel):
             raise ValueError("tags must equal the topic's row in the matching table")
         if len(set(self.tags)) != len(self.tags):
             raise ValueError("tags must be unique")
-        if not _ALLOWED_HOST.match(self.source_url):
-            raise ValueError("source_url must be a page on opendoodles.com")
+        self._check_source()
         if self.licence_url != CC0_URL:
             raise ValueError("licence_url must be the CC0 1.0 legal page")
         if self.modified and not self.modification_note:

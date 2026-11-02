@@ -2,15 +2,22 @@
 
 import hashlib
 
+from ai_trend_pipeline.media.illustration import IllustrationOutput
 from ai_trend_pipeline.media.models import (
     MAX_ANIMATED_BYTES,
     MAX_STATIC_BYTES,
     MEDIA_SIGNATURES,
+    IllustrateInput,
+    IllustrationStatus,
     MediaBrief,
     MediaType,
     canonical_json,
 )
-from ai_trend_pipeline.media.providers import MediaRenderError, RenderedMedia
+from ai_trend_pipeline.media.providers import (
+    MediaContentUnsupported,
+    MediaRenderError,
+    RenderedMedia,
+)
 
 FAKE_WIDTH = 1200
 FAKE_HEIGHT = 675
@@ -60,3 +67,34 @@ class FakeMediaRenderer:
         if self._oversize:
             data += b"\0" * MAX_ANIMATED_BYTES
         return RenderedMedia(data, MediaType.GIF, FAKE_WIDTH, FAKE_HEIGHT, FAKE_DURATION_MS)
+
+
+FAKE_ILLUSTRATION_PNG = MEDIA_SIGNATURES[MediaType.PNG] + b"fake-illustration"
+
+
+class FakeIllustrationProvider:
+    """A fixed tiny PNG. `generic` switches the status; `fail_times` raises transient errors."""
+
+    name = "fake"
+    version = "1"
+
+    def __init__(
+        self, generic: bool = False, fail_times: int = 0, unsupported: bool = False
+    ) -> None:
+        self._generic = generic
+        self._fail_times = fail_times
+        self._unsupported = unsupported
+        self.calls = 0
+
+    def illustrate(self, data: IllustrateInput) -> IllustrationOutput:
+        self.calls += 1
+        if self._unsupported:
+            raise MediaContentUnsupported("fake illustration content is unsupported")
+        if self.calls <= self._fail_times:
+            raise MediaRenderError("fake illustration failure")
+        rendered = RenderedMedia(
+            FAKE_ILLUSTRATION_PNG, MediaType.PNG, FAKE_WIDTH, FAKE_HEIGHT, None
+        )
+        if self._generic:
+            return IllustrationOutput(IllustrationStatus.GENERIC, rendered)
+        return IllustrationOutput(IllustrationStatus.MATCHED, rendered, "a fake drawing")

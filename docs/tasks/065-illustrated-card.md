@@ -1,6 +1,6 @@
 # 065: Illustrated card (free, offline still image)
 
-Status: approved
+Status: built
 
 ## Goal
 
@@ -777,3 +777,7 @@ Next: the human reviews and approves the spec.
 Matching is now keyed by 14 target topics. A topic with no suitable drawing gets no tags and falls back to the generic scene; the target is about 10-20 drawings (at most 2 per topic), and fewer is fine. Tests, contact sheet, docs and risks are updated to match.
 Recorded the builder's facts as done: the `resvg-py==0.5.0` pin and API (`dcbaeee`), the `story_media_v1_gif.json` baseline (`6edf767`) and the two baseline hash literals. The UI design is unchanged.
 Next: the builder continues 065a. Status stays approved.
+
+**builder**: Built 065a ONLY (picker, `media_choice`, `story-media-choice-v1`, formatter change and `story_generation_v3` history are 065b; Status `built` covers 065a, not the whole task). `resvg-py==0.5.0` (abi3 wheels, cp312 manylinux x86_64 and aarch64, typed, no stub). Coverage: education (`person-reading`, `reading-with-books`) and health (`person-meditating`); the other 11 topics fall back to the generic scene. Skipped: `plant` (88 KB after normalising, over 64 KB, so no climate drawing) and `running` (drawn "Si" lettering on the shirt, so it counts as text).
+Added beyond the file list: the failed note (view model, template, CSS) plus tests, `ILLUSTRATION_PROVIDER` in compose, `worker.illustration_provider()`. Contact sheet viewed: no clipped text, no empty scenes, recolours right; drawings sit smallish in the backdrop (the Open Doodles viewBox has wide margins) and some accent dots or rings peek out from behind the backdrop like stray confetti. Render about 0.4 s per story.
+

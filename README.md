@@ -147,7 +147,9 @@ Environment variables are read only in `ai_trend_pipeline.config` (`load_setting
 (1-500, default 20: new candidate workflows per source per UTC day; the selector is skipped and no
 LLM credit is spent when a source's budget is exhausted). `CANDIDATE_REVIEW_TIMEOUT_S`
 (1-604800 seconds, default 172800) sets how long a story candidate waits for an Approve/Reject
-decision before it expires.
+decision before it expires. The AI-drawn story image settings `DRAWN_IMAGES_ENABLED` (default
+`false`), `DRAWN_IMAGES_MODEL`, `DRAWN_IMAGES_COUNT` (1-4, default 3) and `DRAWN_IMAGES_DAILY_CAP`
+(1-1000 API calls per UTC day, default 20) are read but nothing uses them yet.
 
 Story research adds five more: `RESEARCH_FETCH_TIMEOUT_S` (over 0 and at most 60, default 10.0),
 `RESEARCH_MAX_RESPONSE_BYTES` (1024-4194304, default 524288), `RESEARCH_MAX_REDIRECTS` (0-5,

@@ -2,7 +2,13 @@
 
 import pytest
 
-from ai_trend_pipeline.config import DEFAULT_BLUESKY_SERVICE, Settings, load_settings
+from ai_trend_pipeline import topic
+from ai_trend_pipeline.config import (
+    DEFAULT_BLUESKY_SERVICE,
+    DEFAULT_DRAWN_IMAGES_MODEL,
+    Settings,
+    load_settings,
+)
 from ai_trend_pipeline.sources import SourceName
 from ai_trend_pipeline.story_candidate import DEFAULT_CANDIDATE_REVIEW_TIMEOUT_S
 
@@ -300,3 +306,67 @@ def test_illustration_provider_default_env_and_unknown_value() -> None:
     assert "imagen" in message
     for name in ("off", "illustrated-card", "fake"):
         assert name in message
+
+
+def test_drawn_images_defaults() -> None:
+    s = load_settings({})
+    assert s.drawn_images_enabled is False
+    assert s.drawn_images_model == "claude-sonnet-5-5"
+    assert s.drawn_images_count == 3
+    assert s.drawn_images_daily_cap == 20
+    empty = load_settings(
+        {
+            "DRAWN_IMAGES_ENABLED": "",
+            "DRAWN_IMAGES_MODEL": "",
+            "DRAWN_IMAGES_COUNT": "",
+            "DRAWN_IMAGES_DAILY_CAP": "",
+        }
+    )
+    assert empty == s
+
+
+def test_drawn_images_default_model_matches_topic() -> None:
+    assert DEFAULT_DRAWN_IMAGES_MODEL == topic.DEFAULT_MODEL
+
+
+def test_drawn_images_valid_values() -> None:
+    s = load_settings(
+        {
+            "DRAWN_IMAGES_ENABLED": " Yes ",
+            "DRAWN_IMAGES_MODEL": "claude-x.1_y",
+            "DRAWN_IMAGES_COUNT": "4",
+            "DRAWN_IMAGES_DAILY_CAP": "1000",
+        }
+    )
+    assert s.drawn_images_enabled is True
+    assert s.drawn_images_model == "claude-x.1_y"
+    assert s.drawn_images_count == 4
+    assert s.drawn_images_daily_cap == 1000
+    for raw in ("true", "1", "on", "TRUE"):
+        assert load_settings({"DRAWN_IMAGES_ENABLED": raw}).drawn_images_enabled is True
+    for raw in ("false", "0", "no", "off", " "):
+        assert load_settings({"DRAWN_IMAGES_ENABLED": raw}).drawn_images_enabled is False
+
+
+@pytest.mark.parametrize(
+    "env",
+    [
+        {"DRAWN_IMAGES_COUNT": "0"},
+        {"DRAWN_IMAGES_COUNT": "5"},
+        {"DRAWN_IMAGES_COUNT": "x"},
+        {"DRAWN_IMAGES_DAILY_CAP": "0"},
+        {"DRAWN_IMAGES_DAILY_CAP": "1001"},
+        {"DRAWN_IMAGES_ENABLED": "maybe"},
+        {"DRAWN_IMAGES_MODEL": "bad model"},
+        {"DRAWN_IMAGES_MODEL": "-x"},
+        {"DRAWN_IMAGES_MODEL": "x" * 101},
+    ],
+)
+def test_drawn_images_rejects_bad_values(env: dict[str, str]) -> None:
+    with pytest.raises(ValueError):
+        load_settings(env)
+
+
+def test_drawn_images_enabled_error_names_variable() -> None:
+    with pytest.raises(ValueError, match="DRAWN_IMAGES_ENABLED"):
+        load_settings({"DRAWN_IMAGES_ENABLED": "maybe"})

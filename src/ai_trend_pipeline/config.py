@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, TypeAdapter, field_validator
 
 from ai_trend_pipeline.media.illustration import ILLUSTRATION_PROVIDERS, IllustrationProviderName
+from ai_trend_pipeline.media.models import DEFAULT_DRAWN_IMAGES, MAX_DRAWN_IMAGES
 from ai_trend_pipeline.media.providers import MEDIA_RENDERERS, MediaProviderName
 from ai_trend_pipeline.research import HostName
 from ai_trend_pipeline.sources import SourceName
@@ -27,6 +28,10 @@ DEFAULT_RESEARCH_FETCH_TIMEOUT_S = 10.0
 DEFAULT_RESEARCH_MAX_RESPONSE_BYTES = 524288
 DEFAULT_RESEARCH_MAX_REDIRECTS = 3
 DEFAULT_RESEARCH_USER_AGENT = "ai-trend-pipeline-research/0.1"
+# A literal: `topic.py` imports this module. A test keeps it equal to `topic.DEFAULT_MODEL`.
+DEFAULT_DRAWN_IMAGES_MODEL = "claude-sonnet-5-5"
+DEFAULT_DRAWN_IMAGES_DAILY_CAP = 20
+DRAWN_MODEL_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]*$"
 
 
 class Settings(BaseModel):
@@ -63,6 +68,15 @@ class Settings(BaseModel):
         default=DEFAULT_RESEARCH_USER_AGENT, min_length=1, max_length=200
     )
     research_extra_context_hosts: frozenset[HostName] = frozenset()
+    drawn_images_enabled: bool = False
+    drawn_images_model: str = Field(
+        default=DEFAULT_DRAWN_IMAGES_MODEL,
+        min_length=1,
+        max_length=100,
+        pattern=DRAWN_MODEL_PATTERN,
+    )
+    drawn_images_count: int = Field(default=DEFAULT_DRAWN_IMAGES, ge=1, le=MAX_DRAWN_IMAGES)
+    drawn_images_daily_cap: int = Field(default=DEFAULT_DRAWN_IMAGES_DAILY_CAP, ge=1, le=1000)
 
     @field_validator("source_enabled")
     @classmethod
@@ -143,6 +157,21 @@ def _parse_extra_context_hosts(raw: str | None) -> frozenset[HostName]:
     return TypeAdapter(frozenset[HostName]).validate_python(tokens)
 
 
+_TRUE_VALUES = frozenset({"true", "1", "yes", "on"})
+_FALSE_VALUES = frozenset({"false", "0", "no", "off", ""})
+
+
+def _parse_bool(raw: str | None, name: str) -> bool:
+    token = (raw or "").strip().lower()
+    if token in _TRUE_VALUES:
+        return True
+    if token in _FALSE_VALUES:
+        return False
+    raise ValueError(
+        f"{name} must be one of: true, 1, yes, on, false, 0, no, off (got {token[:20]!r})"
+    )
+
+
 def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
     env = os.environ if environ is None else environ
     api_key = env.get("ANTHROPIC_API_KEY")
@@ -182,5 +211,12 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         research_user_agent=env.get("RESEARCH_USER_AGENT") or DEFAULT_RESEARCH_USER_AGENT,
         research_extra_context_hosts=_parse_extra_context_hosts(
             env.get("RESEARCH_EXTRA_CONTEXT_HOSTS")
+        ),
+        drawn_images_enabled=_parse_bool(env.get("DRAWN_IMAGES_ENABLED"), "DRAWN_IMAGES_ENABLED"),
+        drawn_images_model=(env.get("DRAWN_IMAGES_MODEL") or "").strip()
+        or DEFAULT_DRAWN_IMAGES_MODEL,
+        drawn_images_count=int(env.get("DRAWN_IMAGES_COUNT") or DEFAULT_DRAWN_IMAGES),
+        drawn_images_daily_cap=int(
+            env.get("DRAWN_IMAGES_DAILY_CAP") or DEFAULT_DRAWN_IMAGES_DAILY_CAP
         ),
     )

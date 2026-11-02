@@ -34,6 +34,7 @@ from tests.drafting_fixtures import (
     make_article_draft_evidence,
     make_blocking_finding,
     make_clean_package,
+    make_context,
     make_draft_input,
     make_empty_fact_set,
     make_fact_set,
@@ -320,3 +321,57 @@ def test_available_facts_still_require_citation_for_key_point_numbers() -> None:
     package = make_clean_package(key_points=[_uncited("The figure was 72.5 years.")])
     categories = {finding.category for finding in validate_numeric_fidelity(package, data)}
     assert categories == {CritiqueCategory.NUMERICAL_FIDELITY, CritiqueCategory.MISSING_CITATION}
+
+
+def _article_text_data() -> DraftInput:
+    return make_draft_input(
+        story=make_story(title="Old computer magazines", summary="A retrospective."),
+        facts=make_empty_fact_set(),
+        contexts=[
+            make_context(
+                text="Creative Computing, November 1984, PDF page 202. Fourteen items, 7.5% faster."
+            )
+        ],
+        evidence=[make_article_draft_evidence()],
+    )
+
+
+def test_article_only_prose_and_key_points_may_use_article_text_numbers() -> None:
+    data = _article_text_data()
+    package = make_clean_package(
+        headline="Magazines in 1984",
+        summary="Creative Computing ran this on page 202 in 1984.",
+        body="One item claimed 7.5% faster.",
+        key_points=[_uncited("The scan is on PDF page 202.")],
+        caveats=[],
+        post_text=None,
+    )
+    assert validate_numeric_fidelity(package, data) == []
+
+
+def test_article_only_still_rejects_numbers_absent_from_article_text() -> None:
+    data = _article_text_data()
+    package = make_clean_package(
+        headline="Magazines in 1984",
+        summary="A retrospective.",
+        body="The prediction came true in 1999.",
+        key_points=[_uncited("The scan is on PDF page 999.")],
+        caveats=[],
+        post_text=None,
+    )
+    findings = validate_numeric_fidelity(package, data)
+    assert {finding.location.value for finding in findings if finding.location} == {
+        "body",
+        "key_point",
+    }
+
+
+def test_article_text_numbers_do_not_relax_stories_with_facts() -> None:
+    data = make_draft_input(
+        contexts=[make_context(text="The report said 1984 and page 202.")],
+    )
+    package = make_clean_package(body="The report said 1984 and page 202.")
+    assert any(
+        finding.category is CritiqueCategory.NUMERICAL_FIDELITY
+        for finding in validate_numeric_fidelity(package, data)
+    )

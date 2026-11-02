@@ -101,7 +101,14 @@ def _approved_context_vocabulary(data: DraftInput) -> set[str]:
     for item in data.evidence:
         if item.observation_date is not None:
             years.append(str(item.observation_date.year))
-    return numeric_vocabulary(texts) | set(years)
+    vocabulary = numeric_vocabulary(texts) | set(years)
+    if data.facts.status is FactSetStatus.EMPTY:
+        # Article-only: the fetched article text is the only source, so its numbers are grounded.
+        article_texts = [
+            text for context in data.contexts for text in (context.title, context.text)
+        ]
+        vocabulary |= numeric_vocabulary(text for text in article_texts if text is not None)
+    return vocabulary
 
 
 def _has_url(text: str) -> bool:

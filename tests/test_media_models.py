@@ -185,3 +185,155 @@ def test_artifact_id_changes_with_brief_kind_or_renderer_version() -> None:
     assert base != artifact_id_for(brief, MediaKind.ANIMATED, "fake", "1")
     assert base != artifact_id_for(brief, MediaKind.STATIC, "fake", "2")
     assert base != artifact_id_for(brief, MediaKind.STATIC, "other", "1")
+
+
+# --- 065a: illustration fields -------------------------------------------------------------
+
+ILLUSTRATION_KEYS = {"illustration_artifact", "illustration_status", "selected"}
+PRE_065_PACKAGE_HASH = "108f57c12e08b7f317e357cf8820262f041a21a5ba1734889daa5849a3df9a93"
+PRE_065_GIF_PACKAGE_HASH = "855c28a843fe38403dc57e4b1f242ad0a19481c08ecc8057fee066a1977ef0cf"
+
+
+def _illustration_artifact(**overrides: object) -> MediaArtifact:
+    fields: dict[str, object] = {
+        "artifact_id": "art-v1-" + "c" * 16,
+        "content_hash": "c" * 64,
+        "relative_path": f"{'c' * 64}.png",
+    }
+    fields.update(overrides)
+    return MediaArtifact.model_validate(artifact_payload(MediaKind.STATIC, **fields))
+
+
+def test_pre_065_manifest_dumps_without_the_new_keys() -> None:
+    manifest = make_manifest(MediaOutcome.GIF)
+    assert ILLUSTRATION_KEYS.isdisjoint(manifest.model_dump(mode="json"))
+    assert ILLUSTRATION_KEYS.isdisjoint(manifest.model_dump())
+    assert "illustration" not in manifest.model_dump_json()
+    assert MediaManifest.model_validate_json(manifest.model_dump_json()) == manifest
+
+
+def test_pinned_pre_065_package_hashes_are_unchanged() -> None:
+    from ai_trend_pipeline.media.briefs import story_package_hash
+    from tests.story_generation_fixtures import make_package
+
+    assert story_package_hash(make_package("story-1")) == PRE_065_PACKAGE_HASH
+    with_media = make_package("story-1", media=make_manifest(MediaOutcome.GIF))
+    assert story_package_hash(with_media) == PRE_065_GIF_PACKAGE_HASH
+
+
+def test_manifest_with_illustration_round_trips_and_is_served_by_artifact() -> None:
+    from ai_trend_pipeline.media.models import IllustrationStatus
+
+    illustration = _illustration_artifact()
+    manifest = make_manifest(
+        MediaOutcome.GIF,
+        illustration_artifact=illustration,
+        illustration_status=IllustrationStatus.MATCHED,
+    )
+    dumped = manifest.model_dump(mode="json")
+    assert dumped["illustration_status"] == "matched"
+    assert "selected" not in dumped
+    assert MediaManifest.model_validate_json(manifest.model_dump_json()) == manifest
+    assert manifest.artifact(illustration.artifact_id) == illustration
+
+
+def test_illustration_status_without_artifact_is_allowed_only_for_failed_and_disabled() -> None:
+    from ai_trend_pipeline.media.models import IllustrationStatus
+
+    for status in (IllustrationStatus.FAILED, IllustrationStatus.DISABLED):
+        manifest = make_manifest(MediaOutcome.STATIC, illustration_status=status)
+        assert manifest.illustration_artifact is None
+    for status in (IllustrationStatus.MATCHED, IllustrationStatus.GENERIC):
+        with pytest.raises(ValidationError):
+            make_manifest(MediaOutcome.STATIC, illustration_status=status)
+
+
+def test_illustration_artifact_needs_matched_or_generic_status() -> None:
+    from ai_trend_pipeline.media.models import IllustrationStatus
+
+    for status in (None, IllustrationStatus.FAILED, IllustrationStatus.DISABLED):
+        with pytest.raises(ValidationError):
+            make_manifest(
+                MediaOutcome.STATIC,
+                illustration_artifact=_illustration_artifact(),
+                illustration_status=status,
+            )
+
+
+def test_illustration_artifact_needs_a_card_and_must_be_static_with_a_distinct_id() -> None:
+    from ai_trend_pipeline.media.models import IllustrationStatus
+
+    good = {"illustration_status": IllustrationStatus.GENERIC}
+    with pytest.raises(ValidationError):
+        make_manifest(
+            MediaOutcome.TEXT_ONLY, illustration_artifact=_illustration_artifact(), **good
+        )
+    with pytest.raises(ValidationError):
+        make_manifest(
+            MediaOutcome.STATIC,
+            illustration_artifact=make_artifact(MediaKind.ANIMATED),
+            **good,
+        )
+    card = make_artifact(MediaKind.STATIC)
+    clash = _illustration_artifact(artifact_id=card.artifact_id)
+    with pytest.raises(ValidationError):
+        make_manifest(MediaOutcome.STATIC, illustration_artifact=clash, **good)
+
+
+def test_selected_illustration_needs_an_artifact() -> None:
+    from ai_trend_pipeline.media.models import IllustrationStatus, MediaSelection
+
+    with pytest.raises(ValidationError):
+        make_manifest(MediaOutcome.STATIC, selected=MediaSelection.ILLUSTRATION)
+    manifest = make_manifest(MediaOutcome.STATIC, selected=MediaSelection.CARD)
+    assert manifest.model_dump(mode="json")["selected"] == "card"
+    ok = make_manifest(
+        MediaOutcome.STATIC,
+        illustration_artifact=_illustration_artifact(),
+        illustration_status=IllustrationStatus.MATCHED,
+        selected=MediaSelection.ILLUSTRATION,
+    )
+    assert ok.selected is MediaSelection.ILLUSTRATION
+
+
+def test_illustration_artifact_ids_depend_on_input_renderer_and_version() -> None:
+    from ai_trend_pipeline.media.models import IllustrateInput, illustration_artifact_id_for
+
+    data = IllustrateInput(
+        story_id="story-1", story_content_hash=HASH_A, headline="Headline", summary="Summary"
+    )
+    other = data.model_copy(update={"headline": "Other"})
+    first = illustration_artifact_id_for(data, "illustrated-card", "1-abc")
+    assert first.startswith("art-v1-") and len(first) == len("art-v1-") + 16
+    assert first == illustration_artifact_id_for(data, "illustrated-card", "1-abc")
+    assert first != illustration_artifact_id_for(other, "illustrated-card", "1-abc")
+    assert first != illustration_artifact_id_for(data, "illustrated-card", "1-abd")
+    assert first != illustration_artifact_id_for(data, "fake", "1-abc")
+    card_id = artifact_id_for(make_brief(), MediaKind.STATIC, "illustrated-card", "1-abc")
+    assert first != card_id
+
+
+def test_illustrate_input_bounds_summary_and_hash() -> None:
+    from ai_trend_pipeline.media.models import IllustrateInput
+
+    with pytest.raises(ValidationError):
+        IllustrateInput(story_id="s", story_content_hash="x", headline="H", summary="S")
+    with pytest.raises(ValidationError):
+        IllustrateInput(story_id="s", story_content_hash=HASH_A, headline="H", summary="x" * 601)
+    with pytest.raises(ValidationError):
+        IllustrateInput.model_validate(
+            {"story_id": "s", "story_content_hash": HASH_A, "headline": "H", "summary": "", "x": 1}
+        )
+
+
+def test_illustration_result_artifact_only_for_matched_or_generic() -> None:
+    from ai_trend_pipeline.media.models import IllustrationResult, IllustrationStatus
+
+    artifact = _illustration_artifact()
+    assert IllustrationResult(status=IllustrationStatus.MATCHED, artifact=artifact)
+    for status in (IllustrationStatus.FAILED, IllustrationStatus.DISABLED):
+        assert IllustrationResult(status=status).artifact is None
+        with pytest.raises(ValidationError):
+            IllustrationResult(status=status, artifact=artifact)
+    with pytest.raises(ValidationError):
+        IllustrationResult(status=IllustrationStatus.GENERIC)

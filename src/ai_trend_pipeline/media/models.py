@@ -14,8 +14,10 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    SerializerFunctionWrapHandler,
     StringConstraints,
     field_validator,
+    model_serializer,
     model_validator,
 )
 
@@ -36,6 +38,7 @@ MAX_ANIMATION_BEATS = 4
 MAX_HIGHLIGHT_FACT_IDS = 4
 MAX_MANIFEST_JSON_BYTES = 8_192
 MAX_MEDIA_STORY_ID_CHARS = 64
+MAX_ILLUSTRATE_SUMMARY_CHARS = 600
 
 ARTIFACT_ID_PATTERN = r"^art-v1-[0-9a-f]{16}$"
 SHA256_PATTERN = r"^[0-9a-f]{64}$"
@@ -93,6 +96,22 @@ class MediaOutcome(StrEnum):
     STATIC = "static"
     STATIC_FALLBACK = "static_fallback"
     TEXT_ONLY = "text_only"
+
+
+class IllustrationStatus(StrEnum):
+    MATCHED = "matched"
+    GENERIC = "generic"
+    FAILED = "failed"
+    DISABLED = "disabled"
+
+
+class MediaSelection(StrEnum):
+    ILLUSTRATION = "illustration"
+    CARD = "card"
+
+
+ILLUSTRATED_STATUSES = frozenset({IllustrationStatus.MATCHED, IllustrationStatus.GENERIC})
+_OPTIONAL_MANIFEST_KEYS = ("illustration_artifact", "illustration_status", "selected")
 
 
 def canonical_json(obj: object) -> bytes:
@@ -226,9 +245,39 @@ class MediaManifest(BaseModel):
     outcome: MediaOutcome
     static_artifact: MediaArtifact | None = None
     animated_artifact: MediaArtifact | None = None
+    illustration_artifact: MediaArtifact | None = None
+    illustration_status: IllustrationStatus | None = None
+    selected: MediaSelection | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_empty_illustration_fields(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, object]:
+        """Drop the 065 keys when `None`, so pre-065 hashes and payloads stay byte-identical."""
+        data: dict[str, object] = handler(self)
+        for key in _OPTIONAL_MANIFEST_KEYS:
+            if data.get(key) is None:
+                data.pop(key, None)
+        return data
+
+    def _check_illustration(self) -> None:
+        artifact, status = self.illustration_artifact, self.illustration_status
+        if artifact is not None:
+            if artifact.kind is not MediaKind.STATIC:
+                raise ValueError("illustration_artifact must be a static artifact")
+            if self.static_artifact is None:
+                raise ValueError("an illustration needs the story card to exist")
+            others = (self.static_artifact, self.animated_artifact)
+            if any(o is not None and o.artifact_id == artifact.artifact_id for o in others):
+                raise ValueError("artifact ids must be distinct")
+        if (status in ILLUSTRATED_STATUSES) != (artifact is not None):
+            raise ValueError("illustration_status matched or generic needs an artifact, and back")
+        if self.selected is MediaSelection.ILLUSTRATION and artifact is None:
+            raise ValueError("selected illustration needs an illustration_artifact")
 
     @model_validator(mode="after")
     def _check_manifest(self) -> "MediaManifest":
+        self._check_illustration()
         static, animated = self.static_artifact, self.animated_artifact
         if static is not None and static.kind is not MediaKind.STATIC:
             raise ValueError("static_artifact must be a static artifact")
@@ -249,7 +298,12 @@ class MediaManifest(BaseModel):
         return self
 
     def artifact(self, artifact_id: str) -> MediaArtifact | None:
-        for candidate in (self.static_artifact, self.animated_artifact):
+        slots = (
+            self.static_artifact,
+            self.animated_artifact,
+            self.illustration_artifact,
+        )
+        for candidate in slots:
             if candidate is not None and candidate.artifact_id == artifact_id:
                 return candidate
         return None
@@ -272,6 +326,39 @@ def artifact_id_for(
     payload = {
         "brief": brief.model_dump(mode="json"),
         "kind": kind.value,
+        "renderer": renderer_name,
+        "version": renderer_version,
+    }
+    return "art-v1-" + sha256_hex(canonical_json(payload))[:16]
+
+
+class IllustrateInput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    story_id: str = Field(min_length=1, max_length=MAX_MEDIA_STORY_ID_CHARS)
+    story_content_hash: str = Field(pattern=SHA256_PATTERN)
+    headline: str = Field(min_length=1, max_length=MAX_HEADLINE_CHARS)
+    summary: str = Field(max_length=MAX_ILLUSTRATE_SUMMARY_CHARS)  # matching only, never drawn
+
+
+class IllustrationResult(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    status: IllustrationStatus
+    artifact: MediaArtifact | None = None
+
+    @model_validator(mode="after")
+    def _check_result(self) -> "IllustrationResult":
+        if (self.status in ILLUSTRATED_STATUSES) != (self.artifact is not None):
+            raise ValueError("an artifact is set only for matched or generic")
+        return self
+
+
+def illustration_artifact_id_for(
+    data: IllustrateInput, renderer_name: str, renderer_version: str
+) -> str:
+    payload = {
+        "illustration": data.model_dump(mode="json"),
         "renderer": renderer_name,
         "version": renderer_version,
     }

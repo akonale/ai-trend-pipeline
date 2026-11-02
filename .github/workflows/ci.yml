@@ -21,7 +21,6 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-          python-version-file: .python-version
       - uses: extractions/setup-just@v2
       - run: uv sync --locked
       - run: just lint

@@ -162,8 +162,21 @@ Prod mounts the `media` volume at `/data/media` in worker and web. After a story
 exact story card (a short GIF with a still poster for reduced motion), its alt text and any fallback.
 Approval covers the text and the card together. `MEDIA_PROVIDER` (default `story-card`; `fake` for
 tests) picks the renderer.
-`GET /stories/{id}/media/{artifact_id}` serves an artifact only when that story's manifest lists
+`ILLUSTRATION_PROVIDER` (default `illustrated-card`; `off` or `fake`) controls the extra illustrated
+card still described below. `GET /stories/{id}/media/{artifact_id}` serves an artifact only when that story's manifest lists
 it. The directory is git-ignored (`/media/`).
+
+**Illustrated card (task 065a).** Besides the story card, the media step makes a second still: the
+headline, a drawing picked by keyword rules (a vendored CC0 Open Doodles drawing for education and
+health, or a project-original flat glyph for the other twelve topics), and a background seeded from
+the story's content hash. It renders offline in about 0.4 s per story (CPU only), with no API, key
+or cost, and costs nothing when off. Stories that match none of the 14 topics, or only weakly,
+get the same background with an abstract burst and no figure. The project-original glyphs are
+authored for this repo; the owner's CC0 dedication is stated in `LICENSES.md`. The
+picture is stored in the manifest (`illustration_artifact`) but nothing selects or posts it yet
+(`selected` stays empty), so publishing still uses the story card. Set `ILLUSTRATION_PROVIDER=off`
+in `.env.prod` and run `just deploy` to switch it off. Contact sheet of samples:
+`docs/media/illustrated-card-samples.png`. Licences: `src/ai_trend_pipeline/media/illustrations/LICENSES.md`.
 
 ## Hacker News
 
@@ -296,8 +309,8 @@ text, with its character count, so a text that is too long is caught before appr
 
 Bluesky settings are worker-only: `BLUESKY_HANDLE`, `BLUESKY_APP_PASSWORD` (an app password, never
 the account password) and `BLUESKY_SERVICE` (default `https://bsky.social`). Media settings are
-`MEDIA_DIR` (the shared `media` volume in worker and web) and `MEDIA_PROVIDER` (`story-card`, or
-`fake` for tests). Bluesky has no animation here, so a GIF story is published as its still card.
+`MEDIA_DIR` (the shared `media` volume in worker and web), `MEDIA_PROVIDER` (`story-card`, or
+`fake` for tests) and `ILLUSTRATION_PROVIDER` (`illustrated-card`, `off` or `fake`). Bluesky has no animation here, so a GIF story is published as its still card.
 The 48-hour retention also applies to published stories: they leave the UI 48 hours after the
 original detection, and no history is deleted.
 

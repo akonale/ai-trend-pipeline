@@ -8,7 +8,7 @@ from urllib.parse import quote, urlencode, urlsplit
 from pydantic import BaseModel, Field, ValidationError
 
 from ai_trend_pipeline.daily_chart import APPROVAL_TIMEOUT, ReviewState
-from ai_trend_pipeline.media.models import MediaManifest, MediaOutcome
+from ai_trend_pipeline.media.models import IllustrationStatus, MediaManifest, MediaOutcome
 from ai_trend_pipeline.post_options import (
     CHART_TYPES,
     MAX_COUNTRIES,
@@ -1851,6 +1851,7 @@ def story_publish_notice(token: str) -> str:
 
 MOTION_OK_MEDIA = "(prefers-reduced-motion: no-preference)"
 ALT_LABEL = "Alt text:"
+ILLUSTRATION_FAILED_NOTE = "The illustrated card could not be made, so the story card is used."
 STILL_KIND_TEXT = "Still card."
 STILL_FALLBACK_KIND_TEXT = (
     "Still card. The animation could not be made, so this still card is used."
@@ -1878,6 +1879,7 @@ class StoryMediaView(BaseModel):
     alt_text: str
     kind_text: str
     motion_note: str = ""
+    illustration_note: str = ""
     alt_label: str = ALT_LABEL
     motion_media: Literal["(prefers-reduced-motion: no-preference)"] = MOTION_OK_MEDIA
 
@@ -1899,4 +1901,9 @@ def build_story_media_view(detail_id: str, manifest: MediaManifest | None) -> St
         alt_text=poster.alt_text,
         kind_text=kind_text,
         motion_note=motion_note,
+        illustration_note=(
+            ILLUSTRATION_FAILED_NOTE
+            if manifest.illustration_status is IllustrationStatus.FAILED
+            else ""
+        ),
     )

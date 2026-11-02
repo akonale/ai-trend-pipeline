@@ -53,6 +53,23 @@ The worker is the only process that talks to Bluesky. The web app never sees the
   only). Never use `fake` in prod.
 - Bluesky has no animation here, so a GIF story publishes its still card. A text-only story
   publishes text with the source link and no image.
+- `ILLUSTRATION_PROVIDER` (worker only) is `illustrated-card` (default), `off` or `fake` (tests
+  only). It makes a second, free, offline still per story (the illustrated card). Until the picker
+  ships (065b) nothing selects it, so publishing is unchanged and still posts the story card.
+  **To switch it off:** set `ILLUSTRATION_PROVIDER=off` in `.env.prod` and run `just deploy`. New
+  stories then get the card only; stories already reviewed keep their stored manifest. A code
+  rollback is safe: the new manifest fields are optional and dropped when empty.
+- Illustration coverage: every one of the 14 topics has a picture. Education and health use Open
+  Doodles drawings; the other twelve (ai, security, chips, code, internet, energy, electric-cars,
+  climate, economy, space, science, food) use project-original glyphs. Weak matches get the
+  generic scene (pattern plus abstract burst, no figure). Openclipart is a deferred source.
+  `docs/media/illustration-assets.png` shows every asset.
+- **Adding or replacing a drawing:** (1) verify the licence on the official site and download from
+  it; (2) normalise and crop with `uv run python -m tests.vendor_illustrations RAW.svg OUT.svg`; (3) add the
+  `catalogue.json` entry (SHA-256 of the committed file) and the `LICENSES.md` line; (4) the topic
+  tags come from the matching table in `media/illustrations/matching.py`; (5) regenerate the
+  goldens and sheets with `uv run python -m tests.regen_illustration_goldens --contact-sheet --asset-sheet`.
+  A changed catalogue changes illustration artifact IDs for new renders only.
 - The publish step re-checks the hash of the approved image file. If the file is missing or changed
   it fails with `PublicationMediaMissing` or `ArtifactHashMismatch` before anything is posted.
 

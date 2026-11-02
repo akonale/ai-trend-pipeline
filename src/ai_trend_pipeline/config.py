@@ -6,6 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, TypeAdapter, field_validator
 
+from ai_trend_pipeline.media.illustration import ILLUSTRATION_PROVIDERS, IllustrationProviderName
 from ai_trend_pipeline.media.providers import MEDIA_RENDERERS, MediaProviderName
 from ai_trend_pipeline.research import HostName
 from ai_trend_pipeline.sources import SourceName
@@ -37,6 +38,7 @@ class Settings(BaseModel):
     chart_output_dir: str | None = None
     media_dir: str = Field(default=DEFAULT_MEDIA_DIR, min_length=1)
     media_provider: MediaProviderName = MediaProviderName.STORY_CARD
+    illustration_provider: IllustrationProviderName = IllustrationProviderName.ILLUSTRATED_CARD
     anthropic_api_key: SecretStr | None = None
     bluesky_handle: str | None = None
     bluesky_app_password: SecretStr | None = None
@@ -119,6 +121,21 @@ def _parse_media_provider(raw: str | None) -> MediaProviderName:
         ) from None
 
 
+def _parse_illustration_provider(raw: str | None) -> IllustrationProviderName:
+    token = (raw or "").strip().lower()
+    if not token:
+        return IllustrationProviderName.ILLUSTRATED_CARD
+    try:
+        return IllustrationProviderName(token)
+    except ValueError:
+        names = ", ".join(
+            [IllustrationProviderName.OFF.value, *(name.value for name in ILLUSTRATION_PROVIDERS)]
+        )
+        raise ValueError(
+            f"Unknown illustration provider {token!r}. Valid values: {names}"
+        ) from None
+
+
 def _parse_extra_context_hosts(raw: str | None) -> frozenset[HostName]:
     if raw is None or not raw.strip() or raw.strip().lower() == "none":
         return frozenset()
@@ -137,6 +154,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         chart_output_dir=env.get("CHART_OUTPUT_DIR") or None,
         media_dir=(env.get("MEDIA_DIR") or "").strip() or DEFAULT_MEDIA_DIR,
         media_provider=_parse_media_provider(env.get("MEDIA_PROVIDER")),
+        illustration_provider=_parse_illustration_provider(env.get("ILLUSTRATION_PROVIDER")),
         anthropic_api_key=SecretStr(api_key) if api_key else None,
         bluesky_handle=env.get("BLUESKY_HANDLE") or None,
         bluesky_app_password=SecretStr(password) if password else None,

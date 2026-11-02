@@ -139,7 +139,7 @@ def _coverage() -> frozenset[int]:
     return supported_codepoints(HEADLINE_FONT_PATH) & supported_codepoints(BODY_FONT_PATH)
 
 
-def _clean(text: str) -> str:
+def clean_text(text: str) -> str:
     """NFC, drop uncovered symbols/format/combining characters, collapse spaces."""
     covered = _coverage()
     kept = [
@@ -150,7 +150,7 @@ def _clean(text: str) -> str:
     return " ".join("".join(kept).split())
 
 
-def _supported(text: str) -> bool:
+def is_supported(text: str) -> bool:
     covered = _coverage()
     return all(char == " " or ord(char) in covered for char in text)
 
@@ -159,8 +159,8 @@ def _optional_text(text: str | None) -> str | None:
     """Optional elements are left out when empty or when any letter cannot be drawn."""
     if text is None:
         return None
-    cleaned = _clean(text)
-    return cleaned if cleaned and _supported(cleaned) else None
+    cleaned = clean_text(text)
+    return cleaned if cleaned and is_supported(cleaned) else None
 
 
 def _break_word(word: str, font: ImageFont.FreeTypeFont, width: int) -> list[str]:
@@ -177,7 +177,7 @@ def _break_word(word: str, font: ImageFont.FreeTypeFont, width: int) -> list[str
     return parts
 
 
-def _wrap(text: str, font: ImageFont.FreeTypeFont, width: int) -> list[str]:
+def wrap_text(text: str, font: ImageFont.FreeTypeFont, width: int) -> list[str]:
     lines: list[str] = []
     current = ""
     for word in text.split():
@@ -199,7 +199,7 @@ def _wrap(text: str, font: ImageFont.FreeTypeFont, width: int) -> list[str]:
     return lines
 
 
-def _ellipsise(text: str, font: ImageFont.FreeTypeFont, width: int) -> str:
+def ellipsise(text: str, font: ImageFont.FreeTypeFont, width: int) -> str:
     """Trim words, then characters, until `text…` fits `width`."""
     words = text.split()
     while words:
@@ -218,7 +218,9 @@ def _ellipsise(text: str, font: ImageFont.FreeTypeFont, width: int) -> str:
     return ELLIPSIS
 
 
-def _line(text: str, x: int, y: int, font: ImageFont.FreeTypeFont, right_limit: int) -> TextLine:
+def place_line(
+    text: str, x: int, y: int, font: ImageFont.FreeTypeFont, right_limit: int
+) -> TextLine:
     """Place a line at (x, y); nudge it so the ink stays between `x` and `right_limit`."""
     left, top, right, bottom = _SCRATCH.textbbox((x, y), text, font=font, anchor="la")
     shift = 0
@@ -247,7 +249,8 @@ def _block(
         size,
         line_height,
         tuple(
-            _line(text, x, top + i * line_height, font, right_limit) for i, text in enumerate(lines)
+            place_line(text, x, top + i * line_height, font, right_limit)
+            for i, text in enumerate(lines)
         ),
     )
 
@@ -278,10 +281,10 @@ def _panel_box(width: int, height: int) -> Box:
 
 def layout_story_card(brief: MediaBrief, theme: CardTheme, width: int, height: int) -> CardLayout:
     """Place all text and bands. Pure: no drawing. Raises `MediaContentUnsupported`."""
-    headline_text = _clean(brief.headline)
+    headline_text = clean_text(brief.headline)
     if not headline_text:
         raise MediaContentUnsupported("headline has nothing the card fonts can draw")
-    if not _supported(headline_text):
+    if not is_supported(headline_text):
         raise MediaContentUnsupported("headline has characters the card fonts cannot draw")
     body_text = _optional_text(brief.highlight)
     source_text = _optional_text(brief.source_label)
@@ -301,15 +304,15 @@ def layout_story_card(brief: MediaBrief, theme: CardTheme, width: int, height: i
     footer_top = content.bottom - (rule + rule_gap + sum(foot_font.getmetrics()))
     foot_y = footer_top + rule + rule_gap
     mark_w = round(mark_font.getlength(WORDMARK))
-    wordmark = _line(WORDMARK, content.right - mark_w, foot_y, mark_font, content.right)
+    wordmark = place_line(WORDMARK, content.right - mark_w, foot_y, mark_font, content.right)
     source: TextLine | None = None
     if source_text is not None:
         room = content_w - mark_w - _px(24, s)
         label = f"Source: {source_text}"
         if foot_font.getlength(label) > room:
-            label = _ellipsise(label, foot_font, room)
+            label = ellipsise(label, foot_font, room)
         if label != ELLIPSIS and foot_font.getlength(label) <= room:
-            source = _line(label, content.left, foot_y, foot_font, content.right)
+            source = place_line(label, content.left, foot_y, foot_font, content.right)
 
     # Fit headline and body sizes.
     gap = _px(28, s)
@@ -329,7 +332,7 @@ def layout_story_card(brief: MediaBrief, theme: CardTheme, width: int, height: i
 
     chosen: tuple[int, list[str], int | None, list[str]] | None = None
     for hs in head_sizes:
-        h_lines = _wrap(headline_text, load_font(HEADLINE_FONT_PATH, hs), content_w)
+        h_lines = wrap_text(headline_text, load_font(HEADLINE_FONT_PATH, hs), content_w)
         if len(h_lines) > MAX_HEADLINE_LINES:
             continue
         h_height = len(h_lines) * head_lh(hs)
@@ -339,7 +342,7 @@ def layout_story_card(brief: MediaBrief, theme: CardTheme, width: int, height: i
                 break
             continue
         for bs in body_sizes:
-            b_lines = _wrap(body_text, load_font(BODY_FONT_PATH, bs), body_w)
+            b_lines = wrap_text(body_text, load_font(BODY_FONT_PATH, bs), body_w)
             if len(b_lines) > MAX_BODY_LINES:
                 continue
             if h_height + gap + len(b_lines) * body_lh(bs) <= available:
@@ -353,21 +356,21 @@ def layout_story_card(brief: MediaBrief, theme: CardTheme, width: int, height: i
         truncated = True
         hs = head_sizes[-1]
         h_font = load_font(HEADLINE_FONT_PATH, hs)
-        h_lines = _wrap(headline_text, h_font, content_w)
+        h_lines = wrap_text(headline_text, h_font, content_w)
         if len(h_lines) > MAX_HEADLINE_LINES:
             h_lines = h_lines[:MAX_HEADLINE_LINES]
-            h_lines[-1] = _ellipsise(h_lines[-1], h_font, content_w)
+            h_lines[-1] = ellipsise(h_lines[-1], h_font, content_w)
         bs = body_sizes[-1]
         b_lines: list[str] = []
         if body_text is not None:
             b_font = load_font(BODY_FONT_PATH, bs)
-            b_lines = _wrap(body_text, b_font, body_w)
+            b_lines = wrap_text(body_text, b_font, body_w)
             room_h = available - len(h_lines) * head_lh(hs) - gap
             keep = min(MAX_BODY_LINES, max(0, room_h // body_lh(bs)))
             if keep < len(b_lines):
                 b_lines = b_lines[:keep]
                 if b_lines:
-                    b_lines[-1] = _ellipsise(b_lines[-1], b_font, body_w)
+                    b_lines[-1] = ellipsise(b_lines[-1], b_font, body_w)
         chosen = (hs, h_lines, bs if b_lines else None, b_lines)
 
     hs, h_lines, bs, b_lines = chosen

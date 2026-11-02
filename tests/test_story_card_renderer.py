@@ -129,7 +129,7 @@ def test_registry_returns_story_card_renderer() -> None:
     assert renderer.name == "story-card"
 
 
-def test_illustration_registry_is_empty_and_unused() -> None:
-    assert dict(ILLUSTRATION_PROVIDERS) == {}
+def test_card_renderer_stays_separate_from_the_illustration_providers() -> None:
+    assert {name.value for name in ILLUSTRATION_PROVIDERS} == {"illustrated-card", "fake"}
     source = Path(card.__file__).read_text()
     assert "illustration" not in source

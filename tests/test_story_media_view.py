@@ -1,6 +1,6 @@
 """Reduced-motion media view: poster for everyone, GIF only when motion is fine."""
 
-from ai_trend_pipeline.media.models import MediaOutcome
+from ai_trend_pipeline.media.models import IllustrationStatus, MediaOutcome
 from ai_trend_pipeline.web.view_models import build_story_media_view
 from tests.media_fixtures import make_manifest
 
@@ -52,3 +52,19 @@ def test_kind_text_and_motion_note_per_outcome() -> None:
         "Still card. The animation could not be made, so this still card is used."
     )
     assert fallback.motion_note == ""
+
+
+def test_failed_illustration_adds_the_fixed_note_and_keeps_the_card() -> None:
+    failed = make_manifest(MediaOutcome.GIF, illustration_status=IllustrationStatus.FAILED)
+    view = build_story_media_view("story-1", failed)
+    assert view is not None and view.animated_src is not None
+    assert view.illustration_note == (
+        "The illustrated card could not be made, so the story card is used."
+    )
+
+
+def test_disabled_missing_and_old_manifests_have_no_note() -> None:
+    for status in (None, IllustrationStatus.DISABLED):
+        manifest = make_manifest(MediaOutcome.GIF, illustration_status=status)
+        view = build_story_media_view("story-1", manifest)
+        assert view is not None and view.illustration_note == ""

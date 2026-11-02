@@ -196,3 +196,9 @@ def test_web_database_url_and_dependencies() -> None:
     assert deps["postgres"]["condition"] == "service_healthy"
     assert "temporal" in deps
     assert "DATABASE_URL" not in _env(services["worker"])
+
+
+def test_worker_passes_the_illustration_kill_switch_with_a_safe_default() -> None:
+    env = _env(_load()["worker"])
+    assert env["ILLUSTRATION_PROVIDER"] == "${ILLUSTRATION_PROVIDER:-illustrated-card}"
+    assert "ILLUSTRATION_PROVIDER" not in _env(_load()["web"])

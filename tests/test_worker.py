@@ -125,6 +125,7 @@ def test_media_worker_registers_workflow_activities_and_concurrency() -> None:
     assert MEDIA_WORKER_MAX_CONCURRENT_ACTIVITIES == 2
     activities = media_activities(Settings(media_provider=MediaProviderName.FAKE))
     assert sorted(activity.__name__ for activity in activities) == [
+        "illustrate_story",
         "render_animated_media",
         "render_static_media",
     ]
@@ -158,3 +159,16 @@ def test_publishing_worker_registers_workflow_and_story_activity() -> None:
     assert "max_concurrent_activities=PUBLISHING_WORKER_MAX_CONCURRENT_ACTIVITIES" in block
     assert "publishing_worker.run()" in text
     assert "publish_story_to_bluesky" not in inspect.getsource(daily_chart_activities)
+
+
+def test_illustration_kill_switch_builds_no_provider() -> None:
+    from ai_trend_pipeline.media.fake import FakeIllustrationProvider
+    from ai_trend_pipeline.media.illustration import IllustrationProviderName
+    from ai_trend_pipeline.media.illustrations.renderer import IllustratedCardProvider
+    from ai_trend_pipeline.worker import illustration_provider
+
+    off = Settings(illustration_provider=IllustrationProviderName.OFF)
+    assert illustration_provider(off) is None
+    assert isinstance(illustration_provider(Settings()), IllustratedCardProvider)
+    fake = Settings(illustration_provider=IllustrationProviderName.FAKE)
+    assert isinstance(illustration_provider(fake), FakeIllustrationProvider)

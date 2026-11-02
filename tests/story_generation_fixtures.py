@@ -16,6 +16,7 @@ from temporalio.worker import Worker
 from ai_trend_pipeline.analysis.models import FactSet
 from ai_trend_pipeline.media.activities import StoryMediaActivities
 from ai_trend_pipeline.media.fake import FakeMediaRenderer
+from ai_trend_pipeline.media.illustration_activities import IllustrationActivities
 from ai_trend_pipeline.media.providers import MediaRenderer
 from ai_trend_pipeline.research.models import (
     ResearchFailure,
@@ -139,7 +140,11 @@ def make_media_worker(
         env.client,
         task_queue=STORY_MEDIA_TASK_QUEUE,
         workflows=[StoryMediaWorkflow],
-        activities=[acts.render_static_media, acts.render_animated_media],
+        activities=[
+            acts.render_static_media,
+            acts.render_animated_media,
+            IllustrationActivities(media_dir, None).illustrate_story,
+        ],
     )
 
 

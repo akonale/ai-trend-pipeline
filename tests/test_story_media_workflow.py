@@ -17,8 +17,16 @@ from ai_trend_pipeline.media.briefs import (
     media_workflow_id_for,
 )
 from ai_trend_pipeline.media.card import StoryCardRenderer
-from ai_trend_pipeline.media.fake import FakeMediaRenderer
-from ai_trend_pipeline.media.models import MediaBrief, MediaKind, MediaManifest, MediaOutcome
+from ai_trend_pipeline.media.fake import FakeIllustrationProvider, FakeMediaRenderer
+from ai_trend_pipeline.media.illustration import IllustrationProvider
+from ai_trend_pipeline.media.illustration_activities import IllustrationActivities
+from ai_trend_pipeline.media.models import (
+    IllustrationStatus,
+    MediaBrief,
+    MediaKind,
+    MediaManifest,
+    MediaOutcome,
+)
 from ai_trend_pipeline.media.providers import MediaRenderer, MediaRenderError, RenderedMedia
 from ai_trend_pipeline.story_media import (
     ANIMATED_RENDER_RETRY_POLICY,
@@ -55,6 +63,7 @@ async def _run(
     renderer: MediaRenderer,
     *,
     include_animation: bool = True,
+    illustration: IllustrationProvider | None = None,
 ) -> tuple[StoryMediaResult, WorkflowHandle[StoryMediaWorkflow, StoryMediaResult]]:
     package = make_package(STORY)
     data = StoryMediaInput(
@@ -64,6 +73,7 @@ async def _run(
         include_animation=include_animation,
     )
     acts = StoryMediaActivities(tmp_path, renderer)
+    illustrate = IllustrationActivities(tmp_path, illustration)
     async with await WorkflowEnvironment.start_time_skipping(
         data_converter=pydantic_data_converter
     ) as env:
@@ -71,7 +81,11 @@ async def _run(
             env.client,
             task_queue=STORY_MEDIA_TASK_QUEUE,
             workflows=[StoryMediaWorkflow],
-            activities=[acts.render_static_media, acts.render_animated_media],
+            activities=[
+                acts.render_static_media,
+                acts.render_animated_media,
+                illustrate.illustrate_story,
+            ],
         ):
             handle = await env.client.start_workflow(
                 StoryMediaWorkflow.run,
@@ -224,3 +238,144 @@ async def test_animated_activity_uses_dedicated_timeout_and_retry_policy(tmp_pat
     assert animated["startToCloseTimeout"] == "45s"
     assert animated["retryPolicy"]["maximumAttempts"] == 2
     assert static["retryPolicy"]["maximumAttempts"] == 3
+
+
+# --- 065a: the illustrated card --------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_matched_illustration_is_added_beside_the_gif(tmp_path: Path) -> None:
+    provider = FakeIllustrationProvider()
+    result, _ = await _run(tmp_path, CountingRenderer(), illustration=provider)
+    manifest = result.manifest
+    assert manifest.outcome is MediaOutcome.GIF
+    assert manifest.illustration_status is IllustrationStatus.MATCHED
+    assert manifest.illustration_artifact is not None
+    assert manifest.selected is None
+    assert len(list(tmp_path.iterdir())) == 3
+    assert provider.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_generic_illustration_is_recorded(tmp_path: Path) -> None:
+    result, _ = await _run(
+        tmp_path, CountingRenderer(), illustration=FakeIllustrationProvider(generic=True)
+    )
+    assert result.manifest.illustration_status is IllustrationStatus.GENERIC
+    assert result.manifest.illustration_artifact is not None
+
+
+@pytest.mark.asyncio
+async def test_static_outcome_without_animation_still_gets_an_illustration(
+    tmp_path: Path,
+) -> None:
+    result, _ = await _run(
+        tmp_path,
+        CountingRenderer(),
+        include_animation=False,
+        illustration=FakeIllustrationProvider(),
+    )
+    assert result.manifest.outcome is MediaOutcome.STATIC
+    assert result.manifest.illustration_artifact is not None
+
+
+@pytest.mark.asyncio
+async def test_disabled_provider_records_disabled_and_stores_nothing(tmp_path: Path) -> None:
+    result, _ = await _run(tmp_path, CountingRenderer())
+    assert result.manifest.illustration_status is IllustrationStatus.DISABLED
+    assert result.manifest.illustration_artifact is None
+    assert len(list(tmp_path.iterdir())) == 2
+
+
+@pytest.mark.asyncio
+async def test_failed_illustration_after_two_attempts_leaves_the_card_outcome(
+    tmp_path: Path,
+) -> None:
+    provider = FakeIllustrationProvider(fail_times=10)
+    result, _ = await _run(tmp_path, CountingRenderer(), illustration=provider)
+    manifest = result.manifest
+    assert manifest.outcome is MediaOutcome.GIF
+    assert manifest.animated_artifact is not None
+    assert manifest.illustration_status is IllustrationStatus.FAILED
+    assert manifest.illustration_artifact is None
+    assert provider.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_unsupported_illustration_is_not_retried(tmp_path: Path) -> None:
+    provider = FakeIllustrationProvider(unsupported=True)
+    result, _ = await _run(tmp_path, CountingRenderer(), illustration=provider)
+    assert result.manifest.illustration_status is IllustrationStatus.FAILED
+    assert provider.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_card_outcome_is_unchanged_by_an_illustration_failure(tmp_path: Path) -> None:
+    plain, _ = await _run(tmp_path / "a", CountingRenderer(fail_animated_times=10))
+    failed, _ = await _run(
+        tmp_path / "b",
+        CountingRenderer(fail_animated_times=10),
+        illustration=FakeIllustrationProvider(fail_times=10),
+    )
+    assert plain.manifest.outcome is failed.manifest.outcome is MediaOutcome.STATIC_FALLBACK
+    assert plain.manifest.static_artifact == failed.manifest.static_artifact
+
+
+@pytest.mark.asyncio
+async def test_card_failure_makes_no_illustration_call(tmp_path: Path) -> None:
+    provider = FakeIllustrationProvider()
+    result, _ = await _run(tmp_path, CountingRenderer(fail_static_times=10), illustration=provider)
+    assert result.manifest.outcome is MediaOutcome.TEXT_ONLY
+    assert result.manifest.illustration_status is None
+    assert provider.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_illustration_runs_concurrently_with_the_gif(tmp_path: Path) -> None:
+    _HISTORY.clear()
+    await _run(tmp_path, CountingRenderer(), illustration=FakeIllustrationProvider())
+    events = json.loads(_HISTORY[-1])["events"]
+    names: dict[int, str] = {}
+    for event in events:
+        attrs = event.get("activityTaskScheduledEventAttributes")
+        if attrs:
+            names[int(event["eventId"])] = attrs["activityType"]["name"]
+    by_name = {name: event_id for event_id, name in names.items()}
+    assert {"illustrate_story", "render_animated_media"} <= set(by_name)
+    pair = {by_name["illustrate_story"], by_name["render_animated_media"]}
+    first_done = min(
+        int(e["eventId"])
+        for e in events
+        if int(e.get("activityTaskCompletedEventAttributes", {}).get("scheduledEventId", 0)) in pair
+    )
+    assert max(pair) < first_done  # both are scheduled before either finishes
+    attrs = next(
+        e["activityTaskScheduledEventAttributes"]
+        for e in events
+        if e.get("activityTaskScheduledEventAttributes", {}).get("activityType", {}).get("name")
+        == "illustrate_story"
+    )
+    assert attrs["startToCloseTimeout"] == "30s"
+    assert attrs["retryPolicy"]["maximumAttempts"] == 2
+    assert attrs["retryPolicy"]["nonRetryableErrorTypes"] == ["IllustrationInvalid"]
+
+
+@pytest.mark.asyncio
+async def test_illustration_history_has_no_image_bytes_and_manifest_stays_small(
+    tmp_path: Path,
+) -> None:
+    _HISTORY.clear()
+    result, _ = await _run(tmp_path, CountingRenderer(), illustration=FakeIllustrationProvider())
+    assert "iVBOR" not in _HISTORY[-1] and "fake-illustration" not in _HISTORY[-1]
+    assert len(result.manifest.model_dump_json()) < 8_192
+
+
+@pytest.mark.asyncio
+async def test_story_media_v2_illustrated_history_replays_and_is_current() -> None:
+    from temporalio.client import WorkflowHistory
+    from temporalio.worker import Replayer
+
+    path = Path(__file__).parent / "fixtures" / "histories" / "story_media_v2_illustrated.json"
+    history = WorkflowHistory.from_json("story-media-v2-replay", path.read_text(encoding="utf-8"))
+    replayer = Replayer(workflows=[StoryMediaWorkflow], data_converter=pydantic_data_converter)
+    assert (await replayer.replay_workflow(history)).replay_failure is None

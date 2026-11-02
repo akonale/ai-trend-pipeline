@@ -123,3 +123,20 @@ async def test_media_history_replays() -> None:
     )
     result = await replayer.replay_workflow(history)
     assert result.replay_failure is None
+
+
+MEDIA_V1_HISTORY = (
+    Path(__file__).resolve().parent / "fixtures" / "histories" / "story_media_v1_gif.json"
+)
+
+
+@pytest.mark.asyncio
+async def test_pre_065_story_media_history_replays() -> None:
+    from ai_trend_pipeline.story_media import StoryMediaWorkflow
+
+    history = WorkflowHistory.from_json(
+        "story-media-v1-replay", MEDIA_V1_HISTORY.read_text(encoding="utf-8")
+    )
+    replayer = Replayer(workflows=[StoryMediaWorkflow], data_converter=pydantic_data_converter)
+    result = await replayer.replay_workflow(history)
+    assert result.replay_failure is None

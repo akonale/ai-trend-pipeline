@@ -205,7 +205,8 @@ def _tokens_not_in(text: str, allowed: set[str]) -> bool:
 def validate_numeric_fidelity(draft: StoryPackage, data: DraftInput) -> list[CritiqueFinding]:
     """Reject numbers that are not backed by cited facts or approved candidate/evidence dates.
 
-    With no facts at all (article-only), key points may use approved context numbers uncited.
+    With no facts at all (article-only), key points may use approved context numbers uncited, and
+    unsupported numbers are advisory rather than blocking.
     """
     facts = {fact.fact_id: fact for fact in data.facts.facts}
     findings: list[CritiqueFinding] = []
@@ -280,6 +281,13 @@ def validate_numeric_fidelity(draft: StoryPackage, data: DraftInput) -> list[Cri
                     location=location,
                 )
             )
+    if data.facts.status is FactSetStatus.EMPTY:
+        # Article-only: no facts to verify against, so unsupported numbers are flagged for the
+        # reviewer instead of failing the story.
+        findings = [
+            finding.model_copy(update={"severity": CritiqueSeverity.ADVISORY})
+            for finding in findings
+        ]
     return _bind(findings)
 
 

@@ -1,6 +1,6 @@
 # 065b: Illustration picker (pick the picture that goes in the post)
 
-Status: approved
+Status: built
 
 ## Goal
 
@@ -417,3 +417,8 @@ The builder and the PR must say plainly that no screenshot was taken.
 Forward-compatible: a new source adds an enum value, a field, a `candidates()` entry and copy, with no UI rewrite; no new source is built. The glyph CC0 dedication stays an open human item; no screenshots are possible (libnspr4), so the runbook gets a manual checklist.
 No shell: branch `task/065b-illustration-picker` was NOT created, and edits are uncommitted. Record `story_generation_v2_illustrated_ready.json` on `036140d` before any code change.
 Next: the human approves the spec.
+
+**builder**: Recorded `story_generation_v2_illustrated_ready.json` on 065a code first (own commit), then built manifest-driven `candidates()`/`with_media_choice`, `media_choice` through route/service/workflow (`story-media-choice-v1`), formatter, picker view models/template/CSS (container query), docs, v3 history. `just lint` and `just test` pass (1738 tests).
+No screenshot was taken: headless Chromium still fails (libnspr4 missing), so the spec's fallback applies (markup/CSS assertions plus the manual checklist in `docs/runbooks/publishing.md`). Layout and both themes are unverified visually.
+Glyph CC0 dedication still unconfirmed by the human; `LICENSES.md` untouched. Note the Approve-rail note sits between the Approve and Reject forms; the v2/v3 histories were recorded with a test double child, not the real renderer.
+Next: verifier.

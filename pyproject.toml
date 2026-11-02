@@ -12,6 +12,7 @@ dependencies = [
     "psycopg[binary]>=3.3.6",
     "pydantic>=2",
     "python-multipart>=0.0.32",
+    "resvg-py==0.5.0",
     "temporalio",
     "uvicorn>=0.54.0",
     "vl-convert-python>=1.9.0.post1",
@@ -26,6 +27,9 @@ dev = [
     "ruff",
     "types-pyyaml>=6.0.12.20260906",
 ]
+
+[tool.uv]
+no-build-package = ["resvg-py"]
 
 [build-system]
 requires = ["hatchling"]

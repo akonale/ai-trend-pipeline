@@ -1,6 +1,6 @@
 # 065b: Illustration picker (pick the picture that goes in the post)
 
-Status: planned
+Status: approved
 
 ## Goal
 

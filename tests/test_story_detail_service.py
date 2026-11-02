@@ -9,6 +9,7 @@ import pytest
 from temporalio.client import Client
 from temporalio.service import RPCError, RPCStatusCode
 
+from ai_trend_pipeline.media.models import MediaSelection
 from ai_trend_pipeline.publishing.models import DestinationName, publication_key
 from ai_trend_pipeline.services.stories import (
     GENERATION_STARTING_DETAIL,
@@ -899,3 +900,39 @@ async def test_published_story_is_expired_at_48_hours() -> None:
         "ready", package=make_package(), created_at=just_inside
     )
     assert (await service.show(STORY_ID, now=NOW)).status is PrimaryStoryStatus.PUBLISHED
+
+
+@pytest.mark.asyncio
+async def test_media_choice_reaches_the_approve_signal_and_a_reject_sends_none() -> None:
+    gateway = FakeGateway()
+    gateway.story_states[STORY_ID] = story_state(StoryGenerationStatus.REVIEW)
+    gateway.story_results[STORY_ID] = story_result("ready", package=make_package())
+    await service_with(gateway).decide(
+        DecideStoryRequest(
+            detail_id=STORY_ID,
+            decision="approve",
+            content_hash=HASH,
+            media_choice=MediaSelection.ILLUSTRATION,
+        ),
+        now=NOW,
+    )
+    assert gateway.signals[0][2].media_choice is MediaSelection.ILLUSTRATION
+
+    rejecting = FakeGateway()
+    rejecting.story_states[STORY_ID] = story_state(StoryGenerationStatus.REVIEW)
+    rejecting.story_results[STORY_ID] = story_result("rejected")
+    await service_with(rejecting).decide(
+        DecideStoryRequest(
+            detail_id=STORY_ID, decision="reject", media_choice=MediaSelection.ILLUSTRATION
+        ),
+        now=NOW,
+    )
+    assert rejecting.signals[0][2].media_choice is None
+
+    plain = FakeGateway()
+    plain.story_states[STORY_ID] = story_state(StoryGenerationStatus.REVIEW)
+    plain.story_results[STORY_ID] = story_result("ready", package=make_package())
+    await service_with(plain).decide(
+        DecideStoryRequest(detail_id=STORY_ID, decision="approve", content_hash=HASH), now=NOW
+    )
+    assert plain.signals[0][2].media_choice is None

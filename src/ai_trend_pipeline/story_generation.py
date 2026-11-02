@@ -212,9 +212,7 @@ class FinalStoryDecision(BaseModel):
     media_choice: MediaSelection | None = None
 
     @model_serializer(mode="wrap")
-    def _omit_empty_media_choice(
-        self, handler: SerializerFunctionWrapHandler
-    ) -> dict[str, object]:
+    def _omit_empty_media_choice(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
         """Drop `media_choice` when `None`, so CLI, old-form and reject payloads stay unchanged."""
         data: dict[str, object] = handler(self)
         if data.get("media_choice") is None:

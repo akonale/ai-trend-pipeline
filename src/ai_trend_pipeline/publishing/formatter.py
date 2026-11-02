@@ -3,7 +3,13 @@
 from urllib.parse import urlsplit
 
 from ai_trend_pipeline.media.briefs import package_matches_hash, story_content_hash
-from ai_trend_pipeline.media.models import MediaArtifact, MediaKind, MediaOutcome, MediaType
+from ai_trend_pipeline.media.models import (
+    MediaArtifact,
+    MediaKind,
+    MediaOutcome,
+    MediaSelection,
+    MediaType,
+)
 from ai_trend_pipeline.publishing.models import (
     DestinationCapabilities,
     LinkFacet,
@@ -42,6 +48,10 @@ def _choose_artifact(
     manifest = package.media
     if manifest is None or manifest.outcome is MediaOutcome.TEXT_ONLY:
         return None
+    if manifest.selected is not None and manifest.selected is not MediaSelection.CARD:
+        for candidate in manifest.candidates():
+            if candidate.selection is manifest.selected:
+                return candidate.artifact
     if (
         manifest.outcome is MediaOutcome.GIF
         and capabilities.supports_animation

@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Red
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 
+from ai_trend_pipeline.media.models import MediaSelection
 from ai_trend_pipeline.services.media import MediaArtifactNotFound, StoryMediaPreviewService
 from ai_trend_pipeline.services.publishing import (
     PublishStoryRequest,
@@ -239,17 +240,22 @@ async def story_detail_status(
     )
 
 
+# "" means no choice; every other value must be a MediaSelection value.
+MEDIA_CHOICES = frozenset({"", *(selection.value for selection in MediaSelection)})
+
+
 @router.post("/stories/{detail_id}/decide", response_model=None)
 async def decide_story(
     request: Request,
     detail_id: str,
     decision: Annotated[str, Form()] = "",
     content_hash: Annotated[str, Form()] = "",
+    media_choice: Annotated[str, Form()] = "",
     user: CurrentUser = Depends(current_user),
     service: StoryDetailService = Depends(get_story_detail_service),
     templates: Jinja2Templates = Depends(get_templates),
 ) -> RedirectResponse | HTMLResponse:
-    if decision not in ("approve", "reject"):
+    if decision not in ("approve", "reject") or media_choice not in MEDIA_CHOICES:
         return await _render_detail(
             request,
             detail_id,
@@ -267,6 +273,7 @@ async def decide_story(
                 decision=kind,
                 decided_by=user.email,
                 content_hash=content_hash,
+                media_choice=MediaSelection(media_choice) if media_choice else None,
             ),
             now=datetime.now(UTC),
         )

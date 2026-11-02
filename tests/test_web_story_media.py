@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from ai_trend_pipeline.config import Settings
-from ai_trend_pipeline.media.models import MediaKind, MediaOutcome, MediaType
+from ai_trend_pipeline.media.models import MediaKind, MediaOutcome, MediaSelection, MediaType
 from ai_trend_pipeline.media.storage import write_artifact
 from ai_trend_pipeline.services.stories import (
     StoryDetailExpired,
@@ -16,6 +16,7 @@ from ai_trend_pipeline.services.stories import (
 )
 from ai_trend_pipeline.web.app import create_app
 from ai_trend_pipeline.web.dependencies import get_story_detail_service
+from ai_trend_pipeline.web.view_models import INVALID_DECISION_ERROR
 from tests.media_fixtures import make_artifact, make_manifest
 from tests.test_web_story_detail import STORY_ID, FakeDetailService, make_detail, make_package
 
@@ -129,3 +130,67 @@ def test_illustration_artifact_is_served_through_the_existing_media_route(
     response = TestClient(app).get(f"/stories/{STORY_ID}/media/{illustration.artifact_id}")
     assert response.status_code == 200
     assert response.content == DATA + b"-illustration"
+
+
+def _decide_client() -> tuple[TestClient, FakeDetailService]:
+    from datetime import UTC, datetime
+
+    from ai_trend_pipeline.services.stories import StoryDecisionResult
+
+    service = FakeDetailService(
+        make_detail(package=make_package()),
+        decide_result=StoryDecisionResult(
+            workflow_id=STORY_ID,
+            status="ready",
+            decided_by="dev@localhost",
+            decided_at=datetime.now(UTC),
+        ),
+    )
+    app = create_app(Settings())
+
+    async def fake() -> FakeDetailService:
+        return service
+
+    app.dependency_overrides[get_story_detail_service] = fake
+    return TestClient(app), service
+
+
+@pytest.mark.parametrize(
+    ("sent", "expected"),
+    [
+        ("illustration", MediaSelection.ILLUSTRATION),
+        ("card", MediaSelection.CARD),
+        ("", None),
+    ],
+)
+def test_decide_passes_the_media_choice_to_the_service(
+    sent: str, expected: MediaSelection | None
+) -> None:
+    client, service = _decide_client()
+    res = client.post(
+        f"/stories/{STORY_ID}/decide",
+        data={"decision": "approve", "content_hash": "a" * 64, "media_choice": sent},
+        follow_redirects=False,
+    )
+    assert res.status_code == 303
+    assert service.decide_calls[0].media_choice is expected
+
+
+def test_decide_without_the_field_means_no_choice() -> None:
+    client, service = _decide_client()
+    client.post(f"/stories/{STORY_ID}/decide", data={"decision": "approve"}, follow_redirects=False)
+    assert service.decide_calls[0].media_choice is None
+
+
+@pytest.mark.parametrize("sent", ["photo", "<script>", "ILLUSTRATION", "illustration "])
+def test_decide_refuses_an_unknown_media_choice_before_the_service(sent: str) -> None:
+    client, service = _decide_client()
+    res = client.post(
+        f"/stories/{STORY_ID}/decide",
+        data={"decision": "approve", "media_choice": sent},
+        follow_redirects=False,
+    )
+    assert res.status_code == 400
+    assert INVALID_DECISION_ERROR in res.text
+    assert "<script>" not in res.text
+    assert service.decide_calls == []

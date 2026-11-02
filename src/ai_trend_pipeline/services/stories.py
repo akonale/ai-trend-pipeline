@@ -12,6 +12,7 @@ from typing import Literal, Protocol, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from ai_trend_pipeline.media.models import MediaSelection
 from ai_trend_pipeline.publishing.models import DestinationName, publication_key
 from ai_trend_pipeline.publishing.preview import PostPreview, preview_post
 from ai_trend_pipeline.services.candidates import (
@@ -508,6 +509,7 @@ class DecideStoryRequest(BaseModel):
     decision: Literal["approve", "reject"]
     decided_by: DecidedByText | None = None
     content_hash: str = ""
+    media_choice: MediaSelection | None = None
 
 
 class StoryDecisionResult(BaseModel):
@@ -605,6 +607,7 @@ class StoryDetailService:
         decision = FinalStoryDecision(
             decided_by=request.decided_by,
             content_hash=request.content_hash if approve else None,
+            media_choice=request.media_choice if approve else None,
         )
         await self._gateway.decide(request.detail_id, decision, approve=approve)
         result = await self._gateway.story_result(request.detail_id)

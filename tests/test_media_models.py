@@ -342,7 +342,9 @@ def test_illustration_result_artifact_only_for_matched_or_generic() -> None:
         IllustrationResult(status=IllustrationStatus.GENERIC)
 
 
-def _illustrated(status: IllustrationStatus, outcome: MediaOutcome = MediaOutcome.GIF) -> MediaManifest:
+def _illustrated(
+    status: IllustrationStatus, outcome: MediaOutcome = MediaOutcome.GIF
+) -> MediaManifest:
     return make_manifest(
         outcome, illustration_artifact=_illustration_artifact(), illustration_status=status
     )

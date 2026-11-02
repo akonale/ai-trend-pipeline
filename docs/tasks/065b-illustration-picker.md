@@ -441,4 +441,4 @@ All checks pass.
 Checked: 3-candidate picker test renders 3 tiles through the template; pinned hashes 108f57c1/855c28a8 pass and are unchanged from main; all replay histories pass (v1, v2 media, v2 illustrated, v3 media choice, story_media v1/v2). `just lint` clean.
 
 **scribe**: README picker section and tech.md and the runbook checklist match the code. Reworded the README glyph line so it no longer reads as a confirmed CC0 dedication; no other doc edits. Open items for the human: CC0 glyph dedication (unconfirmed), no screenshots, deferred style/weak-glyph work, and `just deploy`.
-Branch pushed; PR opened against main (link below).
+Branch pushed; PR opened against main: https://github.com/akonale/ai-trend-pipeline/pull/75

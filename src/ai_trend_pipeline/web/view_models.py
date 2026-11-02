@@ -1346,6 +1346,8 @@ MAX_PACKAGE_CITATIONS = 20
 PACKAGE_CODE_LABEL = "Package"
 PACKAGE_CODE_CHARS = 8
 PACKAGE_NOTE_WITH_MEDIA = "You approve the text and the story card together."
+PACKAGE_NOTE_WITH_PICK = "You approve the text and the picture you pick together."
+PACKAGE_NOTE_PICKED = "You approved the text and the illustrated card together."
 PACKAGE_NOTE_TEXT_ONLY = "You approve the text only."
 MEDIA_MISSING_HEADING = "No story card"
 MEDIA_MISSING_BODY = "No image could be made for this story. Approving it approves the text only."
@@ -1766,11 +1768,14 @@ def build_story_detail_view(
         media = None if pick is not None else build_story_media_view(detail.detail_id, manifest)
         media_missing = manifest is not None and manifest.outcome is MediaOutcome.TEXT_ONLY
         content_hash = detail.content_hash or ""
-        package_note = (
-            PACKAGE_NOTE_WITH_MEDIA
-            if media is not None or pick is not None
-            else PACKAGE_NOTE_TEXT_ONLY
-        )
+        if pick is not None:
+            package_note = PACKAGE_NOTE_WITH_PICK
+        elif manifest is not None and manifest.selected is MediaSelection.ILLUSTRATION:
+            package_note = PACKAGE_NOTE_PICKED
+        elif media is not None:
+            package_note = PACKAGE_NOTE_WITH_MEDIA
+        else:
+            package_note = PACKAGE_NOTE_TEXT_ONLY
     return StoryDetailView(
         page_title=title,
         detail_id=detail.detail_id,

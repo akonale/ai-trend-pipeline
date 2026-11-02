@@ -422,3 +422,14 @@ Next: the human approves the spec.
 No screenshot was taken: headless Chromium still fails (libnspr4 missing), so the spec's fallback applies (markup/CSS assertions plus the manual checklist in `docs/runbooks/publishing.md`). Layout and both themes are unverified visually.
 Glyph CC0 dedication still unconfirmed by the human; `LICENSES.md` untouched. Note the Approve-rail note sits between the Approve and Reject forms; the v2/v3 histories were recorded with a test double child, not the real renderer.
 Next: verifier.
+
+**verifier**: `just lint` passed (ruff check, ruff format --check, pyright 0 errors).
+`just test` passed: 1738 passed, 2 warnings (Pydantic serializer warnings in test_web_story_detail.py, not failures).
+All checks pass.
+
+### Reviewer handoff
+Needs fix (1 real problem; the rest of the diff is approved, 1738 tests pass):
+1. `src/ai_trend_pipeline/web/view_models.py:1348` and `:1768-1773`: `PACKAGE_NOTE_WITH_MEDIA` ("You approve the text and the story card together.") is also shown when the picker is on screen, and on Ready when the illustration was picked. That is wrong: the human approves the text and the picture they pick. Add a separate note for the picker and for a picked illustration, e.g. "You approve the text and the picture you pick together." (Ready: "...and the picture shown"). Keep the old note for the single-card case, and update `tests/test_web_story_detail.py:803` and the picker tests to match.
+
+**builder (fix loop 1)**: Fixed the misleading package note. Review with the picker now says "You approve the text and the picture you pick together."; Ready with a picked illustration says "You approved the text and the illustrated card together." (the rail does not render `package_note` on Ready, so the Ready kind text "Illustrated card. This picture goes in the post." is what users see). The card-only note is unchanged.
+Added one test covering card only, picker shown, illustration picked. `just lint` and full tests pass (1739).

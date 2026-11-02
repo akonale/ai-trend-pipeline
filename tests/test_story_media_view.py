@@ -18,6 +18,7 @@ from ai_trend_pipeline.story_status import PrimaryStoryStatus
 from ai_trend_pipeline.web.view_models import (
     PICK_LEGEND,
     PICK_RAIL_NOTE,
+    build_story_detail_view,
     build_story_media_view,
     build_story_pick_view,
 )
@@ -264,3 +265,24 @@ def test_ready_with_card_adds_the_goes_in_the_post_text_and_none_is_unchanged() 
 def test_rail_note_only_with_the_picker() -> None:
     assert PICK_RAIL_NOTE not in _page(make_manifest(MediaOutcome.GIF))
     assert PICK_RAIL_NOTE in _page(_illustrated())
+
+
+def test_package_note_matches_what_the_human_approves() -> None:
+    card_only = _page(make_manifest(MediaOutcome.GIF))
+    assert "You approve the text and the story card together." in card_only
+    assert "the picture you pick" not in card_only
+    picker = _page(_illustrated())
+    assert "You approve the text and the picture you pick together." in picker
+    assert "the story card together" not in picker
+    picked = build_story_detail_view(
+        make_detail(
+            status=PrimaryStoryStatus.READY,
+            internal_status="ready",
+            package=make_package(media=_illustrated(selected=MediaSelection.ILLUSTRATION)),
+        ),
+        now=NOW,
+    )
+    assert picked.package_note == "You approved the text and the illustrated card together."
+    ready = _page(_illustrated(selected=MediaSelection.ILLUSTRATION), PrimaryStoryStatus.READY)
+    assert "Illustrated card. This picture goes in the post." in ready
+    assert "story card together" not in ready

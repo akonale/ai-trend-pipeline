@@ -15,8 +15,8 @@ weak-match or failed illustration never blocks review or publishing.
 
 ### A + D, not a hosted model
 
-- **A, illustration:** a small curated pack of CC0 / public-domain SVG illustrations, vendored in
-  the repo with a machine-readable licence catalogue. Code picks one with a readable keyword
+- **A, illustration:** a small curated pack of CC0 SVG illustrations from Open Doodles, vendored
+  in the repo with a machine-readable licence catalogue. Code picks one with a readable keyword
   table. It is recoloured to the site tokens and composed with the headline.
 - **D, background:** a procedural pattern plus flat shapes drawn under the illustration. Every
   parameter comes from the SHA-256 of the story content hash, so two stories with the same topic
@@ -28,57 +28,66 @@ weak-match or failed illustration never blocks review or publishing.
   blocks, and noise makes PNG bytes grow fast. "Pattern" here means dot grids, stripes, arcs and
   blocks drawn with integer coordinates.
 
-### Libraries to vendor (starter set)
+### Library to vendor: Open Doodles only (starter set)
 
-The builder **verifies each licence on the library's official site** before vendoring and records
-the date in the catalogue. Our sources are secondary.
+**Scope decision (human, 2 Nov 2026):** the starter set is **Open Doodles only**. Openclipart's
+site currently serves no clipart (search is empty, detail pages return 500, downloads redirect to
+a logo), so its licence and source cannot be verified. Openclipart is a **deferred source**, to be
+added in a later task once its site serves content again. That task re-adds the
+`openclipart` source and its licence value to the enums below.
 
-| Source | Use | Licence (to verify) | Verdict |
-| --- | --- | --- | --- |
-| Open Doodles (Pablo Stanley, opendoodles.com) | people-activity scenes | CC0 1.0 | **use** |
-| Open Peeps (Pablo Stanley, openpeeps.com) | only if a doodle is missing for "society/people" | CC0 1.0 | optional |
-| Openclipart (openclipart.org) | object motifs (robot, chip, solar panel...) | public domain / "unlimited commercial use" | **use**, flat-style items only |
-| unDraw | | forbids redistributing packs; vendoring may count | **do not use** |
-| DrawKit | | sources conflict (MIT vs personal use) | **do not use** |
-| Storyset | | unverified, attribution terms | **do not use** |
+**Licence evidence (verified by the builder on the official site, 2 Nov 2026):**
 
-If a licence check fails, or the builder cannot reach the official sites, the builder **stops
-and asks the human**. Do not substitute another library. The catalogue's `licence` field is an
-enum (`CC0-1.0`, `openclipart-public-domain`) so no other licence can slip in. Hand-drawn CC0
-cartoon people carry no real-person likeness, so they are allowed. The "no people" rule from the
-old Imagen design does not apply.
+- Open Doodles home page (https://www.opendoodles.com/) says "Free for Commercial and Personal
+  Use. No need to credit" and carries a CC0 Public Domain meta tag. It lists about 36
+  illustrations.
+- Its about page says the drawings may be used for "any purpose without restriction under
+  copyright or database law (CC0 license)" and links
+  https://creativecommons.org/publicdomain/zero/1.0/.
 
-Starter set: 15 assets, each covering one topic. The topics follow the pipeline's real inputs,
-which are Hacker News tech stories plus the six OWID datasets (CO2, internet, solar, EVs, life
-expectancy, GDP).
+`LICENSES.md` quotes both statements exactly, with the URLs and the 2 Nov 2026 date.
 
-| Asset id | Preferred source | Shows (catalogue `description`, used in alt text) |
+| Source | Licence | Verdict |
 | --- | --- | --- |
-| `ai-robot` | Openclipart | a friendly cartoon robot |
-| `laptop-code` | Openclipart | a laptop with code brackets on screen |
-| `chip` | Openclipart | a computer chip |
-| `padlock` | Openclipart | a closed padlock |
-| `globe-network` | Openclipart | a globe wrapped in network lines |
-| `solar-wind` | Openclipart | a solar panel and a wind turbine |
-| `electric-car` | Openclipart | a small electric car at a charger |
-| `bike-commute` | Open Doodles (bike) | a person riding a bike |
-| `plant-growth` | Open Doodles (plant) | a person tending a large plant |
-| `coins` | Openclipart | a stack of coins |
-| `healthy-run` | Open Doodles (running / meditating) | a person out for a run |
-| `rocket` | Openclipart | a rocket lifting off |
-| `microscope` | Openclipart | a microscope |
-| `reading` | Open Doodles (reading) | a person reading a book |
-| `wheat` | Openclipart | ears of wheat |
+| Open Doodles (Pablo Stanley, opendoodles.com) | CC0 1.0, verified 2 Nov 2026 | **use** |
+| Openclipart (openclipart.org) | cannot be verified, site not serving clipart | **deferred** to a later task |
+| Open Peeps, unDraw, DrawKit, Storyset | not in scope | **do not use** |
 
-What makes an asset acceptable:
+Rules for each drawing:
+
+- The builder downloads every drawing **from the official Open Doodles site**, not from mirrors,
+  npm packages, GitHub forks or CDNs. If a drawing's source or licence cannot be verified on the
+  official site, **skip that drawing**. Do not substitute another library.
+- The catalogue's `licence` field accepts **`CC0-1.0` only** for now, so no other licence can slip
+  in. Hand-drawn CC0 cartoon people carry no real-person likeness, so they are allowed. The "no
+  people" rule from the old Imagen design does not apply.
+
+**Target topics.** The topics follow the pipeline's real inputs, which are Hacker News tech
+stories plus the six OWID datasets (CO2, internet, solar, EVs, life expectancy, GDP). The builder
+looks through the drawings actually on the site and maps a drawing to a topic **only when it
+plainly shows that topic**:
+
+AI, security, chips, code, internet, space, science, education, climate, energy, health, economy,
+electric cars, food.
+
+- Open Doodles are people-activity scenes, so several topics (likely chips, security, electric
+  cars) will have no suitable drawing. **That is expected and fine.** A topic with no suitable
+  drawing gets **no asset and no tags**, so its stories fall back to the generic background-only
+  scene, with the story card preselected. Never force a drawing onto a topic it does not show.
+- **Size:** aim for roughly 10 to 20 usable drawings, at most 2 per topic and at most 20 in
+  total. Fewer is acceptable. Not every topic has to be covered.
+- Each asset gets a slug id that names what it shows (for example `person-reading`) and a
+  `description` (the plain noun phrase used in alt text, for example "a person reading a book").
+  The handoff note lists which topics got drawings and which did not.
+
+What makes a drawing acceptable:
 
 - flat colours, at most 8 distinct colours
 - no text, logos, brand marks, flags, maps or landmarks
 - 64 KB or less after normalisation
 - a square-ish `viewBox`, aspect between 0.6 and 1.6
 
-If no acceptable Openclipart item exists for a row, drop the row and its tags, and note it in the
-handoff. Do not draw a replacement by hand.
+If a drawing fails these checks, skip it. Do not draw a replacement by hand.
 
 ### Files and catalogue
 
@@ -88,23 +97,28 @@ handoff. Do not draw a replacement by hand.
   `IllustrationAsset` Pydantic model (frozen, `extra="forbid"`) with these fields:
   - `id`: slug `^[a-z][a-z0-9-]{1,31}$`. `file` is `<id>.svg`.
   - `title`
-  - `description`: 3..80 characters, the plain noun phrase in the "Shows" column above.
-  - `source`: enum `open-doodles | open-peeps | openclipart`.
-  - `source_url`: https, the item page. `author`.
-  - `licence`: the enum above. `licence_url`: https.
-  - `licence_verified_on` and `retrieved_on`: ISO dates.
+  - `description`: 3..80 characters, the plain noun phrase of what the drawing shows.
+  - `topic`: one of the topic keys in the matching table below.
+  - `source`: enum with the single value `open-doodles` for now.
+  - `source_url`: https, the official opendoodles.com page the drawing was downloaded from.
+    `author` (`Pablo Stanley`).
+  - `licence`: enum with the single value `CC0-1.0` for now. `licence_url`: https
+    (`https://creativecommons.org/publicdomain/zero/1.0/`).
+  - `licence_verified_on` and `retrieved_on`: ISO dates (`licence_verified_on` is `2026-11-02`
+    unless re-checked later).
   - `sha256`: of the committed file.
   - `modified`: bool. `modification_note` is required when `modified` is true (for example
     "style attributes inlined, metadata removed, colours flattened").
-  - `tags`: 3..30 entries, lowercase, unique.
+  - `tags`: 3..30 entries, lowercase, unique. They equal the tags of the asset's `topic` row.
   - `recolour`: a map from every source hex colour in the file to a slot, `ink`, `paper`, `accent`
     or `support`. This map is the "safe recolour regions".
-  - `attribution_required: bool` and `attribution_text: str | None`. For CC0 and public-domain
-    assets it is `false`. If `true`, the text must appear in `LICENSES.md`.
+  - `attribution_required: bool` and `attribution_text: str | None`. For CC0
+    assets it is `false`. If `true`, the text must appear in `LICENSES.md`. The field stays so
+    a later source (for example Openclipart) fits without a model change.
 - `src/ai_trend_pipeline/media/illustrations/LICENSES.md` is the human-readable list (asset, author,
-  source URL, licence and link, verified date). It includes the CC0 1.0 legal-code link and the
-  Openclipart licence statement exactly as quoted on the day it was checked. No attribution is
-  needed in posts for the starter set.
+  source URL, licence and link, verified date). It includes the CC0 1.0 legal-code link and the two
+  Open Doodles licence statements quoted above, exactly as read on 2 Nov 2026. It notes that
+  Openclipart is deferred. No attribution is needed in posts for the starter set.
 - **Normalisation happens once, when an asset is vendored**, and its output is committed. The
   normalisation steps:
   1. Inline `style` into presentation attributes.
@@ -148,15 +162,22 @@ Pillow cannot draw SVG. The options:
 | **`resvg-py`** (Rust resvg + tiny-skia, manylinux wheels) | none | a few MB wheel | same version gives the same pixels; no system fonts used, because our SVGs have no text | **chosen** |
 | `cairosvg` | needs `libcairo2` via apt in the `Dockerfile` (which today installs only `fonts-liberation`) | +~10-20 MB of OS packages | output follows the OS cairo version, so dev and Docker goldens drift | rejected |
 | `svglib` + `reportlab` | none | medium | weak SVG support, poor anti-aliasing | rejected |
-| `vl-convert-python` `svg_to_png` (already a dependency, bundles resvg) | none | +0 | pinned by the lock, but tied to the chart library's upgrade cycle | **fallback only**, if `resvg-py` has no cp312 wheel for the deploy architecture |
+| `vl-convert-python` `svg_to_png` (already a dependency, bundles resvg) | none | +0 | pinned by the lock, but tied to the chart library's upgrade cycle | not needed (`resvg-py` wheels cover our platforms) |
 
-- Add the dependency with `uv add "resvg-py==<exact current version>"` and pin it with `==`. Also
-  add `[tool.uv] no-build-package = ["resvg-py"]` to `pyproject.toml`, so a missing wheel fails
-  the lock instead of needing a Rust toolchain in Docker.
-- The builder checks the package's real API and wheel tags (cp312, manylinux x86_64 and aarch64)
-  and records the version in the handoff.
+**Already done by the builder (commit `dcbaeee`, do not redo):**
+
+- `resvg-py==0.5.0` is pinned with `==` in `pyproject.toml` and `uv.lock`, with `[tool.uv]
+  no-build-package = ["resvg-py"]`, so a missing wheel fails the lock instead of needing a Rust
+  toolchain in Docker.
+- Its abi3 wheels cover Python 3.12 on manylinux x86_64 and aarch64.
+- The real API is `resvg_py.svg_to_bytes(svg_string=..., width=..., height=...,
+  skip_system_fonts=True)`, which returns PNG bytes. Always pass `skip_system_fonts=True`.
+
+Remaining work:
+
 - Wrap the call in one typed function, `rasterise_svg(svg: str, width: int, height: int) ->
-  Image.Image` (RGBA), in `media/illustrations/rasterise.py`. If the library has no type
+  Image.Image` (RGBA), in `media/illustrations/rasterise.py`. It decodes the returned PNG bytes
+  with Pillow and converts to RGBA. If the library has no type
   information, add a minimal stub at `typings/resvg_py.pyi`, which is Pyright's default stub
   path, rather than using `Any`.
 - **How determinism is guaranteed:**
@@ -173,34 +194,43 @@ Pillow cannot draw SVG. The options:
 - **Normalise:** NFKC, casefold, then split into tokens with `[a-z0-9]+`. Single-word tags match
   whole tokens. Multi-word tags (for example `electric car`, `life expectancy`) match consecutive
   tokens. A tag is counted once per field.
-- **Score per asset** = 3 × (distinct tags hit in the headline) + 1 × (distinct tags hit in the
+- **Score per topic** = 3 × (distinct tags hit in the headline) + 1 × (distinct tags hit in the
   summary, first 600 characters only).
-- **Pick:** the highest score wins. Break ties by more headline hits, then by catalogue order,
-  which is the table order below and acts as priority.
+- **Only covered topics take part.** Matching runs over the topics that have at least one asset
+  in the catalogue. A topic with no asset contributes no tags, so a story about it scores 0 and
+  gets the generic scene.
+- **Pick:** the highest score wins. Break ties by more headline hits, then by topic order, which
+  is the table order below and acts as priority.
+- **Asset within a topic:** if the winning topic has 2 assets, a byte from the scene's seed stream
+  (see "Seed and stream") picks one, so the choice is deterministic per story.
 - **Threshold:** a score of 3 or more is `matched`. That means at least one headline hit, or three
   summary hits. Anything below 3 is `generic`: background plus a code-drawn abstract motif and
   **no figurative illustration**, so a weak match never shows a wrong-topic drawing.
 
-| Order | Asset | Tags |
-| --- | --- | --- |
-| 1 | `ai-robot` | ai, artificial intelligence, llm, llms, chatbot, robot, robots, machine learning, neural, gpt, openai, anthropic, claude, gemini, agent, agents |
-| 2 | `padlock` | security, privacy, hack, hacked, hackers, breach, vulnerability, exploit, malware, ransomware, encryption, password, passwords |
-| 3 | `chip` | chip, chips, semiconductor, gpu, gpus, cpu, processor, silicon, nvidia, hardware |
-| 4 | `laptop-code` | software, code, coding, programming, developer, developers, open source, compiler, linux, python, rust, javascript, database, app |
-| 5 | `globe-network` | internet, online, broadband, web, network, browser, connectivity, wifi |
-| 6 | `solar-wind` | solar, wind, renewable, renewables, energy, electricity, power grid, battery, batteries |
-| 7 | `electric-car` | electric car, electric cars, electric vehicle, ev, evs, tesla, charging |
-| 8 | `bike-commute` | transport, transit, bike, bikes, cycling, train, trains, rail, commute, traffic |
-| 9 | `plant-growth` | climate, co2, carbon, emissions, environment, nature, forest, warming, pollution |
-| 10 | `coins` | gdp, economy, economic, income, money, prices, inflation, market, markets, funding, startup, revenue, tax |
-| 11 | `healthy-run` | health, life expectancy, longevity, medicine, medical, disease, hospital, vaccine, fitness |
-| 12 | `rocket` | space, rocket, nasa, satellite, satellites, orbit, launch, mars, moon |
-| 13 | `microscope` | science, research, researchers, scientists, study, lab, physics, biology, chemistry |
-| 14 | `reading` | education, school, schools, students, learning, book, books, teachers |
-| 15 | `wheat` | food, farming, agriculture, crops, harvest, diet |
+Target topic table. Rows whose topic gets no drawing stay in the code table but are **inactive**
+(no catalogue tags, never matched). The matching module keeps the whole table so a later asset
+(for example from Openclipart) needs no matching change, only a catalogue entry (and, for a new
+source, its enum values).
 
-The tags in `catalogue.json` must equal this table, and a test checks it. If an asset row is
-dropped, its tags are dropped too.
+| Order | Topic key | Tags |
+| --- | --- | --- |
+| 1 | `ai` | ai, artificial intelligence, llm, llms, chatbot, robot, robots, machine learning, neural, gpt, openai, anthropic, claude, gemini, agent, agents |
+| 2 | `security` | security, privacy, hack, hacked, hackers, breach, vulnerability, exploit, malware, ransomware, encryption, password, passwords |
+| 3 | `chips` | chip, chips, semiconductor, gpu, gpus, cpu, processor, silicon, nvidia, hardware |
+| 4 | `code` | software, code, coding, programming, developer, developers, open source, compiler, linux, python, rust, javascript, database, app |
+| 5 | `internet` | internet, online, broadband, web, network, browser, connectivity, wifi |
+| 6 | `energy` | solar, wind, renewable, renewables, energy, electricity, power grid, battery, batteries |
+| 7 | `electric-cars` | electric car, electric cars, electric vehicle, ev, evs, tesla, charging |
+| 8 | `climate` | climate, co2, carbon, emissions, environment, nature, forest, warming, pollution |
+| 9 | `economy` | gdp, economy, economic, income, money, prices, inflation, market, markets, funding, startup, revenue, tax |
+| 10 | `health` | health, life expectancy, longevity, medicine, medical, disease, hospital, vaccine, fitness |
+| 11 | `space` | space, rocket, nasa, satellite, satellites, orbit, launch, mars, moon |
+| 12 | `science` | science, research, researchers, scientists, study, lab, physics, biology, chemistry |
+| 13 | `education` | education, school, schools, students, learning, book, books, teachers |
+| 14 | `food` | food, farming, agriculture, crops, harvest, diet |
+
+The old `bike-commute` transport row is dropped: it was not in the topic list. The tags of every
+catalogue entry must equal the row of its `topic`, and a test checks it.
 
 ### Scene layout and drawing (`media/illustrations/scene.py`)
 
@@ -242,6 +272,7 @@ RGB PNG with `optimize=True`.
   - backdrop shape (3): circle, rounded square (radius 24), tilted square at ±6°
   - 2-3 small accent shapes (dot, ring, bar) placed on a 40 px grid inside the art area and
     clipped to it
+  - which asset to draw, when the matched topic has 2
 
   There is no Python `random`.
 - **Headline.** Reuse the card's text code:
@@ -293,9 +324,13 @@ the catalogue. The result passes `clean_media_text` and is cut to `MAX_ALT_TEXT_
     route change.
 - **Hash compatibility.** The three keys are omitted from `model_dump` when `None`, using a wrap
   `model_serializer` or an equivalent. This keeps `story_content_hash`, `story_package_hash` and
-  the Temporal payloads of pre-065 packages byte-identical. A golden test pins it: the builder
-  computes `story_package_hash` of a fixed pre-065 package **on `main` before changing code** and
-  pastes the literal into the test.
+  the Temporal payloads of pre-065 packages byte-identical. A golden test pins it with these
+  literals, **already computed by the builder on `main` before any code change** (do not
+  recompute them on the branch):
+  - `story_package_hash(make_package("story-1"))` =
+    `108f57c12e08b7f317e357cf8820262f041a21a5ba1734889daa5849a3df9a93`
+  - the same package with `media=make_manifest(MediaOutcome.GIF)` =
+    `855c28a843fe38403dc57e4b1f242ad0a19481c08ecc8057fee066a1977ef0cf`
 - Activity I/O:
   - `IllustrateInput`: `story_id`, `story_content_hash` (sha256 pattern), `headline` (the brief
     headline), and `summary` (str, at most 600 characters, matching only, never drawn).
@@ -489,20 +524,21 @@ desktop (>= 40rem)                              360px (stacked, illustration fir
 
 ## Acceptance criteria
 
-- [ ] For a review story whose headline matches a topic (for example "OpenAI ships a new model"),
-      the illustrated card shows the right asset on a hash-seeded background and is preselected,
+- [ ] For a review story whose headline matches a covered topic (one that has an Open Doodles
+      drawing), the illustrated card shows that topic's asset on a hash-seeded background and is preselected,
       with the story card beside it. Approve with either choice gives a Ready story whose
       `content_hash` covers `selected`, and the Bluesky formatter uploads exactly that still with
       its alt text.
-- [ ] Nothing below the score threshold ever gets a figurative illustration. It gets the generic
-      scene with the story card preselected. `ILLUSTRATION_PROVIDER=off`, or a failed render,
+- [ ] Nothing below the score threshold, and no story about a topic without a drawing, ever gets
+      a figurative illustration. It gets the generic scene with the story card preselected. `ILLUSTRATION_PROVIDER=off`, or a failed render,
       leaves review and publishing exactly as before 065 (except the fixed failed note).
 - [ ] Rendering is offline and deterministic: the same input gives byte-identical PNG bytes, the
       goldens match, and the output is within `MAX_STATIC_BYTES`. Storage is content-addressed and
       atomic, and re-running the activity is safe.
 - [ ] Every vendored SVG passes the sanitiser allowlist and has a complete catalogue record whose
-      SHA-256 matches the file and whose licence is CC0 or Openclipart public domain, with a
-      verified date. `LICENSES.md` lists every asset.
+      SHA-256 matches the file, whose source is Open Doodles (official site) and whose licence is
+      `CC0-1.0`, with a verified date. `LICENSES.md` lists every asset and quotes the Open Doodles
+      licence statements. There are at most 20 assets, at most 2 per topic.
 - [ ] Pre-065 `StoryMediaWorkflow` and `StoryGenerationWorkflow` histories replay, and a pre-065
       package's `story_package_hash` equals the pinned golden value. The card goldens are
       unchanged.
@@ -512,9 +548,10 @@ desktop (>= 40rem)                              360px (stacked, illustration fir
 
 ## Files to touch
 
-- `pyproject.toml` and `uv.lock` (`uv add "resvg-py==<pin>"`, `[tool.uv] no-build-package`)
+- `pyproject.toml` and `uv.lock`: **done** in `dcbaeee` (`resvg-py==0.5.0`, `[tool.uv]
+  no-build-package`). Touch again only if a later step needs it.
 - `src/ai_trend_pipeline/media/illustrations/__init__.py` (new)
-- `src/ai_trend_pipeline/media/illustrations/assets/*.svg` (new, at most 15)
+- `src/ai_trend_pipeline/media/illustrations/assets/*.svg` (new, Open Doodles only, at most 20)
 - `src/ai_trend_pipeline/media/illustrations/catalogue.json` (new)
 - `src/ai_trend_pipeline/media/illustrations/LICENSES.md` (new)
 - `src/ai_trend_pipeline/media/illustrations/catalogue.py` (new: `IllustrationAsset` model and
@@ -545,9 +582,10 @@ desktop (>= 40rem)                              360px (stacked, illustration fir
 - `tests/vendor_illustrations.py` (new, dev-only normaliser, no network)
 - `tests/regen_illustration_goldens.py` (new; also writes the contact sheet)
 - `tests/fixtures/media/illustrated/*.png` (new goldens)
-- `tests/fixtures/histories/story_media_v1_gif.json` (new: recorded **on `main` code before any
-  change**), `story_media_v2_illustrated.json` and `story_generation_v3_media_choice_ready.json`
-  (new)
+- `tests/fixtures/histories/story_media_v1_gif.json`: **done** in `6edf767` (recorded from `main`
+  code before any change). Do not re-record or edit it.
+- `tests/fixtures/histories/story_media_v2_illustrated.json` and
+  `story_generation_v3_media_choice_ready.json` (new)
 - `docs/media/illustrated-card-samples.png` (new contact sheet)
 - Docs: `README.md`, `docs/architecture/tech.md`, `docs/runbooks/publishing.md`
 
@@ -555,29 +593,38 @@ desktop (>= 40rem)                              360px (stacked, illustration fir
 
 - `tests/test_illustration_catalogue.py` checks every SVG in `assets/` against the catalogue:
   - each file has exactly one entry, and each entry has a file
-  - every field is complete, the licence is in the allowed enum, and the dates are not in the
-    future
+  - every field is complete, the dates are not in the future, and `source_url` is on
+    `opendoodles.com`
+  - the licence is `CC0-1.0`; an entry with any other licence (for example an Openclipart value)
+    or any other source fails model validation
   - the SHA-256 matches the file
   - `attribution_required` implies the text is in `LICENSES.md`, and every asset id appears in
     `LICENSES.md`
-  - the tags equal the matching table
+  - each entry's `topic` is a key of the topic table and its tags equal that row
+  - there are at most 20 assets and at most 2 per topic
 - `tests/test_illustration_sanitize.py`:
   - all vendored assets pass
   - crafted SVGs are each rejected: `<script>`, `onload=`, `<foreignObject>`, `<image href>`,
     `<text>`, `<style>`, `xlink:href`, `url(http…)`, `<!DOCTYPE>`/`<!ENTITY>`, an unmapped
     colour, a missing `viewBox`, and files over 64 KB
-- `tests/test_illustration_matching.py` is table-driven:
-  - one headline per asset picks that asset
+- `tests/test_illustration_matching.py` is table-driven. Unit tests use a small in-test
+  catalogue, so they do not depend on which topics the real assets cover:
+  - one headline per covered topic picks an asset of that topic
+  - a headline about a topic with no asset (for example "Ransomware hits hospital billing" when
+    `security` has none) is `generic`, never another topic's drawing
   - multi-word tags match only as consecutive tokens
-  - "rust" in a headline picks `laptop-code`
+  - "rust" in a headline picks the `code` topic
   - a summary-only single hit is `generic`
   - three summary hits make `matched`
-  - ties use headline hits, then catalogue order
+  - ties use headline hits, then topic order
+  - with 2 assets in a topic, the pick is stable for one content hash and both can be reached
   - the result does not depend on case or Unicode form
   - a headline with no tags gives `generic`
+  - against the real catalogue: one fixed headline per covered topic matches that topic
 - `tests/test_illustrated_scene.py`:
-  - golden images (at least 9 topics, generic, a 5-line ellipsised headline, Unicode, and two
-    stories with the same topic but different seeds that must differ)
+  - golden images (every covered topic up to 9, generic from no tags, generic from an uncovered
+    topic, a 5-line ellipsised headline, Unicode, and two stories with the same topic but
+    different seeds that must differ)
   - rendering twice gives identical bytes
   - every output is 600,000 bytes or less
   - the layout invariants hold
@@ -589,7 +636,7 @@ desktop (>= 40rem)                              360px (stacked, illustration fir
 - `tests/test_media_models.py` (extend):
   - the manifest rules for the illustration fields
   - a pre-065 manifest dumps without the new keys
-  - the pinned golden `story_package_hash`
+  - the two pinned golden `story_package_hash` literals above (`108f57c1…` and `855c28a8…`)
   - illustration and card artifact IDs differ
 - `tests/test_illustration_activities.py`:
   - disabled returns `disabled`
@@ -631,17 +678,26 @@ desktop (>= 40rem)                              360px (stacked, illustration fir
 - Motion, animation of the illustrated card, Remotion, Node and Chromium. Motion is a later task.
 - A dark-theme scene, or square/portrait sizes.
 - A re-roll or "pick another drawing" control. Overriding the match by hand is a later task.
-- More than 15 assets, or any library outside the table (unDraw, DrawKit, Storyset).
+- More than 20 assets (or more than 2 per topic), or any source other than Open Doodles.
+  Openclipart is deferred to a later task once its site serves content again. Open Peeps,
+  unDraw, DrawKit and Storyset are not used.
+- Forcing a drawing onto a topic it does not show, or hand-drawing a replacement for a missing
+  topic.
+- Re-recording `story_media_v1_gif.json`, recomputing the pinned hashes, or changing the
+  `resvg-py` pin.
 - Changing how the story card or GIF looks, the chart publisher, or the Bluesky activity, beyond
   the formatter's artifact choice.
 - Drawing the summary, facts or source on the illustrated card.
 
 **Split point (recommended if the diff grows past one comfortable review):**
 
-- **065a:** assets, catalogue, sanitiser, rasteriser, matching, scene, provider, activity,
-  workflow patch, manifest fields, config, worker, goldens, contact sheet and docs. With no
-  picker, `selected` stays `None` and publishing uses the card, so 065a is safe and invisible
-  except for the failed note.
+- **065a:** (the human approved starting here; branch `task/065-illustrated-card`.)
+  - Already done: the `story_media_v1_gif.json` baseline history (`6edf767`), the `resvg-py`
+    pin (`dcbaeee`), and the two baseline hash literals above.
+  - Remaining: Open Doodles assets, catalogue, sanitiser, rasteriser, matching, scene, provider,
+    activity, workflow patch, manifest fields, config, worker, goldens, contact sheet and docs.
+  - With no picker, `selected` stays `None` and publishing uses the card, so 065a is safe and
+    invisible except for the failed note.
 - **065b:** the picker UI, `media_choice` through the route, service and workflow
   (`story-media-choice-v1`), and the formatter selection.
 
@@ -652,12 +708,14 @@ prove determinism, not taste. So:
 
 - `tests/regen_illustration_goldens.py --contact-sheet` writes `docs/media/illustrated-card-samples.png`.
   It is a 3-column grid of 12 samples at 50 % scale, each labelled under the image with its
-  topic and status, and kept under 1.5 MB. The samples are:
-  - one sample for each of 9 topics (AI, security, code, energy, EVs, climate, economy, health,
-    space)
-  - one generic sample
+  topic and status, and kept under 1.5 MB. The 12 samples are:
+  - one matched sample for each covered topic (topics that have a drawing), up to 8
+  - weak-match fallbacks, at least 2: a headline with no tags, and a headline about a topic with
+    no drawing (labelled with that topic and `generic`)
   - one long-headline sample
   - one same-topic, different-seed sample
+  - if fewer than 8 topics are covered, fill the remaining slots with more fallbacks (for
+    example a summary-only single hit) so the sheet still has 12
 
   The samples use made-up headlines that are fixed in the script. The script makes no live
   calls.
@@ -675,8 +733,12 @@ prove determinism, not taste. So:
     manifest.
   - A code rollback is safe because the new fields are optional and dropped when `None`.
   - Stories already approved with the illustration still publish it from the stored artifact.
+- **Coverage:** list which topics have Open Doodles drawings and which fall back to the generic
+  scene, and note that Openclipart is a deferred source.
 - **Adding or replacing an asset:**
-  1. Verify the licence on the official site.
+  1. Verify the licence on the official site and download from it. Adding a new source (for
+     example Openclipart) also needs a new `source` and `licence` enum value, reviewed in its own
+     task.
   2. Normalise with `tests/vendor_illustrations.py`.
   3. Add the catalogue entry with the SHA-256 and the `LICENSES.md` line.
   4. Update the matching table.
@@ -684,9 +746,23 @@ prove determinism, not taste. So:
 
   A changed catalogue changes the illustration artifact IDs for new renders only.
 - **Safety summary:**
-  - The assets are vendored, sanitised, CC0 or public domain, with no text, logos or real people.
-  - Matching is code-only, and a weak match never shows a figurative drawing.
+  - The assets are vendored from the official Open Doodles site, sanitised and CC0, with no text,
+    logos or real people.
+  - Matching is code-only, and a weak match or an uncovered topic never shows a figurative
+    drawing.
   - A human picks the picture, and the card is always available.
+
+## Risks
+
+- **Thin coverage.** Open Doodles are people-activity scenes, so object topics (chips, security,
+  electric cars) may have no drawing and will often show the generic scene. This is accepted;
+  coverage grows when Openclipart (or another verified source) is added later.
+- **Loose fits.** The temptation is to stretch a people scene over a topic it does not show.
+  Do not: no drawing beats a wrong one. The human checks fit on the contact sheet.
+- **Site changes.** If opendoodles.com stops serving a drawing or its licence page before the
+  builder downloads it, skip that drawing. If none can be verified, stop and ask the human.
+- **Load-bearing hash compatibility.** The serializer that omits `None` fields is pinned by the
+  two baseline hash literals; any change to them is a bug.
 
 ## Handoff log
 
@@ -696,3 +772,8 @@ prove determinism, not taste. So:
 Risks: the builder needs one-time web access to verify licences and download assets (stop and ask if not). The `resvg-py` API and wheels must be checked. The hash-compat serializer is load-bearing (pinned test). Record `story_media_v1_gif.json` on main code before changing anything.
 Recommend splitting at 065a/065b. Visual quality can only be judged from the committed contact sheet and real review output.
 Next: the human reviews and approves the spec.
+
+**planner**: Revised the approved spec (human decision): starter set is Open Doodles only (CC0, verified 2 Nov 2026), and Openclipart is deferred because its site serves no clipart. Licence and source enums allow only `CC0-1.0` / `open-doodles`.
+Matching is now keyed by 14 target topics. A topic with no suitable drawing gets no tags and falls back to the generic scene; the target is about 10-20 drawings (at most 2 per topic), and fewer is fine. Tests, contact sheet, docs and risks are updated to match.
+Recorded the builder's facts as done: the `resvg-py==0.5.0` pin and API (`dcbaeee`), the `story_media_v1_gif.json` baseline (`6edf767`) and the two baseline hash literals. The UI design is unchanged.
+Next: the builder continues 065a. Status stays approved.

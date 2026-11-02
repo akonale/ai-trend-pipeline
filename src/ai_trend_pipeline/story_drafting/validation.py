@@ -196,7 +196,10 @@ def _tokens_not_in(text: str, allowed: set[str]) -> bool:
 
 
 def validate_numeric_fidelity(draft: StoryPackage, data: DraftInput) -> list[CritiqueFinding]:
-    """Reject numbers that are not backed by cited facts or approved candidate/evidence dates."""
+    """Reject numbers that are not backed by cited facts or approved candidate/evidence dates.
+
+    With no facts at all (article-only), key points may use approved context numbers uncited.
+    """
     facts = {fact.fact_id: fact for fact in data.facts.facts}
     findings: list[CritiqueFinding] = []
     cited_vocabulary: set[str] = set()
@@ -205,11 +208,23 @@ def validate_numeric_fidelity(draft: StoryPackage, data: DraftInput) -> list[Cri
             fact = facts.get(fact_id)
             if fact is not None:
                 cited_vocabulary |= _fact_vocabulary(fact)
-    allowed_prose = _approved_context_vocabulary(data) | cited_vocabulary
+    approved_context = _approved_context_vocabulary(data)
+    allowed_prose = approved_context | cited_vocabulary
 
     for key_point in draft.key_points:
         tokens = numeric_tokens(key_point.text)
         if not tokens:
+            continue
+        if not key_point.fact_ids and data.facts.status is FactSetStatus.EMPTY:
+            # Article-only story: no facts exist to cite, so approved context numbers are the limit.
+            if _tokens_not_in(key_point.text, approved_context):
+                findings.append(
+                    _blocking(
+                        CritiqueCategory.NUMERICAL_FIDELITY,
+                        "numerical_fidelity: key point number is not in the approved context",
+                        location=CritiqueLocation.KEY_POINT,
+                    )
+                )
             continue
         if not key_point.fact_ids:
             findings.append(

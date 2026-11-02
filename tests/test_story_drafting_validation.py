@@ -13,6 +13,7 @@ from ai_trend_pipeline.story_drafting import (
     MAX_CRITIQUE_FINDINGS,
     CritiqueCategory,
     CritiqueSeverity,
+    DraftInput,
     StoryKeyPoint,
     StorySourceLink,
 )
@@ -30,6 +31,7 @@ from tests.drafting_fixtures import (
     DATASET_EVIDENCE_ID,
     DEFAULT_FACT_ID,
     STORY_URL,
+    make_article_draft_evidence,
     make_blocking_finding,
     make_clean_package,
     make_draft_input,
@@ -270,3 +272,51 @@ def test_numeric_canonicalisation() -> None:
     assert canonical_number("72.50") == "72.5"
     assert canonical_number("007") == "7"
     assert numeric_tokens("72.5% and 1,000 and -3") == ["72.5%", "1,000", "-3"]
+
+
+def _uncited(text: str) -> dict[str, object]:
+    return {"text": text, "fact_ids": list[str]()}
+
+
+def _article_only_data() -> DraftInput:
+    return make_draft_input(
+        story=make_story(title="Postgres 19 is late", summary="The Postgres 19 release slipped."),
+        facts=make_empty_fact_set(),
+        evidence=[make_article_draft_evidence()],
+    )
+
+
+def test_article_only_key_point_may_use_approved_context_numbers() -> None:
+    data = _article_only_data()
+    package = make_clean_package(
+        headline="Postgres 19 is late",
+        summary="The Postgres 19 release slipped.",
+        body="The Postgres 19 release slipped.",
+        key_points=[_uncited("Postgres 19 is delayed.")],
+        caveats=[],
+        post_text=None,
+    )
+    assert validate_numeric_fidelity(package, data) == []
+    assert validate_draft(package, data) == []
+
+
+def test_article_only_key_point_still_rejects_unapproved_numbers() -> None:
+    data = _article_only_data()
+    package = make_clean_package(
+        headline="Postgres 19 is late",
+        summary="The Postgres 19 release slipped.",
+        body="The Postgres 19 release slipped.",
+        key_points=[_uncited("Postgres 19 slipped by 42 days.")],
+        caveats=[],
+        post_text=None,
+    )
+    findings = validate_numeric_fidelity(package, data)
+    assert [finding.category for finding in findings] == [CritiqueCategory.NUMERICAL_FIDELITY]
+    assert findings[0].location is not None and findings[0].location.value == "key_point"
+
+
+def test_available_facts_still_require_citation_for_key_point_numbers() -> None:
+    data = make_draft_input()
+    package = make_clean_package(key_points=[_uncited("The figure was 72.5 years.")])
+    categories = {finding.category for finding in validate_numeric_fidelity(package, data)}
+    assert categories == {CritiqueCategory.NUMERICAL_FIDELITY, CritiqueCategory.MISSING_CITATION}

@@ -1,6 +1,6 @@
 # 065: Illustrated card (free, offline still image)
 
-Status: approved
+Status: built
 
 ## Goal
 
@@ -1006,3 +1006,8 @@ All checks pass.
 It also fixes both visual flaws: every viewBox, the 3 doodles included, is cropped to its content and the drawing fills about 80 % of the tile, and accents go only in fixed `ACCENT_SLOTS` that clear the backdrop. Goldens, the contact sheet and the new asset sheet are regenerated.
 A builder may drop a glyph that looks bad, and its topic then falls back to the star. The human judges the glyphs on the sheets before merge. 065b is unchanged.
 Next: the builder continues 065a on the same branch, then the verifier runs again.
+
+**builder (revision 3, 065a only)**: Added 12 project-original glyphs (all topics without a doodle: ai, security, chips, code, internet, energy, electric-cars, climate, economy, space, science, food), none dropped (`DROPPED_GLYPHS` is empty). Glyph stroke is 5 (not 6) so lines sit nearer the doodles, which are still finer. Cropped all viewBoxes (the 3 doodles re-normalised, SHA-256s updated), scene version "2" (fixed `ACCENT_SLOTS`, `BACKDROP_SIZE` 440 and `TILTED_SIZE` 420, drawing at 0.80 of the tile), goldens, contact sheet and `docs/media/illustration-assets.png` regenerated and viewed.
+Weaker glyphs: `glyph-bolt-panel` (bolt over the panel is busy) and `glyph-fruit-bowl` (plain round fruit, floating leaf); doodles and glyphs share the palette and hard shadow but not line weight, so they read as two related styles, not one.
+OPEN ITEM for the human: the owner's CC0 dedication of the glyphs is not confirmed. `LICENSES.md` carries the spec's dedication sentence and records no confirmation; confirm it before merge. Still 065a only (no picker, no `media_choice`).
+

@@ -1,6 +1,6 @@
 # 067: Drawn-image contracts, prompt and SVG-to-PNG pipeline
 
-Status: built
+Status: pr-open
 
 ## Goal
 
@@ -284,3 +284,12 @@ in order:
 
 **builder**: added drawn contracts to `media/models.py`, `media/drawn/{prompt,pipeline}.py`, four settings and `_parse_bool` in `config.py`, three fixture SVGs and the tests. Lint, pyright and the full suite (1803) pass.
 Notes: `MAX_DRAWN_SVG_BYTES` lives in `pipeline.py` and `prompt.py` imports it. The `too_many_elements` test uses 301 bare `<rect/>` so it fits in 4096 bytes. `frontend-design` skill not used (no UI).
+
+**verifier**: ran `just lint` (ruff check, ruff format --check, pyright) and `just test` with ANTHROPIC_BASE_URL and ANTHROPIC_API_KEY unset. Lint passes, 1803 tests pass, 0 failures.
+All checks pass.
+
+**reviewer**: checked the diff against the spec and checklist. All acceptance criteria and listed tests are present, scope is clean, no workflow or activity changes, no secrets. Approved.
+Note: `_parse_bool` truncates the echoed value to 20 chars, which is a good touch.
+
+**scribe**: added the four `DRAWN_IMAGES_*` settings to the README configuration paragraph and the `tech.md` settings table. No other docs changed.
+Doc guard tests pass. PR opened against `main` from `task/067-drawn-image-contracts`; not merged. Next: human reviews and merges the PR.

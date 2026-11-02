@@ -744,6 +744,10 @@ environment variables.
 | `MEDIA_DIR` | `media_dir` | shared directory for story media artifacts (`<sha256>.<ext>`); prod volume `media` in worker and web | `media` |
 | `MEDIA_PROVIDER` | `media_provider` | story media renderer: `story-card` or `fake` (tests only) | `story-card` |
 | `ILLUSTRATION_PROVIDER` | `illustration_provider` | illustrated card provider: `illustrated-card`, `off` (kill switch) or `fake` (tests only); unknown values fail with the valid names | `illustrated-card` |
+| `DRAWN_IMAGES_ENABLED` | `drawn_images_enabled` | AI-drawn story images on/off (`true`/`false`, also `1`/`0`, `yes`/`no`, `on`/`off`) | `false` |
+| `DRAWN_IMAGES_MODEL` | `drawn_images_model` | model name for drawn images, 1-100 characters, letters, digits, `.`, `_`, `-` | `claude-sonnet-5-5` |
+| `DRAWN_IMAGES_COUNT` | `drawn_images_count` | drawings per story, 1-4 | `3` |
+| `DRAWN_IMAGES_DAILY_CAP` | `drawn_images_daily_cap` | drawn-image API calls per UTC day, 1-1000 | `20` |
 | `ANTHROPIC_API_KEY` | `anthropic_api_key` | LLM calls (worker) | unset |
 | `BLUESKY_HANDLE` | `bluesky_handle` | posting account (worker) | unset |
 | `BLUESKY_APP_PASSWORD` | `bluesky_app_password` | app password (worker) | unset |

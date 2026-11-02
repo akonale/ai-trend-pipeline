@@ -218,7 +218,9 @@ def ellipsise(text: str, font: ImageFont.FreeTypeFont, width: int) -> str:
     return ELLIPSIS
 
 
-def place_line(text: str, x: int, y: int, font: ImageFont.FreeTypeFont, right_limit: int) -> TextLine:
+def place_line(
+    text: str, x: int, y: int, font: ImageFont.FreeTypeFont, right_limit: int
+) -> TextLine:
     """Place a line at (x, y); nudge it so the ink stays between `x` and `right_limit`."""
     left, top, right, bottom = _SCRATCH.textbbox((x, y), text, font=font, anchor="la")
     shift = 0
@@ -247,7 +249,8 @@ def _block(
         size,
         line_height,
         tuple(
-            place_line(text, x, top + i * line_height, font, right_limit) for i, text in enumerate(lines)
+            place_line(text, x, top + i * line_height, font, right_limit)
+            for i, text in enumerate(lines)
         ),
     )
 

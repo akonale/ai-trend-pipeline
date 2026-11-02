@@ -301,7 +301,7 @@ def test_article_only_key_point_may_use_approved_context_numbers() -> None:
     assert validate_draft(package, data) == []
 
 
-def test_article_only_key_point_still_rejects_unapproved_numbers() -> None:
+def test_article_only_key_point_flags_unapproved_numbers() -> None:
     data = _article_only_data()
     package = make_clean_package(
         headline="Postgres 19 is late",
@@ -314,6 +314,7 @@ def test_article_only_key_point_still_rejects_unapproved_numbers() -> None:
     findings = validate_numeric_fidelity(package, data)
     assert [finding.category for finding in findings] == [CritiqueCategory.NUMERICAL_FIDELITY]
     assert findings[0].location is not None and findings[0].location.value == "key_point"
+    assert findings[0].severity is CritiqueSeverity.ADVISORY
 
 
 def test_available_facts_still_require_citation_for_key_point_numbers() -> None:
@@ -349,7 +350,7 @@ def test_article_only_prose_and_key_points_may_use_article_text_numbers() -> Non
     assert validate_numeric_fidelity(package, data) == []
 
 
-def test_article_only_still_rejects_numbers_absent_from_article_text() -> None:
+def test_article_only_flags_numbers_absent_from_article_text() -> None:
     data = _article_text_data()
     package = make_clean_package(
         headline="Magazines in 1984",
@@ -364,6 +365,8 @@ def test_article_only_still_rejects_numbers_absent_from_article_text() -> None:
         "body",
         "key_point",
     }
+    assert all(finding.severity is CritiqueSeverity.ADVISORY for finding in findings)
+    assert validate_draft(package, data) == findings
 
 
 def test_article_text_numbers_do_not_relax_stories_with_facts() -> None:
@@ -375,3 +378,26 @@ def test_article_text_numbers_do_not_relax_stories_with_facts() -> None:
         finding.category is CritiqueCategory.NUMERICAL_FIDELITY
         for finding in validate_numeric_fidelity(package, data)
     )
+
+
+def test_article_only_unsupported_number_does_not_block_the_draft() -> None:
+    data = _article_text_data()
+    package = make_clean_package(
+        headline="Magazines in 1984",
+        summary="A retrospective.",
+        body="Two decades later, 3 predictions held.",
+        key_points=[_uncited("The scan is on PDF page 202.")],
+        caveats=[],
+        post_text=None,
+    )
+    findings = validate_draft(package, data)
+    assert findings
+    assert not any(finding.severity is CritiqueSeverity.BLOCKING for finding in findings)
+
+
+def test_numeric_findings_stay_blocking_when_facts_are_available() -> None:
+    data = make_draft_input()
+    package = make_clean_package(body="The latest figure was 80.0 years.")
+    findings = validate_numeric_fidelity(package, data)
+    assert findings
+    assert all(finding.severity is CritiqueSeverity.BLOCKING for finding in findings)

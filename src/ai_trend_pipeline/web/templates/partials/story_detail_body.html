@@ -22,7 +22,26 @@
   {% elif view.package or view.state == "review" or view.state == "ready" %}
   <div class="story-detail__layout">
     <div class="story-detail__reading">
-      {% if view.media %}
+      {% if view.pick %}
+      <div class="pick">
+        <fieldset class="pick__set">
+          <legend class="pick__legend">{{ view.pick.legend }}</legend>
+          <div class="pick__tiles">
+            {% for tile in view.pick.tiles %}
+            <label class="pick__tile pick__tile--{{ tile.value }}">
+              <span class="pick__head">
+                <input type="radio" name="media_choice" value="{{ tile.value }}" form="{{ view.pick.form_id }}"{% if tile.checked %} checked{% endif %}>
+                <span class="pick__name">{{ tile.name }}</span>
+              </span>
+              <picture>{% if tile.animated_src %}<source media="{{ view.pick.motion_media }}" srcset="{{ tile.animated_src }}" type="image/gif">{% endif %}<img src="{{ tile.src }}" width="{{ tile.width }}" height="{{ tile.height }}" alt="{{ tile.alt_text }}" decoding="async"></picture>
+              <span class="pick__hint">{{ tile.hint }}</span>
+              <span class="pick__alt">{{ view.pick.alt_label }} {{ tile.alt_text }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </fieldset>
+      </div>
+      {% elif view.media %}
       <figure class="story-media">
         <picture>
           {% if view.media.animated_src %}<source media="{{ view.media.motion_media }}" srcset="{{ view.media.animated_src }}" type="image/gif">{% endif %}
@@ -104,11 +123,12 @@
       <p class="meta">{{ view.package_note }}</p>
       {% if view.package_code %}<p class="story-rail__code">{{ view.package_code_label }} {{ view.package_code }}</p>{% endif %}
       <div class="candidate-decisions">
-        <form class="decision" method="post" action="{{ view.decision_action }}">
+        <form class="decision" id="story-approve" method="post" action="{{ view.decision_action }}">
           <input type="hidden" name="decision" value="approve">
           <input type="hidden" name="content_hash" value="{{ view.content_hash }}">
           <button class="btn btn--primary" type="submit">{{ view.approve_label }}</button>
         </form>
+        {% if view.pick_rail_note %}<p class="meta">{{ view.pick_rail_note }}</p>{% endif %}
         <form class="decision" method="post" action="{{ view.decision_action }}">
           <input type="hidden" name="decision" value="reject">
           <input type="hidden" name="content_hash" value="{{ view.content_hash }}">

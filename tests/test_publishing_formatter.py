@@ -2,11 +2,21 @@
 
 import pytest
 
-from ai_trend_pipeline.media.models import MediaOutcome, MediaType
+from ai_trend_pipeline.media.briefs import story_package_hash
+from ai_trend_pipeline.media.models import (
+    IllustrationStatus,
+    MediaArtifact,
+    MediaKind,
+    MediaOutcome,
+    MediaSelection,
+    MediaType,
+)
 from ai_trend_pipeline.publishing.formatter import PublicationRejected, format_publication
-from ai_trend_pipeline.publishing.models import PublicationErrorCode
+from ai_trend_pipeline.publishing.models import DestinationCapabilities, PublicationErrorCode
 from ai_trend_pipeline.publishing.registry import BLUESKY_CAPABILITIES, capabilities_for
+from ai_trend_pipeline.story_drafting import StoryPackage
 from tests.drafting_fixtures import make_source_link
+from tests.media_fixtures import make_artifact
 from tests.publishing_fixtures import make_approved_package
 
 CAPS = BLUESKY_CAPABILITIES
@@ -156,3 +166,49 @@ def test_formatted_post_is_used_by_format_publication_unchanged() -> None:
     assert anchor == "news.example"
     no_facets = CAPS.model_copy(update={"supports_link_facets": False})
     assert formatted_post(package, no_facets) == (package.post_text, [], None)
+
+
+def _illustrated_package(
+    selected: MediaSelection | None,
+) -> tuple[StoryPackage, str, MediaArtifact]:
+    package, _ = make_approved_package(MediaOutcome.GIF)
+    assert package.media is not None
+    illustration = make_artifact(
+        MediaKind.STATIC,
+        artifact_id="art-v1-" + "c" * 16,
+        content_hash="c" * 64,
+        relative_path="c" * 64 + ".png",
+        alt_text="A drawing of a rising line",
+    )
+    manifest = package.media.model_copy(
+        update={
+            "illustration_artifact": illustration,
+            "illustration_status": IllustrationStatus.MATCHED,
+            "selected": selected,
+        }
+    )
+    chosen = package.model_copy(update={"media": manifest})
+    return chosen, story_package_hash(chosen), illustration
+
+
+@pytest.mark.parametrize("caps", [CAPS, ANIMATED_CAPS], ids=["still_only", "gif_capable"])
+def test_selected_illustration_uploads_the_illustration_with_its_alt_text(
+    caps: DestinationCapabilities,
+) -> None:
+    package, digest, illustration = _illustrated_package(MediaSelection.ILLUSTRATION)
+    out = format_publication(package, digest, caps)
+    assert out.media is not None
+    assert out.media.artifact == illustration
+    assert out.media.alt_text == "A drawing of a rising line"
+
+
+def test_selected_card_and_no_selection_keep_the_existing_choice() -> None:
+    for selected in (MediaSelection.CARD, None):
+        package, digest, _ = _illustrated_package(selected)
+        assert package.media is not None
+        still = format_publication(package, digest, CAPS)
+        assert still.media is not None
+        assert still.media.artifact == package.media.static_artifact
+        gif = format_publication(package, digest, ANIMATED_CAPS)
+        assert gif.media is not None
+        assert gif.media.artifact == package.media.animated_artifact

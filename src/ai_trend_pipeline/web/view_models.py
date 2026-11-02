@@ -8,7 +8,13 @@ from urllib.parse import quote, urlencode, urlsplit
 from pydantic import BaseModel, Field, ValidationError
 
 from ai_trend_pipeline.daily_chart import APPROVAL_TIMEOUT, ReviewState
-from ai_trend_pipeline.media.models import IllustrationStatus, MediaManifest, MediaOutcome
+from ai_trend_pipeline.media.models import (
+    IllustrationStatus,
+    MediaCandidate,
+    MediaManifest,
+    MediaOutcome,
+    MediaSelection,
+)
 from ai_trend_pipeline.post_options import (
     CHART_TYPES,
     MAX_COUNTRIES,
@@ -1340,6 +1346,8 @@ MAX_PACKAGE_CITATIONS = 20
 PACKAGE_CODE_LABEL = "Package"
 PACKAGE_CODE_CHARS = 8
 PACKAGE_NOTE_WITH_MEDIA = "You approve the text and the story card together."
+PACKAGE_NOTE_WITH_PICK = "You approve the text and the picture you pick together."
+PACKAGE_NOTE_PICKED = "You approved the text and the illustrated card together."
 PACKAGE_NOTE_TEXT_ONLY = "You approve the text only."
 MEDIA_MISSING_HEADING = "No story card"
 MEDIA_MISSING_BODY = "No image could be made for this story. Approving it approves the text only."
@@ -1658,6 +1666,8 @@ class StoryDetailView(BaseModel):
     region_id: str = STORY_DETAIL_REGION_ID
     package: StoryPackageView | None = None
     media: "StoryMediaView | None" = None
+    pick: "StoryPickView | None" = None
+    pick_rail_note: str = ""
     media_missing_heading: str = ""
     media_missing_body: str = ""
     post_proof: PostPreviewView | None = None
@@ -1735,6 +1745,7 @@ def build_story_detail_view(
     published = detail.status is PrimaryStoryStatus.PUBLISHED
     ready = detail.status is PrimaryStoryStatus.READY or published
     media = None
+    pick = None
     media_missing = False
     package_note = ""
     content_hash = ""
@@ -1753,10 +1764,18 @@ def build_story_detail_view(
         if ready:
             panel = build_publish_panel(detail, post_proof, now=now)
         manifest = detail.package.media if detail.package is not None else None
-        media = build_story_media_view(detail.detail_id, manifest)
+        pick = build_story_pick_view(detail.detail_id, manifest) if not ready else None
+        media = None if pick is not None else build_story_media_view(detail.detail_id, manifest)
         media_missing = manifest is not None and manifest.outcome is MediaOutcome.TEXT_ONLY
         content_hash = detail.content_hash or ""
-        package_note = PACKAGE_NOTE_WITH_MEDIA if media is not None else PACKAGE_NOTE_TEXT_ONLY
+        if pick is not None:
+            package_note = PACKAGE_NOTE_WITH_PICK
+        elif manifest is not None and manifest.selected is MediaSelection.ILLUSTRATION:
+            package_note = PACKAGE_NOTE_PICKED
+        elif media is not None:
+            package_note = PACKAGE_NOTE_WITH_MEDIA
+        else:
+            package_note = PACKAGE_NOTE_TEXT_ONLY
     return StoryDetailView(
         page_title=title,
         detail_id=detail.detail_id,
@@ -1780,6 +1799,8 @@ def build_story_detail_view(
         polling_href=f"/stories/{quote(refresh_id or detail.detail_id, safe='')}/status",
         package=package,
         media=media,
+        pick=pick,
+        pick_rail_note=PICK_RAIL_NOTE if pick is not None else "",
         post_proof=post_proof,
         publish_panel=panel,
         published=published,
@@ -1859,6 +1880,25 @@ STILL_FALLBACK_KIND_TEXT = (
 REDUCED_MOTION_NOTE = "Reduced motion is on, so the still card is shown."
 
 
+PICK_LEGEND = "Picture for the post"
+PICK_RAIL_NOTE = "Approve sends the picture you picked with the story."
+PICK_FORM_ID = "story-approve"
+GOES_IN_POST_TEXT = "This picture goes in the post."
+ILLUSTRATION_PICKED_KIND_TEXT = f"Illustrated card. {GOES_IN_POST_TEXT}"
+CARD_HINT = "Headline and key fact drawn by this app."
+ILLUSTRATION_HINT_MATCHED = (
+    "Headline with a drawing from our free illustration set, picked to match the story."
+)
+ILLUSTRATION_HINT_GENERIC = (
+    "Headline on a pattern made from this story. No drawing matched the topic."
+)
+# Tile names by candidate kind: a new kind adds one entry here and one in `candidates()`.
+PICK_TILE_NAMES: dict[MediaSelection, str] = {
+    MediaSelection.ILLUSTRATION: "Illustrated card",
+    MediaSelection.CARD: "Story card",
+}
+
+
 def _media_kind_text(manifest: MediaManifest) -> tuple[str, str]:
     animated = manifest.animated_artifact
     if manifest.outcome is MediaOutcome.GIF and animated is not None:
@@ -1891,8 +1931,20 @@ def build_story_media_view(detail_id: str, manifest: MediaManifest | None) -> St
     if poster is None:
         return None
     base = f"/stories/{quote(detail_id, safe='')}/media/"
+    picked = manifest.illustration_artifact
+    if manifest.selected is MediaSelection.ILLUSTRATION and picked is not None:
+        return StoryMediaView(
+            poster_src=base + quote(picked.artifact_id, safe=""),
+            poster_width=picked.width,
+            poster_height=picked.height,
+            animated_src=None,
+            alt_text=picked.alt_text,
+            kind_text=ILLUSTRATION_PICKED_KIND_TEXT,
+        )
     animated = manifest.animated_artifact if manifest.outcome is MediaOutcome.GIF else None
     kind_text, motion_note = _media_kind_text(manifest)
+    if manifest.selected is MediaSelection.CARD:
+        kind_text = f"{kind_text} {GOES_IN_POST_TEXT}"
     return StoryMediaView(
         poster_src=base + quote(poster.artifact_id, safe=""),
         poster_width=poster.width,
@@ -1906,4 +1958,64 @@ def build_story_media_view(detail_id: str, manifest: MediaManifest | None) -> St
             if manifest.illustration_status is IllustrationStatus.FAILED
             else ""
         ),
+    )
+
+
+class PickTileView(BaseModel):
+    value: str
+    name: str
+    hint: str
+    src: str
+    animated_src: str | None
+    width: int
+    height: int
+    alt_text: str
+    checked: bool
+
+
+class StoryPickView(BaseModel):
+    legend: str = PICK_LEGEND
+    form_id: str = PICK_FORM_ID
+    alt_label: str = ALT_LABEL
+    motion_media: Literal["(prefers-reduced-motion: no-preference)"] = MOTION_OK_MEDIA
+    tiles: list[PickTileView]
+
+
+def _pick_hint(candidate: MediaCandidate, manifest: MediaManifest) -> str:
+    if candidate.selection is MediaSelection.ILLUSTRATION:
+        if manifest.illustration_status is IllustrationStatus.MATCHED:
+            return ILLUSTRATION_HINT_MATCHED
+        return ILLUSTRATION_HINT_GENERIC
+    if candidate.animated is not None:
+        return f"{CARD_HINT} {_media_kind_text(manifest)[0]}"
+    return CARD_HINT
+
+
+def build_story_pick_view(detail_id: str, manifest: MediaManifest | None) -> StoryPickView | None:
+    """One tile per `manifest.candidates()` entry, or None when there is nothing to choose."""
+    if manifest is None:
+        return None
+    candidates = manifest.candidates()
+    if len(candidates) < 2:
+        return None
+    base = f"/stories/{quote(detail_id, safe='')}/media/"
+    return StoryPickView(
+        tiles=[
+            PickTileView(
+                value=candidate.selection.value,
+                name=PICK_TILE_NAMES[candidate.selection],
+                hint=_pick_hint(candidate, manifest),
+                src=base + quote(candidate.artifact.artifact_id, safe=""),
+                animated_src=(
+                    None
+                    if candidate.animated is None
+                    else base + quote(candidate.animated.artifact_id, safe="")
+                ),
+                width=candidate.artifact.width,
+                height=candidate.artifact.height,
+                alt_text=candidate.artifact.alt_text,
+                checked=candidate.preselected,
+            )
+            for candidate in candidates
+        ]
     )

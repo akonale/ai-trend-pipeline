@@ -4,13 +4,16 @@ import pytest
 from pydantic import ValidationError
 
 from ai_trend_pipeline.media.models import (
+    IllustrationStatus,
     MediaArtifact,
     MediaKind,
     MediaManifest,
     MediaOutcome,
+    MediaSelection,
     MediaType,
     artifact_id_for,
     media_brief_hash,
+    with_media_choice,
 )
 from tests.media_fixtures import (
     HASH_A,
@@ -337,3 +340,59 @@ def test_illustration_result_artifact_only_for_matched_or_generic() -> None:
             IllustrationResult(status=status, artifact=artifact)
     with pytest.raises(ValidationError):
         IllustrationResult(status=IllustrationStatus.GENERIC)
+
+
+def _illustrated(
+    status: IllustrationStatus, outcome: MediaOutcome = MediaOutcome.GIF
+) -> MediaManifest:
+    return make_manifest(
+        outcome, illustration_artifact=_illustration_artifact(), illustration_status=status
+    )
+
+
+def test_candidates_lists_illustration_first_and_card_last() -> None:
+    manifest = _illustrated(IllustrationStatus.MATCHED)
+    found = manifest.candidates()
+    assert [c.selection for c in found] == [MediaSelection.ILLUSTRATION, MediaSelection.CARD]
+    assert found[0].artifact == manifest.illustration_artifact
+    assert found[0].animated is None
+    assert found[1].artifact == manifest.static_artifact
+    assert found[1].animated == manifest.animated_artifact
+
+
+def test_candidates_preselect_follows_the_default_rule() -> None:
+    matched = _illustrated(IllustrationStatus.MATCHED).candidates()
+    assert [c.preselected for c in matched] == [True, False]
+    generic = _illustrated(IllustrationStatus.GENERIC).candidates()
+    assert [c.preselected for c in generic] == [False, True]
+
+
+@pytest.mark.parametrize("status", [IllustrationStatus.FAILED, IllustrationStatus.DISABLED, None])
+def test_candidates_without_an_illustration_is_only_the_preselected_card(
+    status: IllustrationStatus | None,
+) -> None:
+    found = make_manifest(MediaOutcome.STATIC, illustration_status=status).candidates()
+    assert [(c.selection, c.preselected) for c in found] == [(MediaSelection.CARD, True)]
+    assert found[0].animated is None
+
+
+def test_candidates_of_a_text_only_manifest_is_empty() -> None:
+    assert make_manifest(MediaOutcome.TEXT_ONLY).candidates() == ()
+
+
+def test_with_media_choice_sets_a_offered_choice_and_falls_back_to_card() -> None:
+    manifest = _illustrated(IllustrationStatus.MATCHED)
+    chosen = with_media_choice(manifest, MediaSelection.ILLUSTRATION)
+    assert chosen.selected is MediaSelection.ILLUSTRATION
+    assert with_media_choice(manifest, MediaSelection.CARD).selected is MediaSelection.CARD
+    assert with_media_choice(manifest, None).selected is MediaSelection.CARD
+
+
+def test_with_media_choice_is_unchanged_with_a_single_candidate() -> None:
+    for manifest in (
+        make_manifest(MediaOutcome.GIF),
+        make_manifest(MediaOutcome.STATIC, illustration_status=IllustrationStatus.FAILED),
+        make_manifest(MediaOutcome.TEXT_ONLY),
+    ):
+        assert with_media_choice(manifest, MediaSelection.ILLUSTRATION) is manifest
+        assert with_media_choice(manifest, None).selected is None

@@ -160,7 +160,8 @@ or `none` disables it). The `research_story` activity runs on the story-generati
 Prod mounts the `media` volume at `/data/media` in worker and web. After a story passes checking,
 `StoryGenerationWorkflow` runs `StoryMediaWorkflow` and the review page at `/stories/{id}` shows the
 exact story card (a short GIF with a still poster for reduced motion), its alt text and any fallback.
-Approval covers the text and the card together. `MEDIA_PROVIDER` (default `story-card`; `fake` for
+Approval covers the text and the picture you pick (the picker, below; the story card when there is
+no illustrated alternative). `MEDIA_PROVIDER` (default `story-card`; `fake` for
 tests) picks the renderer.
 `ILLUSTRATION_PROVIDER` (default `illustrated-card`; `off` or `fake`) controls the extra illustrated
 card still described below. `GET /stories/{id}/media/{artifact_id}` serves an artifact only when that story's manifest lists
@@ -172,11 +173,21 @@ health, or a project-original flat glyph for the other twelve topics), and a bac
 the story's content hash. It renders offline in about 0.4 s per story (CPU only), with no API, key
 or cost, and costs nothing when off. Stories that match none of the 14 topics, or only weakly,
 get the same background with an abstract burst and no figure. The project-original glyphs are
-authored for this repo; the owner's CC0 dedication is stated in `LICENSES.md`. The
-picture is stored in the manifest (`illustration_artifact`) but nothing selects or posts it yet
-(`selected` stays empty), so publishing still uses the story card. Set `ILLUSTRATION_PROVIDER=off`
+authored for this repo; `LICENSES.md` states a CC0 dedication for them that the owner has not yet confirmed. The
+picture is stored in the manifest (`illustration_artifact`) and offered in review by the picker (065b). Set `ILLUSTRATION_PROVIDER=off`
 in `.env.prod` and run `just deploy` to switch it off. Contact sheet of samples:
 `docs/media/illustrated-card-samples.png`. Licences: `src/ai_trend_pipeline/media/illustrations/LICENSES.md`.
+
+**Illustration picker (task 065b).** In review, a story with an illustration shows a "Picture for
+the post" picker above the text: one radio tile per candidate picture (the illustrated card and the
+story card), built from `MediaManifest.candidates()`. A strong match preselects the illustrated
+card, a weak or no match preselects the story card. It is plain HTML (radios tied to the Approve
+form), so it needs no JavaScript. Approve sends the pick, the workflow freezes it into the approved
+package hash (`story-media-choice-v1`), the Ready page shows only that picture, and Bluesky
+uploads exactly that still with its alt text. An approval with no pick (the CLI, an old form) means
+the story card. Stories without an illustration, or whose illustration failed, show the single
+card as before. No screenshots were taken; see the manual visual checklist in
+`docs/runbooks/publishing.md`.
 
 ## Hacker News
 

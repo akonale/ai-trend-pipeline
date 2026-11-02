@@ -25,8 +25,10 @@ with workflow.unsafe.imports_passed_through():
         BaseModel,
         ConfigDict,
         Field,
+        SerializerFunctionWrapHandler,
         StringConstraints,
         field_validator,
+        model_serializer,
         model_validator,
     )
 
@@ -38,7 +40,7 @@ with workflow.unsafe.imports_passed_through():
         story_package_hash,
         text_only_manifest,
     )
-    from ai_trend_pipeline.media.models import MediaOutcome
+    from ai_trend_pipeline.media.models import MediaOutcome, MediaSelection, with_media_choice
     from ai_trend_pipeline.research.models import (
         ResearchFailureCode,
         ResearchInput,
@@ -105,6 +107,7 @@ FAILED_GENERIC_DETAIL = "Story generation failed."
 EXPIRED_DETAIL = "The review window closed."
 
 STORY_MEDIA_PATCH = "story-media-v1"
+STORY_MEDIA_CHOICE_PATCH = "story-media-choice-v1"
 MEDIA_CHILD_TIMEOUT = timedelta(minutes=6)
 MEDIA_DETAIL = "Making the story card."
 MEDIA_REVIEW_DETAILS: dict[MediaOutcome, str] = {
@@ -206,6 +209,15 @@ class FinalStoryDecision(BaseModel):
     note: NoteText = ""
     decided_by: DecidedByText | None = None
     content_hash: str | None = Field(default=None, pattern=SHA256_PATTERN)
+    media_choice: MediaSelection | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_empty_media_choice(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
+        """Drop `media_choice` when `None`, so CLI, old-form and reject payloads stay unchanged."""
+        data: dict[str, object] = handler(self)
+        if data.get("media_choice") is None:
+            data.pop("media_choice", None)
+        return data
 
     @field_validator("decided_by", mode="before")
     @classmethod
@@ -548,6 +560,13 @@ class StoryGenerationWorkflow:
             has_note=bool(decision.note),
         )
         if approved:
+            media = package.media
+            if media is not None and len(media.candidates()) >= 2:
+                if workflow.patched(STORY_MEDIA_CHOICE_PATCH):
+                    package = package.model_copy(
+                        update={"media": with_media_choice(media, decision.media_choice)}
+                    )
+                    self._content_hash = story_package_hash(package)
             return self._finish(
                 StoryGenerationStatus.READY,
                 "ready",

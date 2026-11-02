@@ -54,8 +54,10 @@ The worker is the only process that talks to Bluesky. The web app never sees the
 - Bluesky has no animation here, so a GIF story publishes its still card. A text-only story
   publishes text with the source link and no image.
 - `ILLUSTRATION_PROVIDER` (worker only) is `illustrated-card` (default), `off` or `fake` (tests
-  only). It makes a second, free, offline still per story (the illustrated card). Until the picker
-  ships (065b) nothing selects it, so publishing is unchanged and still posts the story card.
+  only). It makes a second, free, offline still per story (the illustrated card). In review the
+  human picks which still goes in the post (the picker, task 065b); Approve with no pick, such as
+  from the CLI, posts the story card. Bluesky uploads exactly the picked still, even if the
+  destination could take the GIF.
   **To switch it off:** set `ILLUSTRATION_PROVIDER=off` in `.env.prod` and run `just deploy`. New
   stories then get the card only; stories already reviewed keep their stored manifest. A code
   rollback is safe: the new manifest fields are optional and dropped when empty.
@@ -169,3 +171,16 @@ must run this checklist in a real browser, in light and dark themes, before merg
   fills) legible.
 - [ ] Reduced motion shows the still card, with the proof below it.
 - [ ] The post proof ruler fills in proportion to the count and turns pink when over the limit.
+
+### Illustration picker (task 065b), also manual, no screenshot was taken
+
+Run these in a real browser, in light and dark themes, before merging:
+
+- [ ] The picker shows side by side on a wide window and stacks, illustrated card first, at 360px
+  with no horizontal scroll.
+- [ ] The yellow shadow moves to the tile you click, with no page reload.
+- [ ] Keyboard: Tab reaches the radios, the arrow keys switch the pick, and the focus ring wraps
+  the whole tile.
+- [ ] With CSS `:has` unsupported (or ignored), the radio still shows the pick.
+- [ ] Reduced motion shows the card poster in its tile.
+- [ ] Approve with each pick, then Ready shows only the picked picture.

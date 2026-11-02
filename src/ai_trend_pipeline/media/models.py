@@ -235,6 +235,17 @@ class MediaArtifact(BaseModel):
         return self
 
 
+class MediaCandidate(BaseModel):
+    """One picture a reviewer can pick for the post; built only by `MediaManifest.candidates()`."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    selection: MediaSelection
+    artifact: MediaArtifact  # the still that is posted
+    animated: MediaArtifact | None = None  # review-only GIF, set only for the card
+    preselected: bool
+
+
 class MediaManifest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -308,6 +319,36 @@ class MediaManifest(BaseModel):
                 return candidate
         return None
 
+    def candidates(self) -> tuple[MediaCandidate, ...]:
+        """The pictures offered in review: the illustration first, the story card last.
+
+        The only place that knows which manifest fields are candidates. Exactly one is
+        preselected: the illustration when matched, otherwise the card.
+        """
+        card = self.static_artifact
+        if card is None:
+            return ()
+        found: list[MediaCandidate] = []
+        illustration = self.illustration_artifact
+        matched = self.illustration_status is IllustrationStatus.MATCHED
+        if illustration is not None and self.illustration_status in ILLUSTRATED_STATUSES:
+            found.append(
+                MediaCandidate(
+                    selection=MediaSelection.ILLUSTRATION,
+                    artifact=illustration,
+                    preselected=matched,
+                )
+            )
+        found.append(
+            MediaCandidate(
+                selection=MediaSelection.CARD,
+                artifact=card,
+                animated=self.animated_artifact,
+                preselected=not any(c.preselected for c in found),
+            )
+        )
+        return tuple(found)
+
 
 class RenderMediaInput(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -363,3 +404,15 @@ def illustration_artifact_id_for(
         "version": renderer_version,
     }
     return "art-v1-" + sha256_hex(canonical_json(payload))[:16]
+
+
+def with_media_choice(manifest: MediaManifest, choice: MediaSelection | None) -> MediaManifest:
+    """Freeze the reviewer's pick. With fewer than 2 candidates the manifest is unchanged.
+
+    A choice that is not offered (missing, or forged) means the story card.
+    """
+    offered = {candidate.selection for candidate in manifest.candidates()}
+    if len(offered) < 2:
+        return manifest
+    selected = choice if choice in offered else MediaSelection.CARD
+    return manifest.model_copy(update={"selected": selected})

@@ -376,6 +376,59 @@ StoryPublishingWorkflow (one per story + destination + approved content hash)
 | 065 | Illustrated card (free, offline still image): behind the separate illustration provider interface, add a deterministic `illustrated-card` provider with no API, key, network or cost. It vendors a small curated pack of CC0 cartoon SVGs from Open Doodles only (Openclipart deferred to a later task while its site serves no clipart; licences verified on the official site and recorded in a machine-readable catalogue, sanitised by an allowlist), plus simple original flat topic glyphs authored in this repo (CC0-dedicated, catalogued as project-original) for the topics Open Doodles cannot cover, with every viewBox cropped so the drawing fills the tile, picks one with a readable keyword table over the headline and summary (weak or no match, or a topic with no suitable drawing, gives a generic pattern scene, never a wrong-topic drawing), and composes it with the headline on a procedural background seeded from the story content hash, recoloured to the site tokens and rasterised with pinned `resvg-py`. Run it as an idempotent activity in `StoryMediaWorkflow` (patched), store it content-addressed, and add it to the MediaManifest. Review shows it next to the story card; the human's pick is sent with Approve and frozen in the approved hash; Bluesky uploads the chosen still. Kill switch `ILLUSTRATION_PROVIDER=off` | Golden-image tests prove deterministic output within byte limits; every asset has a complete licence record (verified CC0 Open Doodles or project-original glyph) and passes the SVG sanitiser; the matching-table tests pass and weak matches preselect the story card; failed or disabled illustrations fall back to the card; old histories replay and pre-065 approved hashes are unchanged; the review picker works without JavaScript at 360px; publishing uses the picked still; a contact sheet of sample outputs is committed for human review; no network in tests | yes |
 | 065b | Illustration picker (the part of 065 that 065a deferred): review shows one radio tile per candidate picture from `MediaManifest.candidates()` (today the illustrated card and the story card; forward-compatible with a later source such as a photo provider, but no new source is built), with no JavaScript (`form="story-approve"`), a yellow hard shadow on the picked tile, and 2fr/1fr tiles that stack at 360px. `media_choice` flows route → service → `StoryGenerationWorkflow` under patch `story-media-choice-v1`, sets `selected` on the manifest and recomputes the approved hash; the Bluesky formatter uploads the picked still. The glyph CC0 dedication and weak-glyph fixes stay out of scope | Matched preselects the illustration and generic preselects the card; failed, disabled and old stories render as before; approving with either choice or none freezes `selected` in the Ready hash while stale approvals are still refused; the formatter posts the picked still; bad `media_choice` values get 400; old histories (including a pre-065b illustrated approval) and the new history replay, and the pinned hashes are unchanged; markup/CSS tests plus a documented manual visual checklist stand in for screenshots | yes |
 
+### AI-drawn story images (reviewer gallery)
+
+**Goal:** for each checked story, one Anthropic call draws 1-4 small flat SVG pictures (default 3)
+from the approved draft's headline and summary. Only sanitised, rasterised PNGs are kept, and review
+shows them as a view-only gallery. Drawings are never posted. The earlier 066 idea (a
+provider-neutral, OpenAI-compatible experiment with an offline harness) was dropped; numbering
+continues at 067.
+
+**Architectural decision:** Anthropic API only, through the existing `anthropic.AsyncAnthropic`
+client and the tool-use structured-output pattern of the other LLM activities, with the tool forced.
+The model's SVG is untrusted. It runs only through `sanitize_svg` and then `rasterise_svg`, inside
+one idempotent activity in `StoryMediaWorkflow` behind the patch `story-drawn-v1`. Raw model text
+never enters Temporal history or logs.
+
+**Done when:** with `DRAWN_IMAGES_ENABLED=true`, a new story's review page shows up to the
+configured number of drawn pictures with fixed-copy alt text and a "Drawn by an AI model" note. With
+the setting off, or after any failure or the daily cap, the story looks and publishes exactly as
+before, apart from a small note. Retries and replays never pay twice. Old histories replay and
+every pre-existing approved hash is unchanged.
+
+**Order:** 067 → 068 → 069 → 070. Task 067 adds pure contracts, the prompt, the SVG-to-PNG pipeline
+and the settings. Task 068 adds the activity, unregistered. Task 069 wires it into the manifest and
+the media workflow. Task 070 adds the reviewer gallery and the docs.
+
+**Rules for 067-070:**
+- Input is only the draft's headline and summary, cleaned in code: NFC, control and format
+  characters removed, URLs, `<`, `>` and backticks removed, and length capped. The prompt says that
+  story text is data, never instructions.
+- Art direction: the `SCENE_PALETTE` colours only, flat shapes, a thick ink outline, and the
+  sanitiser's element allow-list. No text, digits, logos, real people, flags, maps or value charts.
+- Alt text is fixed copy built from the headline and the image's role. Model text is never used for
+  alt text.
+- Only PNGs are stored, content-addressed through `write_artifact`. They are served only through the
+  existing manifest-checked media route.
+- Off by default. The model name, the image count and a per-day call cap are settings in
+  `config.py`. A pointer file keyed by `story_content_hash` means a story is drawn at most once.
+  Nothing regenerates without a human action, and that action is out of scope here.
+- Retries happen only for transient API errors, with at most 2 attempts. Any failure falls back
+  silently to the story card and the 065a illustration. Media never fails a story.
+- The new manifest fields are dropped from dumps when empty, so every old `story_package_hash` and
+  `story_content_hash` stays byte-identical. `MediaManifest.candidates()` is unchanged: drawings are
+  not pickable, and `selected`, `media_choice`, publishing, the formatter and Bluesky are untouched.
+- Tests use recorded Anthropic fixtures through `httpx.MockTransport` and make no live calls. They
+  include time-skipping workflow tests and replay fixtures for old and new histories, and pass
+  Ruff and strict Pyright.
+
+| # | Task | Done when | Your approval? |
+| --- | --- | --- | --- |
+| 067 | Drawn-image contracts, prompt and SVG pipeline: add bounded Pydantic models (`DrawnRole`, `DrawnStatus`, `DrawnArtifact`, `DrawImagesInput`, `DrawnImagesResult` in `media/models.py`; the SVG-carrying `DrawnImageSpec`/`DrawnImagesReply` tool models in a new `media/drawn/` package), `clean_story_text`, a pure prompt builder with a prompt hash, fixed-copy alt text, and a pure `render_drawn_svg` (sanitise → viewBox and element checks → resvg → flatten → PNG within byte limits). Add the four `DRAWN_IMAGES_*` settings. No activity, workflow or manifest change | Cleaning, prompt, alt text, tool-schema, render and settings tests pass on recorded SVG fixtures; hostile SVGs (script, foreignObject, `href`, off-palette colour, DOCTYPE, oversize, wrong viewBox, too many elements, blank) are rejected with fixed reason codes that carry no model text; the PNG is deterministic for a fixed SVG; Ruff and strict Pyright pass | no |
+| 068 | `draw_story_images` activity: forced tool use against the configured model with SDK retries off, transient/permanent error classification, kill switch, a daily call cap kept in a locked usage file, and an idempotency pointer file per `story_content_hash` holding only artifact metadata. Valid images are stored content-addressed; invalid ones are dropped. Not registered in any worker or workflow | Recorded-fixture tests cover success, partial success, all rejected, malformed tool input, no tool call, truncated output, 429/529/5xx/connection (retryable), 400/401 (not retryable), disabled, cap reached, pointer reuse with no HTTP call, and a corrupt pointer; no SVG or model text appears in errors, results or logs | no |
+| 069 | Manifest and `StoryMediaWorkflow` integration: optional `drawn_artifacts`/`drawn_status` on `MediaManifest` (dropped when empty), `artifact()` lookup for drawings, `review_gallery()` accessor, `candidates()` unchanged; start the activity under patch `story-drawn-v1` after the card succeeds, alongside the GIF and illustration; failures and the cap fall back silently; register it in the worker | Time-skipping tests cover drawn, failed, capped, disabled and activity error; card/illustration/GIF outcomes are unchanged; old `story_media_v1_gif`/`v2_illustrated` and all story-generation histories replay, plus a new `story_media_v3_drawn` history; pinned package hashes are unchanged; the worst-case manifest fits 8 KB; no image bytes or SVG in history | no |
+| 070 | Reviewer gallery and docs: in review, `/stories/{id}` shows a view-only gallery of the drawings at the end of the reading column, with role labels, visible alt text, a "Drawn by an AI model" note, a grid-green tray with no shadows and no radio controls, plus a one-line note for failed or capped. Built through `web/view_models.py`, with only loops and ifs in the template and plain CSS that works at 360px with no JavaScript. Update README, `tech.md` and a runbook section (enabling, cost, cap, kill switch) | View-model, markup and CSS tests cover drawn, failed, capped, off and old stories; the route serves a drawn PNG only through the manifest; picker, Approve form, Ready view and publishing are byte-for-byte unchanged; a manual visual checklist is added; Ruff, Pyright and full pytest pass | no |
+
 ## Web architecture (rules for every Topic Studio task)
 
 Moved to the "Web app" section of [docs/architecture/tech.md](architecture/tech.md).

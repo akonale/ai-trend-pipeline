@@ -24,7 +24,12 @@ from ai_trend_pipeline.media.briefs import (
     story_package_hash,
 )
 from ai_trend_pipeline.media.fake import FakeMediaRenderer
-from ai_trend_pipeline.media.models import MediaOutcome
+from ai_trend_pipeline.media.models import (
+    IllustrationStatus,
+    MediaKind,
+    MediaOutcome,
+    MediaSelection,
+)
 from ai_trend_pipeline.story_generation import (
     MEDIA_CHILD_TIMEOUT,
     MEDIA_DETAIL,
@@ -36,7 +41,7 @@ from ai_trend_pipeline.story_generation import (
 )
 from ai_trend_pipeline.story_media import STORY_MEDIA_TASK_QUEUE
 from ai_trend_pipeline.story_status import PrimaryStoryStatus, primary_story_status
-from tests.media_fixtures import make_manifest
+from tests.media_fixtures import make_artifact, make_manifest
 from tests.story_generation_fixtures import (
     make_draft_output,
     make_facts,
@@ -63,6 +68,29 @@ class StaticMediaDouble:
             MediaOutcome.STATIC,
             story_id=data.story_id,
             story_content_hash=story_content_hash(data.package),
+        )
+        return StoryMediaResult(manifest=manifest)
+
+
+@workflow.defn(name="StoryMediaWorkflow")
+class IllustratedMediaDouble:
+    """Reports a matched illustration next to the story card, with no selection yet."""
+
+    @workflow.run
+    async def run(self, data: StoryMediaInput) -> StoryMediaResult:
+        illustration = make_artifact(
+            MediaKind.STATIC,
+            artifact_id="art-v1-" + "c" * 16,
+            content_hash="c" * 64,
+            relative_path="c" * 64 + ".png",
+            alt_text="Illustrated card",
+        )
+        manifest = make_manifest(
+            MediaOutcome.GIF,
+            story_id=data.story_id,
+            story_content_hash=story_content_hash(data.package),
+            illustration_artifact=illustration,
+            illustration_status=IllustrationStatus.MATCHED,
         )
         return StoryMediaResult(manifest=manifest)
 
@@ -308,3 +336,106 @@ async def test_parent_history_contains_no_media_bytes() -> None:
     assert state.package.media.static_artifact is not None
     assert state.package.media.static_artifact.relative_path.encode() in payloads
     assert len(payloads) < 100_000
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("choice", "expected"),
+    [
+        (MediaSelection.ILLUSTRATION, MediaSelection.ILLUSTRATION),
+        (MediaSelection.CARD, MediaSelection.CARD),
+        (None, MediaSelection.CARD),
+    ],
+    ids=["illustration", "card", "no_choice"],
+)
+async def test_approval_freezes_the_media_choice_and_rehashes(
+    choice: MediaSelection | None, expected: MediaSelection
+) -> None:
+    fakes = FakeStoryActivities()
+    async with await start_env() as env, with_double(env, fakes, IllustratedMediaDouble):
+        handle = await start_story(env)
+        state = await review_state(handle)
+        assert state.package is not None and state.package.media is not None
+        assert state.package.media.selected is None
+        await handle.signal(
+            StoryGenerationWorkflow.approve,
+            FinalStoryDecision(content_hash=state.content_hash, media_choice=choice),
+        )
+        result = await handle.result()
+    assert result.status == "ready"
+    assert result.package is not None and result.package.media is not None
+    assert result.package.media.selected is expected
+    assert result.content_hash == story_package_hash(result.package)
+    assert result.content_hash != state.content_hash
+    assert result.package.media.story_content_hash == story_content_hash(result.package)
+
+
+@pytest.mark.asyncio
+async def test_story_without_an_illustration_keeps_its_review_hash_even_with_a_choice() -> None:
+    fakes = FakeStoryActivities()
+    async with await start_env() as env, with_double(env, fakes, StaticMediaDouble):
+        handle = await start_story(env)
+        state = await review_state(handle)
+        await handle.signal(
+            StoryGenerationWorkflow.approve,
+            FinalStoryDecision(
+                content_hash=state.content_hash, media_choice=MediaSelection.ILLUSTRATION
+            ),
+        )
+        result = await handle.result()
+    assert result.content_hash == state.content_hash
+    assert result.package is not None and result.package.media is not None
+    assert result.package.media.selected is None
+
+
+@pytest.mark.asyncio
+async def test_reject_leaves_the_selection_unset() -> None:
+    fakes = FakeStoryActivities()
+    async with await start_env() as env, with_double(env, fakes, IllustratedMediaDouble):
+        handle = await start_story(env)
+        state = await review_state(handle)
+        await handle.signal(
+            StoryGenerationWorkflow.reject,
+            FinalStoryDecision(
+                content_hash=state.content_hash, media_choice=MediaSelection.ILLUSTRATION
+            ),
+        )
+        result = await handle.result()
+    assert result.status == "rejected"
+    assert result.package is not None and result.package.media is not None
+    assert result.package.media.selected is None
+    assert result.content_hash == state.content_hash
+
+
+@pytest.mark.asyncio
+async def test_stale_hash_is_still_ignored_when_a_choice_is_sent() -> None:
+    fakes = FakeStoryActivities()
+    async with await start_env() as env, with_double(env, fakes, IllustratedMediaDouble):
+        handle = await start_story(env)
+        state = await review_state(handle)
+        await handle.signal(
+            StoryGenerationWorkflow.approve,
+            FinalStoryDecision(content_hash="e" * 64, media_choice=MediaSelection.ILLUSTRATION),
+        )
+        await asyncio.sleep(0.2)
+        still = await handle.query(StoryGenerationWorkflow.story_state)
+        assert still.status is StoryGenerationStatus.REVIEW
+        assert still.content_hash == state.content_hash
+        await handle.signal(
+            StoryGenerationWorkflow.approve,
+            FinalStoryDecision(content_hash=state.content_hash),
+        )
+        result = await handle.result()
+    assert result.status == "ready"
+
+
+def test_decision_without_a_choice_dumps_no_media_choice_key() -> None:
+    assert "media_choice" not in FinalStoryDecision().model_dump(mode="json")
+    assert "media_choice" not in json.loads(FinalStoryDecision(note="x").model_dump_json())
+
+
+def test_decision_with_a_choice_round_trips() -> None:
+    decision = FinalStoryDecision(media_choice=MediaSelection.ILLUSTRATION)
+    assert decision.model_dump(mode="json")["media_choice"] == "illustration"
+    assert FinalStoryDecision.model_validate_json(decision.model_dump_json()) == decision
+    assert FinalStoryDecision.model_validate({"media_choice": "illustration"}) == decision

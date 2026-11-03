@@ -1,5 +1,6 @@
 """Reduced-motion media view: poster for everyone, GIF only when motion is fine."""
 
+import html
 import re
 
 import pytest
@@ -286,3 +287,141 @@ def test_package_note_matches_what_the_human_approves() -> None:
     ready = _page(_illustrated(selected=MediaSelection.ILLUSTRATION), PrimaryStoryStatus.READY)
     assert "Illustrated card. This picture goes in the post." in ready
     assert "story card together" not in ready
+
+
+# --- 070 drawn gallery -------------------------------------------------------------------------
+
+DRAWN_ROLES = ("hero", "concept", "detail", "setting")
+
+
+def _drawn(roles: tuple[str, ...] = DRAWN_ROLES[:3], **overrides: object) -> MediaManifest:
+    from ai_trend_pipeline.media.models import DrawnArtifact, DrawnRole, DrawnStatus
+
+    images = tuple(
+        DrawnArtifact(
+            role=DrawnRole(role),
+            artifact=make_artifact(
+                MediaKind.STATIC,
+                artifact_id="art-v1-" + f"{index + 1:x}" * 16,
+                content_hash=f"{index + 1:x}" * 64,
+                relative_path=f"{f'{index + 1:x}' * 64}.png",
+                alt_text=f"AI drawing ({role}) of a rising line",
+            ),
+        )
+        for index, role in enumerate(roles)
+    )
+    fields: dict[str, object] = {"drawn_artifacts": images, "drawn_status": DrawnStatus.DRAWN}
+    fields.update(overrides)
+    return make_manifest(MediaOutcome.GIF, **fields)
+
+
+def _tray(text: str) -> str:
+    match = re.search(r'<section class="drawn".*?</section>', text, flags=re.S)
+    assert match is not None
+    return match.group(0)
+
+
+def test_build_drawn_gallery_view_has_tiles_in_role_order() -> None:
+    from ai_trend_pipeline.web.view_models import (
+        DRAWN_HEADING,
+        DRAWN_NOTE,
+        build_drawn_gallery_view,
+    )
+
+    view = build_drawn_gallery_view("story 1", _drawn(("detail", "hero", "concept")))
+    assert view is not None
+    assert view.heading == DRAWN_HEADING and view.note == DRAWN_NOTE
+    assert view.alt_label == "Alt text:"
+    assert [t.role for t in view.tiles] == ["hero", "concept", "detail"]
+    assert [t.role_label for t in view.tiles] == [
+        "Main scene",
+        "The idea as a picture",
+        "Supporting detail",
+    ]
+    assert view.tiles[0].src == "/stories/story%201/media/art-v1-" + "2" * 16
+    assert view.tiles[0].alt_text == "AI drawing (hero) of a rising line"
+    assert view.tiles[0].width == 1200 and view.tiles[0].height == 675
+    assert build_drawn_gallery_view("s", None) is None
+    assert build_drawn_gallery_view("s", make_manifest(MediaOutcome.GIF)) is None
+
+
+def test_drawn_note_for_each_status() -> None:
+    from ai_trend_pipeline.media.models import DrawnStatus
+    from ai_trend_pipeline.web.view_models import (
+        DRAWN_CAPPED_NOTE,
+        DRAWN_FAILED_NOTE,
+        drawn_note_for,
+    )
+
+    assert drawn_note_for(make_manifest(drawn_status=DrawnStatus.FAILED)) == DRAWN_FAILED_NOTE
+    assert drawn_note_for(make_manifest(drawn_status=DrawnStatus.CAPPED)) == DRAWN_CAPPED_NOTE
+    assert drawn_note_for(_drawn()) == ""
+    assert drawn_note_for(make_manifest()) == ""
+    assert drawn_note_for(None) == ""
+
+
+def test_review_renders_one_tile_per_drawing_in_role_order() -> None:
+    tray = _tray(_page(_drawn()))
+    tiles = re.findall(r'<li class="drawn__tile[^"]*">.*?</li>', tray, flags=re.S)
+    assert len(tiles) == 3
+    assert "drawn__tile--hero" in tiles[0] and "drawn__tile--detail" in tiles[2]
+    assert "Main scene" in tiles[0] and "The idea as a picture" in tiles[1]
+    assert 'width="1200" height="675"' in tiles[0]
+    assert 'alt="AI drawing (hero) of a rising line"' in tiles[0]
+    assert "Alt text: AI drawing (hero) of a rising line" in tiles[0]
+    assert "/media/art-v1-" + "1" * 16 in tiles[0]
+    assert "Drawings for this story" in tray
+    assert "Drawn by an AI model. For review only: these drawings are not posted." in tray
+
+
+def test_four_drawings_render_four_tiles() -> None:
+    tray = _tray(_page(_drawn(DRAWN_ROLES)))
+    assert tray.count('<li class="drawn__tile') == 4
+    assert "Setting" in tray
+
+
+def test_tray_has_no_form_controls() -> None:
+    tray = _tray(_page(_drawn()))
+    for forbidden in ("<input", "<form", "form=", "<button", "<label"):
+        assert forbidden not in tray
+
+
+def test_failed_and_capped_show_only_the_note() -> None:
+    from ai_trend_pipeline.media.models import DrawnStatus
+    from ai_trend_pipeline.web.view_models import DRAWN_CAPPED_NOTE, DRAWN_FAILED_NOTE
+
+    for status, note in (
+        (DrawnStatus.FAILED, DRAWN_FAILED_NOTE),
+        (DrawnStatus.CAPPED, DRAWN_CAPPED_NOTE),
+    ):
+        text = _page(make_manifest(MediaOutcome.GIF, drawn_status=status))
+        assert f'<p class="meta drawn-missing">{note}</p>' in html.unescape(text)
+        assert 'class="drawn"' not in text and "drawn__tile" not in text
+
+
+def test_disabled_none_and_old_manifests_render_identically() -> None:
+    from ai_trend_pipeline.web.view_models import StoryDetailView
+
+    baseline = _page(make_manifest(MediaOutcome.GIF))
+    assert "drawn__" not in baseline and 'class="drawn' not in baseline
+    assert _page(make_manifest(MediaOutcome.GIF, drawn_status=None)) == baseline
+    assert StoryDetailView().drawn is None and StoryDetailView().drawn_note == ""
+
+
+def test_ready_with_drawings_shows_no_tray() -> None:
+    text = _page(_drawn(), PrimaryStoryStatus.READY)
+    assert "drawn__" not in text and 'class="drawn' not in text
+
+
+def test_drawings_do_not_change_the_picker_or_package_note() -> None:
+    plain = _page(_illustrated())
+    drawn = _drawn()
+    with_drawings = _page(
+        _illustrated(drawn_artifacts=drawn.drawn_artifacts, drawn_status=drawn.drawn_status)
+    )
+    assert len(_tiles(with_drawings)) == len(_tiles(plain)) == 2
+    assert re.findall(r"<input[^>]*checked[^>]*>", with_drawings) == re.findall(
+        r"<input[^>]*checked[^>]*>", plain
+    )
+    assert 'class="drawn"' in with_drawings
+    assert 'name="media_choice"' in with_drawings

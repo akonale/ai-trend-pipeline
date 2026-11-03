@@ -968,6 +968,72 @@ main {
 }
 .pick__alt { color: var(--color-muted); overflow-wrap: anywhere; }
 
+/* Drawings: a view-only sketch board of AI drawings. No shadow: the yellow shadow means "in the post". */
+.drawn {
+  container: drawn / inline-size;
+  margin: var(--space-6) 0 0;
+  padding: var(--space-4);
+  background: var(--color-grid);
+  color: var(--color-text);
+  border: var(--border-thin) solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-none);
+}
+.drawn__heading {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 800;
+  line-height: 1.2;
+  margin: 0 0 var(--space-2);
+}
+.drawn__note {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--color-muted);
+  max-width: 62ch;
+}
+.drawn__grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+}
+.drawn__tile {
+  min-width: 0;
+  background: var(--color-surface);
+  border: var(--border-thin) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-none);
+}
+.drawn__tile figure { margin: 0; }
+.drawn__tile img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-bottom: var(--border-thin) solid var(--color-border);
+}
+.drawn__tile figcaption {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+}
+.drawn__role { font-family: var(--font-display); font-weight: 800; font-size: var(--text-sm); }
+.drawn__alt {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+.drawn-missing { margin: var(--space-5) 0 0; }
+@container drawn (min-width: 30rem) {
+  .drawn__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .drawn__tile:first-child { grid-column: 1 / -1; }
+}
+
 /* Publishing: the post proof, the publish panel and the Published stamp. */
 .badge--published { background: var(--color-published); }
 .post-proof {

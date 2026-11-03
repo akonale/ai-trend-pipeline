@@ -150,8 +150,14 @@ LLM credit is spent when a source's budget is exhausted). `CANDIDATE_REVIEW_TIME
 decision before it expires. The AI-drawn story image settings `DRAWN_IMAGES_ENABLED` (default
 `false`), `DRAWN_IMAGES_MODEL`, `DRAWN_IMAGES_COUNT` (1-4, default 3) and `DRAWN_IMAGES_DAILY_CAP`
 (1-1000 API calls per UTC day, default 20) control the drawn pictures. With `DRAWN_IMAGES_ENABLED=true`
-the media step stores up to `DRAWN_IMAGES_COUNT` drawings in the manifest (task 069; not yet shown in
-review, task 070). Off, the step costs nothing.
+the media step stores up to `DRAWN_IMAGES_COUNT` drawings in the manifest. Off, the step costs nothing.
+
+**AI-drawn images.** Off by default. Set `DRAWN_IMAGES_ENABLED=true` and restart the worker, and each
+story gets up to `DRAWN_IMAGES_COUNT` drawings made by an AI model (one API call per story, capped per
+UTC day by `DRAWN_IMAGES_DAILY_CAP`). `/stories/{id}` shows them in review as a view-only gallery with
+visible alt text and a "Drawn by an AI model" note. Drawings are for review only: they are never
+picked, never part of the approved package and never posted. Set `DRAWN_IMAGES_ENABLED=false` to
+stop. See `docs/runbooks/publishing.md` for cost and operations.
 
 Story research adds five more: `RESEARCH_FETCH_TIMEOUT_S` (over 0 and at most 60, default 10.0),
 `RESEARCH_MAX_RESPONSE_BYTES` (1024-4194304, default 524288), `RESEARCH_MAX_REDIRECTS` (0-5,

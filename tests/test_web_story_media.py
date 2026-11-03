@@ -194,3 +194,49 @@ def test_decide_refuses_an_unknown_media_choice_before_the_service(sent: str) ->
     assert INVALID_DECISION_ERROR in res.text
     assert "<script>" not in res.text
     assert service.decide_calls == []
+
+
+def _drawn_setup(tmp_path: Path) -> tuple[TestClient, str]:
+    from ai_trend_pipeline.media.models import DrawnArtifact, DrawnRole, DrawnStatus
+
+    card = write_artifact(tmp_path, DATA, MediaType.PNG)
+    picture = write_artifact(tmp_path, DATA + b"-drawn", MediaType.PNG)
+    drawn = make_artifact(
+        MediaKind.STATIC,
+        artifact_id="art-v1-" + "e" * 16,
+        content_hash=picture.content_hash,
+        relative_path=picture.relative_path,
+        byte_size=picture.byte_size,
+    )
+    manifest = make_manifest(
+        MediaOutcome.STATIC,
+        static_artifact=make_artifact(
+            MediaKind.STATIC,
+            content_hash=card.content_hash,
+            relative_path=card.relative_path,
+            byte_size=card.byte_size,
+        ),
+        drawn_artifacts=(DrawnArtifact(role=DrawnRole.HERO, artifact=drawn),),
+        drawn_status=DrawnStatus.DRAWN,
+    )
+    service = FakeDetailService(make_detail(package=make_package(media=manifest)))
+    app = create_app(Settings(media_dir=str(tmp_path)))
+
+    async def fake() -> FakeDetailService:
+        return service
+
+    app.dependency_overrides[get_story_detail_service] = fake
+    return TestClient(app), drawn.artifact_id
+
+
+def test_drawn_artifact_is_served_as_png_through_the_existing_route(tmp_path: Path) -> None:
+    client, artifact_id = _drawn_setup(tmp_path)
+    response = client.get(f"/stories/{STORY_ID}/media/{artifact_id}")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.content == DATA + b"-drawn"
+
+
+def test_unknown_id_is_still_404_when_drawings_exist(tmp_path: Path) -> None:
+    client, _ = _drawn_setup(tmp_path)
+    assert client.get(f"/stories/{STORY_ID}/media/art-v1-{'f' * 16}").status_code == 404

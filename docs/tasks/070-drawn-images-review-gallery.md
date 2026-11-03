@@ -1,6 +1,6 @@
 # 070: Reviewer gallery for AI-drawn images, and docs
 
-Status: approved
+Status: built
 
 ## Goal
 
@@ -271,3 +271,6 @@ screenshot was taken. The human checks these in light and dark themes:
 <!-- Each agent appends at most 5 lines: "**agent**: what I did. Next: ...". Newest at the bottom. -->
 
 **planner**: wrote spec
+
+**builder**: built the view-only drawn gallery (view models, template, CSS, tests) and docs (README, tech.md, runbook + manual checklist). No deviations. Full suite 1877 passed; ruff and pyright clean.
+No screenshot taken (did not try a headless browser); CSS assertions stand in, manual checklist is in the runbook. Next: verifier.

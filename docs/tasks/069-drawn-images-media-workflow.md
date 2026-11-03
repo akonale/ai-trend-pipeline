@@ -1,6 +1,6 @@
 # 069: Drawn images in the manifest and `StoryMediaWorkflow`
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -210,3 +210,4 @@ All checks pass.
 **reviewer**: Approved. Workflow code is deterministic (pure `build`/`ValidationError` fallback, patch `story-drawn-v1` after the illustration block); v1/v2/v3 histories replay.
 Note 1: the unserved-activity test is an acceptable stand-in. An unserved activity can only end by the 150s schedule_to_close timeout (no retries occur, so the builder's "retries twice" wording is inaccurate), and time-skipping does work for it. History assertions pin 150s/110s/2 attempts.
 Note 2: that test does not assert the timeout type; optional hardening only.
+**scribe**: updated README and tech.md (drawn step, worker registration); opened PR https://github.com/akonale/ai-trend-pipeline/pull/83 (not merged). Next: human merges.

@@ -208,3 +208,43 @@ def test_picker_css_adds_no_colours_motion_or_caps() -> None:
     assert not re.search(r"#[0-9a-fA-F]{3,6}\b", section)
     assert "transition" not in section and "animation" not in section
     assert "text-transform" not in section
+
+
+def _drawn_container_block() -> str:
+    start = CSS.index("@container drawn (min-width: 30rem)")
+    depth, index = 0, CSS.index("{", start)
+    for end in range(index, len(CSS)):
+        depth += {"{": 1, "}": -1}.get(CSS[end], 0)
+        if depth == 0:
+            return CSS[index + 1 : end]
+    raise AssertionError("unbalanced @container block")
+
+
+def test_drawn_tray_is_a_container_on_the_grid_colour() -> None:
+    declared = _rule(".drawn")
+    assert "container: drawn / inline-size" in declared
+    assert "background: var(--color-grid)" in declared
+
+
+def test_drawn_two_columns_and_full_width_hero_only_inside_the_container_query() -> None:
+    base = _rule(".drawn__grid")
+    assert "repeat(2" not in base and "grid-template-columns: minmax(0, 1fr)" in base
+    assert "grid-column" not in _rule(".drawn__tile")
+    inside = _drawn_container_block()
+    assert "repeat(2, minmax(0, 1fr))" in inside
+    assert ".drawn__tile:first-child" in inside and "grid-column: 1 / -1" in inside
+    assert CSS.count("repeat(2, minmax(0, 1fr))") == 1
+
+
+def test_drawn_images_fill_the_tile_and_tiles_shrink() -> None:
+    image = _rule(".drawn__tile img")
+    assert "width: 100%" in image and "height: auto" in image
+    assert "min-width: 0" in _rule(".drawn__tile")
+
+
+def test_drawn_css_has_no_shadow_colours_motion_or_caps() -> None:
+    section = CSS[CSS.index("/* Drawings:") : CSS.index("/* Publishing:")]
+    assert "--shadow-picked" not in section and "--shadow-chart" not in section
+    assert not re.search(r"#[0-9a-fA-F]{3,6}\b", section)
+    assert "transition" not in section and "animation" not in section
+    assert "text-transform" not in section and ":hover" not in section

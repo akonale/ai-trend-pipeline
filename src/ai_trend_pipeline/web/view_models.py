@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field, ValidationError
 
 from ai_trend_pipeline.daily_chart import APPROVAL_TIMEOUT, ReviewState
 from ai_trend_pipeline.media.models import (
+    DrawnRole,
+    DrawnStatus,
     IllustrationStatus,
     MediaCandidate,
     MediaManifest,
@@ -1668,6 +1670,8 @@ class StoryDetailView(BaseModel):
     media: "StoryMediaView | None" = None
     pick: "StoryPickView | None" = None
     pick_rail_note: str = ""
+    drawn: "DrawnGalleryView | None" = None
+    drawn_note: str = ""
     media_missing_heading: str = ""
     media_missing_body: str = ""
     post_proof: PostPreviewView | None = None
@@ -1747,6 +1751,8 @@ def build_story_detail_view(
     media = None
     pick = None
     media_missing = False
+    drawn: DrawnGalleryView | None = None
+    drawn_note = ""
     package_note = ""
     content_hash = ""
     post_proof: PostPreviewView | None = None
@@ -1767,6 +1773,9 @@ def build_story_detail_view(
         pick = build_story_pick_view(detail.detail_id, manifest) if not ready else None
         media = None if pick is not None else build_story_media_view(detail.detail_id, manifest)
         media_missing = manifest is not None and manifest.outcome is MediaOutcome.TEXT_ONLY
+        if not ready:
+            drawn = build_drawn_gallery_view(detail.detail_id, manifest)
+            drawn_note = drawn_note_for(manifest)
         content_hash = detail.content_hash or ""
         if pick is not None:
             package_note = PACKAGE_NOTE_WITH_PICK
@@ -1801,6 +1810,8 @@ def build_story_detail_view(
         media=media,
         pick=pick,
         pick_rail_note=PICK_RAIL_NOTE if pick is not None else "",
+        drawn=drawn,
+        drawn_note=drawn_note,
         post_proof=post_proof,
         publish_panel=panel,
         published=published,
@@ -2019,3 +2030,68 @@ def build_story_pick_view(detail_id: str, manifest: MediaManifest | None) -> Sto
             for candidate in candidates
         ]
     )
+
+
+DRAWN_HEADING = "Drawings for this story"
+DRAWN_NOTE = "Drawn by an AI model. For review only: these drawings are not posted."
+DRAWN_ROLE_LABELS: dict[DrawnRole, str] = {
+    DrawnRole.HERO: "Main scene",
+    DrawnRole.CONCEPT: "The idea as a picture",
+    DrawnRole.DETAIL: "Supporting detail",
+    DrawnRole.SETTING: "Setting",
+}
+DRAWN_FAILED_NOTE = "AI drawing failed for this story. The pictures above are unaffected."
+DRAWN_CAPPED_NOTE = "No AI drawings for this story: today's drawing limit was reached."
+
+
+class DrawnTileView(BaseModel):
+    role: str
+    role_label: str
+    src: str
+    width: int
+    height: int
+    alt_text: str
+
+
+class DrawnGalleryView(BaseModel):
+    """View-only drawings for review. Never a picker input and never posted."""
+
+    heading: str = DRAWN_HEADING
+    note: str = DRAWN_NOTE
+    alt_label: str = ALT_LABEL
+    tiles: list[DrawnTileView]
+
+
+def build_drawn_gallery_view(
+    detail_id: str, manifest: MediaManifest | None
+) -> DrawnGalleryView | None:
+    """One tile per `manifest.review_gallery()` entry, or None when there is nothing to show."""
+    if manifest is None:
+        return None
+    gallery = manifest.review_gallery()
+    if not gallery:
+        return None
+    base = f"/stories/{quote(detail_id, safe='')}/media/"
+    return DrawnGalleryView(
+        tiles=[
+            DrawnTileView(
+                role=image.role.value,
+                role_label=DRAWN_ROLE_LABELS[image.role],
+                src=base + quote(image.artifact.artifact_id, safe=""),
+                width=image.artifact.width,
+                height=image.artifact.height,
+                alt_text=image.artifact.alt_text,
+            )
+            for image in gallery
+        ]
+    )
+
+
+def drawn_note_for(manifest: MediaManifest | None) -> str:
+    if manifest is None:
+        return ""
+    if manifest.drawn_status is DrawnStatus.FAILED:
+        return DRAWN_FAILED_NOTE
+    if manifest.drawn_status is DrawnStatus.CAPPED:
+        return DRAWN_CAPPED_NOTE
+    return ""

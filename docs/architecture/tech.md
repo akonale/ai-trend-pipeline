@@ -129,6 +129,12 @@ researching ─▶ analyzing ─▶ writing ─▶ checking ─┬─ passed ─
   non-retryable). Its result fills `drawn_artifacts`/`drawn_status` in the manifest and never changes the outcome
   or other artifacts; a failure or cap records `failed`/`capped`. The budget (150 s + 2 x 60 s) stays under the 6 minute
   child timeout, pinned by a test. Drawings are excluded from `candidates()` and never publish.
+  The activity (`media/drawn/activities.py`) asks Claude for SVG, sanitises it, then rasterises it to PNG
+  (sanitise-then-rasterise); only the PNG and its metadata are stored, so no SVG ever enters workflow history or
+  the manifest. A pointer file `MEDIA_DIR/drawn/<story hash>.json` makes a rerun return the stored result without
+  another API call, and a per-day counter under `drawn/` enforces `DRAWN_IMAGES_DAILY_CAP`. Review (task 070):
+  `build_drawn_gallery_view` turns `manifest.review_gallery()` into a view-only tray on `/stories/{id}` in review
+  only (Ready shows none), served by the manifest-checked media route; `failed`/`capped` show a one-line note.
   `story_package_hash` (text and media) is the content hash. The review query returns the package and
   hash, the `ready` result freezes the hash, and an approve with a different hash is ignored
   (`IGNORED_SIGNAL`, `cause=stale_content`). The service refuses a stale approve first (`StoryReviewStale`,
@@ -440,7 +446,7 @@ the seven activities from `daily_chart_activities`), `story-candidate-task-queue
 and `activity_executor=ThreadPoolExecutor(max_workers=4)` for the sync fact activity), and
 `story-media-task-queue` (`MEDIA_WORKFLOWS = [StoryMediaWorkflow]`, with `render_static_media` and
 `render_animated_media` from `media_activities(settings, anthropic_client)`, `illustrate_story`, and `draw_story_images`
-(always registered; returns `disabled` when `DRAWN_IMAGES_ENABLED` is off), the `MEDIA_PROVIDER` renderer (default `story-card`),
+(always registered; returns `disabled` when `DRAWN_IMAGES_ENABLED` is off; settings `DRAWN_IMAGES_*` in section 4), the `MEDIA_PROVIDER` renderer (default `story-card`),
 2 concurrent activities and 1 concurrent animation), and `story-publishing-task-queue`
 (`PUBLISHING_WORKFLOWS = [StoryPublishingWorkflow]`, with `publish_story_to_bluesky` from
 `publishing_activities(bluesky_client, credentials, settings)`, 2 concurrent activities, reusing the

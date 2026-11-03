@@ -75,6 +75,24 @@ The worker is the only process that talks to Bluesky. The web app never sees the
 - The publish step re-checks the hash of the approved image file. If the file is missing or changed
   it fails with `PublicationMediaMissing` or `ArtifactHashMismatch` before anything is posted.
 
+### AI-drawn images
+
+- Off by default. To enable: set `DRAWN_IMAGES_ENABLED=true` in `.env.prod` (optionally
+  `DRAWN_IMAGES_MODEL`, `DRAWN_IMAGES_COUNT` 1-4, default 3, and `DRAWN_IMAGES_DAILY_CAP`), then run
+  `just deploy` to restart the worker. Only stories whose media step runs afterwards get drawings.
+- Cost: one model call per story. Output is about 1,400 tokens per image times the image count, so
+  about 4,600 output tokens at the default of 3. The `draw_story_images` activity logs the real
+  input and output token counts on one line; use that for the true cost.
+- Cap: `DRAWN_IMAGES_DAILY_CAP` (default 20) limits calls per UTC day. Past it, stories are not
+  drawn and review shows "No AI drawings for this story: today's drawing limit was reached."
+- Kill switch: set `DRAWN_IMAGES_ENABLED=false` and restart the worker. New stories then skip the
+  step; stories already reviewed keep their stored drawings.
+- Pointer files under `MEDIA_DIR/drawn/` record each story's result so a retry or rerun does not
+  charge again. Do not delete them to "redraw".
+- There is no redraw yet. A failed story shows "AI drawing failed for this story."
+- Drawings are for review only. They are never picked, never part of the approved hash and never
+  posted.
+
 ## Publish a story
 
 1. Approve the candidate, wait for the story to reach Review, read the **Bluesky post** proof and
@@ -184,3 +202,13 @@ Run these in a real browser, in light and dark themes, before merging:
 - [ ] With CSS `:has` unsupported (or ignored), the radio still shows the pick.
 - [ ] Reduced motion shows the card poster in its tile.
 - [ ] Approve with each pick, then Ready shows only the picked picture.
+
+### AI-drawn gallery (task 070), also manual, no screenshot was taken
+
+Headless Chromium was unavailable here, so no screenshot was taken. CSS assertions in
+`tests/test_design_tokens.py` stand in. Check in light and dark themes:
+
+- [ ] At 360px the tray is one column with no horizontal scroll, and the main scene comes first.
+- [ ] On a wide window the main scene spans the full width, with two tiles below.
+- [ ] The tray reads as separate from the yellow-shadowed picker, and nothing in it looks clickable.
+- [ ] A failed or capped story shows the one-line note only.

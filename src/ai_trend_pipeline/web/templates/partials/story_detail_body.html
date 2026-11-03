@@ -103,6 +103,27 @@
         </ul>
       </section>
       {% endif %}
+      {% if view.drawn %}
+      <section class="drawn" aria-labelledby="drawn-heading">
+        <h2 id="drawn-heading" class="drawn__heading">{{ view.drawn.heading }}</h2>
+        <p class="drawn__note">{{ view.drawn.note }}</p>
+        <ul class="drawn__grid" role="list">
+          {% for tile in view.drawn.tiles %}
+          <li class="drawn__tile drawn__tile--{{ tile.role }}">
+            <figure>
+              <img src="{{ tile.src }}" width="{{ tile.width }}" height="{{ tile.height }}" alt="{{ tile.alt_text }}" loading="lazy" decoding="async">
+              <figcaption>
+                <span class="drawn__role">{{ tile.role_label }}</span>
+                <span class="drawn__alt">{{ view.drawn.alt_label }} {{ tile.alt_text }}</span>
+              </figcaption>
+            </figure>
+          </li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% elif view.drawn_note %}
+      <p class="meta drawn-missing">{{ view.drawn_note }}</p>
+      {% endif %}
       {% if view.post_proof %}
       <section class="post-proof{% if view.post_proof.over %} post-proof--over{% endif %}">
         <div class="post-proof__head">

@@ -1,6 +1,6 @@
 # 070: Reviewer gallery for AI-drawn images, and docs
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -280,3 +280,5 @@ All checks pass. Next: reviewer.
 
 **reviewer**: Approved. Checked diff against all criteria: shaping is in view_models.py, template has only if/for, routes untouched, no `|safe` so alt text is autoescaped, drawn set only when not ready.
 No screenshot is acceptable: spec allows it if stated plainly, CSS assertions and the manual runbook checklist are present. Note: human must run the manual visual check before merge. Next: scribe.
+
+**scribe**: docs were already on the branch, so only the spec changed. Opened PR https://github.com/akonale/ai-trend-pipeline/pull/84 (no screenshot; human runs the manual visual check before merge). Next: human merges.

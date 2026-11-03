@@ -1,6 +1,6 @@
 # 068: `draw_story_images` activity (Anthropic, idempotent, capped)
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -226,3 +226,5 @@ Constants:
 
 **reviewer**: Approved. Checked diff vs spec: all criteria and listed tests present, no worker/workflow registration, no SVG in pointer/logs/errors, errors raised outside except blocks.
 Note: lock __enter__/__exit__ via to_thread could leak the lock if cancelled mid-acquire; acceptable for now. Next: scribe.
+
+**scribe**: no doc changes (activity unregistered, settings documented in 067). Opened PR https://github.com/akonale/ai-trend-pipeline/pull/82. Next: human merges.

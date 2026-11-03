@@ -1,6 +1,6 @@
 # 070: Reviewer gallery for AI-drawn images, and docs
 
-Status: planned
+Status: approved
 
 ## Goal
 

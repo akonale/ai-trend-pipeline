@@ -1,6 +1,6 @@
 # 069: Drawn images in the manifest and `StoryMediaWorkflow`
 
-Status: planned
+Status: approved
 
 ## Goal
 

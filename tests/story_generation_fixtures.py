@@ -10,6 +10,8 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
+from temporalio import activity
+from temporalio.exceptions import ApplicationError
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
@@ -17,6 +19,7 @@ from ai_trend_pipeline.analysis.models import FactSet
 from ai_trend_pipeline.media.activities import StoryMediaActivities
 from ai_trend_pipeline.media.fake import FakeMediaRenderer
 from ai_trend_pipeline.media.illustration_activities import IllustrationActivities
+from ai_trend_pipeline.media.models import DrawImagesInput, DrawnImagesResult, DrawnStatus
 from ai_trend_pipeline.media.providers import MediaRenderer
 from ai_trend_pipeline.research.models import (
     ResearchFailure,
@@ -129,13 +132,41 @@ def dataset_evidence_id() -> str:
     return DATASET_EVIDENCE_ID
 
 
+class FakeDrawActivities:
+    """A fake `draw_story_images`. It returns `disabled` unless told otherwise, so manifests are
+    unchanged. It can also raise an application error."""
+
+    def __init__(
+        self,
+        result: DrawnImagesResult | None = None,
+        *,
+        raise_type: str | None = None,
+        non_retryable: bool = False,
+    ) -> None:
+        self.result = result or DrawnImagesResult(status=DrawnStatus.DISABLED)
+        self.raise_type = raise_type
+        self.non_retryable = non_retryable
+        self.calls = 0
+
+    @activity.defn(name="draw_story_images")
+    async def draw_story_images(self, data: DrawImagesInput) -> DrawnImagesResult:
+        self.calls += 1
+        if self.raise_type is not None:
+            raise ApplicationError(
+                "fake drawing error", type=self.raise_type, non_retryable=self.non_retryable
+            )
+        return self.result
+
+
 def make_media_worker(
     env: WorkflowEnvironment,
     media_dir: Path,
     renderer: MediaRenderer | None = None,
+    draw: FakeDrawActivities | None = None,
 ) -> Worker:
     """A media worker on the media queue; the fake renderer keeps tests fast and deterministic."""
     acts = StoryMediaActivities(media_dir, renderer or FakeMediaRenderer())
+    drawing = draw or FakeDrawActivities()
     return Worker(
         env.client,
         task_queue=STORY_MEDIA_TASK_QUEUE,
@@ -144,6 +175,7 @@ def make_media_worker(
             acts.render_static_media,
             acts.render_animated_media,
             IllustrationActivities(media_dir, None).illustrate_story,
+            drawing.draw_story_images,
         ],
     )
 

@@ -114,7 +114,12 @@ class MediaSelection(StrEnum):
 
 
 ILLUSTRATED_STATUSES = frozenset({IllustrationStatus.MATCHED, IllustrationStatus.GENERIC})
-_OPTIONAL_MANIFEST_KEYS = ("illustration_artifact", "illustration_status", "selected")
+_OPTIONAL_MANIFEST_KEYS = (
+    "illustration_artifact",
+    "illustration_status",
+    "selected",
+    "drawn_status",
+)
 
 
 def canonical_json(obj: object) -> bytes:
@@ -238,6 +243,40 @@ class MediaArtifact(BaseModel):
         return self
 
 
+class DrawnRole(StrEnum):
+    HERO = "hero"  # main scene
+    CONCEPT = "concept"  # visual metaphor for the idea
+    DETAIL = "detail"  # supporting detail
+    SETTING = "setting"  # the place or context
+
+
+DRAWN_ROLE_ORDER = (DrawnRole.HERO, DrawnRole.CONCEPT, DrawnRole.DETAIL, DrawnRole.SETTING)
+
+
+class DrawnStatus(StrEnum):
+    DRAWN = "drawn"
+    FAILED = "failed"
+    CAPPED = "capped"
+    DISABLED = "disabled"
+
+
+class DrawnArtifact(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    role: DrawnRole
+    artifact: MediaArtifact
+
+    @model_validator(mode="after")
+    def _check_drawn(self) -> "DrawnArtifact":
+        if self.artifact.kind is not MediaKind.STATIC:
+            raise ValueError("a drawn image must be a static artifact")
+        if self.artifact.media_type is not MediaType.PNG:
+            raise ValueError("a drawn image must be a png")
+        if len(self.artifact.alt_text) > MAX_DRAWN_ALT_CHARS:
+            raise ValueError("drawn alt text is too long")
+        return self
+
+
 class MediaCandidate(BaseModel):
     """One picture a reviewer can pick for the post; built only by `MediaManifest.candidates()`."""
 
@@ -247,6 +286,10 @@ class MediaCandidate(BaseModel):
     artifact: MediaArtifact  # the still that is posted
     animated: MediaArtifact | None = None  # review-only GIF, set only for the card
     preselected: bool
+
+
+def _no_drawn_artifacts() -> tuple[DrawnArtifact, ...]:
+    return ()
 
 
 class MediaManifest(BaseModel):
@@ -262,17 +305,44 @@ class MediaManifest(BaseModel):
     illustration_artifact: MediaArtifact | None = None
     illustration_status: IllustrationStatus | None = None
     selected: MediaSelection | None = None
+    drawn_artifacts: tuple[DrawnArtifact, ...] = Field(
+        default_factory=_no_drawn_artifacts, max_length=MAX_DRAWN_IMAGES
+    )
+    drawn_status: DrawnStatus | None = None
 
     @model_serializer(mode="wrap")
-    def _omit_empty_illustration_fields(
+    def _omit_empty_optional_fields(
         self, handler: SerializerFunctionWrapHandler
     ) -> dict[str, object]:
-        """Drop the 065 keys when `None`, so pre-065 hashes and payloads stay byte-identical."""
+        """Drop the optional keys when empty, so older hashes and payloads stay byte-identical."""
         data: dict[str, object] = handler(self)
         for key in _OPTIONAL_MANIFEST_KEYS:
             if data.get(key) is None:
                 data.pop(key, None)
+        if not data.get("drawn_artifacts"):
+            data.pop("drawn_artifacts", None)
         return data
+
+    def _check_drawn(self) -> None:
+        images, status = self.drawn_artifacts, self.drawn_status
+        if status is DrawnStatus.DISABLED:
+            raise ValueError("a disabled drawn_status is stored as None")
+        if (status is DrawnStatus.DRAWN) != bool(images):
+            raise ValueError("drawn_artifacts are set if and only if drawn_status is drawn")
+        if images or status is not None:
+            if self.static_artifact is None:
+                raise ValueError("drawings need the story card to exist")
+        if len({image.role for image in images}) != len(images):
+            raise ValueError("drawn roles must be unique")
+        every = (
+            self.static_artifact,
+            self.animated_artifact,
+            self.illustration_artifact,
+            *(image.artifact for image in images),
+        )
+        ids = [a.artifact_id for a in every if a is not None]
+        if len(set(ids)) != len(ids):
+            raise ValueError("artifact ids must be distinct")
 
     def _check_illustration(self) -> None:
         artifact, status = self.illustration_artifact, self.illustration_status
@@ -292,6 +362,7 @@ class MediaManifest(BaseModel):
     @model_validator(mode="after")
     def _check_manifest(self) -> "MediaManifest":
         self._check_illustration()
+        self._check_drawn()
         static, animated = self.static_artifact, self.animated_artifact
         if static is not None and static.kind is not MediaKind.STATIC:
             raise ValueError("static_artifact must be a static artifact")
@@ -316,17 +387,25 @@ class MediaManifest(BaseModel):
             self.static_artifact,
             self.animated_artifact,
             self.illustration_artifact,
+            *(image.artifact for image in self.drawn_artifacts),
         )
         for candidate in slots:
             if candidate is not None and candidate.artifact_id == artifact_id:
                 return candidate
         return None
 
+    def review_gallery(self) -> tuple[DrawnArtifact, ...]:
+        """The drawings to show in review, in role order. The only accessor the UI uses."""
+        if self.drawn_status is not DrawnStatus.DRAWN:
+            return ()
+        return tuple(sorted(self.drawn_artifacts, key=lambda i: DRAWN_ROLE_ORDER.index(i.role)))
+
     def candidates(self) -> tuple[MediaCandidate, ...]:
         """The pictures offered in review: the illustration first, the story card last.
 
         The only place that knows which manifest fields are candidates. Exactly one is
-        preselected: the illustration when matched, otherwise the card.
+        preselected: the illustration when matched, otherwise the card. Drawings are view-only:
+        they are never candidates and never affect `selected` or publishing.
         """
         card = self.static_artifact
         if card is None:
@@ -419,40 +498,6 @@ def with_media_choice(manifest: MediaManifest, choice: MediaSelection | None) ->
         return manifest
     selected = choice if choice in offered else MediaSelection.CARD
     return manifest.model_copy(update={"selected": selected})
-
-
-class DrawnRole(StrEnum):
-    HERO = "hero"  # main scene
-    CONCEPT = "concept"  # visual metaphor for the idea
-    DETAIL = "detail"  # supporting detail
-    SETTING = "setting"  # the place or context
-
-
-DRAWN_ROLE_ORDER = (DrawnRole.HERO, DrawnRole.CONCEPT, DrawnRole.DETAIL, DrawnRole.SETTING)
-
-
-class DrawnStatus(StrEnum):
-    DRAWN = "drawn"
-    FAILED = "failed"
-    CAPPED = "capped"
-    DISABLED = "disabled"
-
-
-class DrawnArtifact(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    role: DrawnRole
-    artifact: MediaArtifact
-
-    @model_validator(mode="after")
-    def _check_drawn(self) -> "DrawnArtifact":
-        if self.artifact.kind is not MediaKind.STATIC:
-            raise ValueError("a drawn image must be a static artifact")
-        if self.artifact.media_type is not MediaType.PNG:
-            raise ValueError("a drawn image must be a png")
-        if len(self.artifact.alt_text) > MAX_DRAWN_ALT_CHARS:
-            raise ValueError("drawn alt text is too long")
-        return self
 
 
 class DrawImagesInput(BaseModel):

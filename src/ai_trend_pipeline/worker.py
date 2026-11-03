@@ -26,6 +26,7 @@ from ai_trend_pipeline.daily_chart import DAILY_CHART_TASK_QUEUE, DailyChartWork
 from ai_trend_pipeline.hello import TASK_QUEUE, HelloWorkflow, say_hello
 from ai_trend_pipeline.hn import HNActivities, make_hn_client
 from ai_trend_pipeline.media.activities import StoryMediaActivities
+from ai_trend_pipeline.media.drawn.activities import DrawnImageActivities
 from ai_trend_pipeline.media.illustration import IllustrationProvider, illustration_provider_for
 from ai_trend_pipeline.media.illustration_activities import IllustrationActivities
 from ai_trend_pipeline.media.providers import renderer_for
@@ -146,14 +147,29 @@ def illustration_provider(settings: Settings) -> IllustrationProvider | None:
 
 
 # Any matches the type of Temporal's `Worker(activities=...)` parameter.
-def media_activities(settings: Settings) -> list[Callable[..., Any]]:
+def media_activities(
+    settings: Settings, anthropic_client: anthropic.AsyncAnthropic
+) -> list[Callable[..., Any]]:
     media = StoryMediaActivities(
         Path(settings.media_dir),
         renderer_for(settings.media_provider),
         max_concurrent_animations=MAX_CONCURRENT_ANIMATIONS,
     )
     illustrate = IllustrationActivities(Path(settings.media_dir), illustration_provider(settings))
-    return [media.render_static_media, media.render_animated_media, illustrate.illustrate_story]
+    drawn = DrawnImageActivities(
+        anthropic_client,
+        Path(settings.media_dir),
+        enabled=settings.drawn_images_enabled,
+        model=settings.drawn_images_model,
+        count=settings.drawn_images_count,
+        daily_cap=settings.drawn_images_daily_cap,
+    )
+    return [
+        media.render_static_media,
+        media.render_animated_media,
+        illustrate.illustrate_story,
+        drawn.draw_story_images,
+    ]
 
 
 # Any matches the type of Temporal's `Worker(activities=...)` parameter.
@@ -215,7 +231,7 @@ async def main() -> None:
             client,
             task_queue=STORY_MEDIA_TASK_QUEUE,
             workflows=MEDIA_WORKFLOWS,
-            activities=media_activities(settings),
+            activities=media_activities(settings, anthropic_client),
             max_concurrent_activities=MEDIA_WORKER_MAX_CONCURRENT_ACTIVITIES,
         )
         publishing_worker = Worker(

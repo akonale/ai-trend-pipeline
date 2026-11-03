@@ -1,6 +1,6 @@
 # 069: Drawn images in the manifest and `StoryMediaWorkflow`
 
-Status: approved
+Status: built
 
 ## Goal
 
@@ -203,3 +203,5 @@ manifests and assertions stay unchanged. These helpers include `_run` in
 <!-- Each agent appends at most 5 lines: "**agent**: what I did. Next: ...". Newest at the bottom. -->
 
 **planner**: wrote spec
+**builder**: added drawn fields, validator, `review_gallery()` to `MediaManifest`; `draw_story_images` in `StoryMediaWorkflow` (patch `story-drawn-v1`, size guard); worker registration; v3 history recorded; pinned illustrated hash committed first.
+**builder**: deviation: a hung activity blocks the time-skipping server (verified), so the "never finishes" test uses an unserved activity (fails after 2 retries); `schedule_to_close` 150s is pinned by the history assertions.

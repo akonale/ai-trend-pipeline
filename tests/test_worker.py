@@ -123,8 +123,11 @@ def test_media_worker_registers_workflow_activities_and_concurrency() -> None:
     assert MEDIA_WORKFLOWS == [StoryMediaWorkflow]
     assert STORY_MEDIA_TASK_QUEUE == "story-media-task-queue"
     assert MEDIA_WORKER_MAX_CONCURRENT_ACTIVITIES == 2
-    activities = media_activities(Settings(media_provider=MediaProviderName.FAKE))
+    activities = media_activities(
+        Settings(media_provider=MediaProviderName.FAKE), anthropic.AsyncAnthropic(api_key="test")
+    )
     assert sorted(activity.__name__ for activity in activities) == [
+        "draw_story_images",
         "illustrate_story",
         "render_animated_media",
         "render_static_media",

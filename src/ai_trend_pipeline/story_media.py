@@ -11,6 +11,8 @@ from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError, is_cancelled_exception
 
 with workflow.unsafe.imports_passed_through():
+    from pydantic import ValidationError
+
     from ai_trend_pipeline.media.briefs import (
         StoryMediaInput,
         StoryMediaResult,
@@ -19,6 +21,9 @@ with workflow.unsafe.imports_passed_through():
     )
     from ai_trend_pipeline.media.models import (
         MAX_ILLUSTRATE_SUMMARY_CHARS,
+        DrawImagesInput,
+        DrawnImagesResult,
+        DrawnStatus,
         IllustrateInput,
         IllustrationResult,
         IllustrationStatus,
@@ -35,6 +40,10 @@ RENDER_STATIC_ACTIVITY = "render_static_media"
 RENDER_ANIMATED_ACTIVITY = "render_animated_media"
 ILLUSTRATE_ACTIVITY = "illustrate_story"
 STORY_ILLUSTRATION_PATCH = "story-illustration-v1"
+DRAW_ACTIVITY = "draw_story_images"
+STORY_DRAWN_PATCH = "story-drawn-v1"
+DRAW_START_TO_CLOSE = timedelta(seconds=110)
+DRAW_SCHEDULE_TO_CLOSE = timedelta(seconds=150)
 ILLUSTRATE_TIMEOUT = timedelta(seconds=30)
 STATIC_RENDER_TIMEOUT = timedelta(seconds=60)
 ANIMATED_RENDER_TIMEOUT = timedelta(seconds=45)
@@ -55,6 +64,16 @@ ILLUSTRATE_RETRY_POLICY = RetryPolicy(
     non_retryable_error_types=["IllustrationInvalid"],
 )
 
+# Drawing is the one activity that can run long. `DRAW_SCHEDULE_TO_CLOSE` plus the static card's
+# worst case (`RENDER_MAX_ATTEMPTS * STATIC_RENDER_TIMEOUT`) must stay under the parent's
+# `MEDIA_CHILD_TIMEOUT`, or a slow drawing would make the story text-only. Pinned by
+# `test_drawing_budget_fits_under_the_media_child_timeout`.
+DRAW_RETRY_POLICY = RetryPolicy(
+    initial_interval=timedelta(seconds=2),
+    maximum_attempts=2,
+    non_retryable_error_types=["DrawingFailed"],
+)
+
 
 @workflow.defn
 class StoryMediaWorkflow:
@@ -67,19 +86,33 @@ class StoryMediaWorkflow:
             static: MediaArtifact | None = None,
             animated: MediaArtifact | None = None,
             illustration: IllustrationResult | None = None,
+            drawn: DrawnImagesResult | None = None,
         ) -> StoryMediaResult:
-            return StoryMediaResult(
-                manifest=MediaManifest(
-                    story_id=data.story_id,
-                    story_content_hash=story_content_hash(data.package),
-                    brief_hash=media_brief_hash(brief),
-                    outcome=outcome,
-                    static_artifact=static,
-                    animated_artifact=animated,
-                    illustration_artifact=illustration.artifact if illustration else None,
-                    illustration_status=illustration.status if illustration else None,
+            def build(drawings: DrawnImagesResult | None) -> StoryMediaResult:
+                shown = drawings is not None and drawings.status is not DrawnStatus.DISABLED
+                return StoryMediaResult(
+                    manifest=MediaManifest(
+                        story_id=data.story_id,
+                        story_content_hash=story_content_hash(data.package),
+                        brief_hash=media_brief_hash(brief),
+                        outcome=outcome,
+                        static_artifact=static,
+                        animated_artifact=animated,
+                        illustration_artifact=illustration.artifact if illustration else None,
+                        illustration_status=illustration.status if illustration else None,
+                        drawn_artifacts=drawings.images if drawings and shown else (),
+                        drawn_status=drawings.status if drawings and shown else None,
+                    )
                 )
-            )
+
+            try:
+                return build(drawn)
+            except ValidationError:
+                if drawn is None or drawn.status is DrawnStatus.DISABLED:
+                    raise
+                # A drawing must never stop the card manifest from being built (for example
+                # when long non-ASCII alt text pushes it over the size limit).
+                return build(DrawnImagesResult(status=DrawnStatus.FAILED))
 
         try:
             static = await workflow.execute_activity(
@@ -109,6 +142,22 @@ class StoryMediaWorkflow:
                 start_to_close_timeout=ILLUSTRATE_TIMEOUT,
                 retry_policy=ILLUSTRATE_RETRY_POLICY,
             )
+        # The drawn images are view-only extras for the reviewer. They start alongside the GIF.
+        drawing = None
+        if workflow.patched(STORY_DRAWN_PATCH):
+            drawing = workflow.start_activity(
+                DRAW_ACTIVITY,
+                DrawImagesInput(
+                    story_id=data.story_id,
+                    story_content_hash=story_content_hash(data.package),
+                    headline=brief.headline,
+                    summary=data.package.summary[:MAX_ILLUSTRATE_SUMMARY_CHARS],
+                ),
+                result_type=DrawnImagesResult,
+                start_to_close_timeout=DRAW_START_TO_CLOSE,
+                schedule_to_close_timeout=DRAW_SCHEDULE_TO_CLOSE,
+                retry_policy=DRAW_RETRY_POLICY,
+            )
         animated: MediaArtifact | None = None
         if data.include_animation:
             try:
@@ -130,8 +179,16 @@ class StoryMediaWorkflow:
                 if is_cancelled_exception(exc):
                     raise
                 illustration = IllustrationResult(status=IllustrationStatus.FAILED)
+        drawn: DrawnImagesResult | None = None
+        if drawing is not None:
+            try:
+                drawn = await drawing
+            except ActivityError as exc:
+                if is_cancelled_exception(exc):
+                    raise
+                drawn = DrawnImagesResult(status=DrawnStatus.FAILED)
         if not data.include_animation:
-            return manifest(MediaOutcome.STATIC, static, None, illustration)
+            return manifest(MediaOutcome.STATIC, static, None, illustration, drawn)
         if animated is None:
-            return manifest(MediaOutcome.STATIC_FALLBACK, static, None, illustration)
-        return manifest(MediaOutcome.GIF, static, animated, illustration)
+            return manifest(MediaOutcome.STATIC_FALLBACK, static, None, illustration, drawn)
+        return manifest(MediaOutcome.GIF, static, animated, illustration, drawn)

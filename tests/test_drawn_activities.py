@@ -18,7 +18,7 @@ from ai_trend_pipeline.media.drawn.activities import (
     MAX_DRAW_TOKENS_PER_IMAGE,
     DrawnImageActivities,
 )
-from ai_trend_pipeline.media.drawn.prompt import SYSTEM_PROMPT, TOOL_NAME_DRAW
+from ai_trend_pipeline.media.drawn.prompt import SYSTEM_PROMPT
 from ai_trend_pipeline.media.drawn.store import pointer_path
 from ai_trend_pipeline.media.models import DrawImagesInput, DrawnImagesResult, DrawnStatus
 
@@ -103,7 +103,7 @@ async def test_disabled_makes_no_request_and_writes_nothing(tmp_path: Path) -> N
 
 
 @pytest.mark.asyncio
-async def test_clean_draws_three_sorted_pngs_with_forced_tool(tmp_path: Path) -> None:
+async def test_clean_draws_three_sorted_pngs_with_auto_tool_choice(tmp_path: Path) -> None:
     rig = Rig()
     result = await _run(rig.activities(tmp_path), _input())
     assert result.status is DrawnStatus.DRAWN
@@ -119,7 +119,7 @@ async def test_clean_draws_three_sorted_pngs_with_forced_tool(tmp_path: Path) ->
     assert request["model"] == MODEL
     assert request["max_tokens"] == MAX_DRAW_TOKENS_PER_IMAGE * 3 + DRAW_TOKENS_OVERHEAD
     assert request["system"] == SYSTEM_PROMPT
-    assert request["tool_choice"] == {"type": "tool", "name": TOOL_NAME_DRAW}
+    assert request["tool_choice"] == {"type": "auto"}
 
 
 @pytest.mark.asyncio

@@ -194,7 +194,8 @@ class DrawnImageActivities:
                 max_tokens=MAX_DRAW_TOKENS_PER_IMAGE * self._count + DRAW_TOKENS_OVERHEAD,
                 system=SYSTEM_PROMPT,
                 tools=[draw_tool()],
-                tool_choice={"type": "tool", "name": TOOL_NAME_DRAW},
+                # claude-sonnet-5-5 rejects a forced tool; a reply with no tool call becomes failed.
+                tool_choice={"type": "auto"},
                 messages=[{"role": "user", "content": build_user_prompt(headline, summary, roles)}],
             )
         except anthropic.APIConnectionError:

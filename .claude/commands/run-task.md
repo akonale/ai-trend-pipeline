@@ -18,10 +18,12 @@ checkpoints in steps 1 and 6 as described there; if `yes`, stop at both.
 3. Call the **verifier**. If status is `needs-fix`, go back to step 2.
 4. Call the **reviewer**. If status is `needs-fix`, go back to step 2.
 5. Call the **scribe**.
-6. If approval is `yes`, tell the human the PR link in one line. Stop; the human merges. If approval
+6. If approval is `yes`, tell the human the PR link in one line. Stop; the human merges (and
+   redeploys with `just deploy`). If approval
    is `no`, check `gh pr checks`; when CI is green, merge with `gh pr merge --merge --delete-branch`,
-   pull `main`, and tell the human the PR link and that it was merged. If CI is red, treat it as
-   `needs-fix` (step 2).
+   pull `main`, run `just deploy`, check `docker ps` shows the prod web and worker containers up,
+   and tell the human the PR link, that it was merged, and that it was deployed. If CI is red, treat
+   it as `needs-fix` (step 2).
 
 Count fix loops (returns to step 2). After 2, stop and ask the human what to do, quoting the latest
 handoff note.

@@ -1,6 +1,6 @@
 # 068: `draw_story_images` activity (Anthropic, idempotent, capped)
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -221,3 +221,8 @@ Constants:
 **planner**: wrote spec
 
 **builder**: added drawn/store.py and drawn/activities.py, 6 fixtures, 2 test files. lint and full suite pass (1834). Not registered in worker. Next: verifier.
+
+**verifier**: ran `just lint` (ruff check, ruff format, pyright: clean) and `just test` (1834 passed, 2 pydantic warnings, ANTHROPIC_* unset). All checks pass. Next: reviewer.
+
+**reviewer**: Approved. Checked diff vs spec: all criteria and listed tests present, no worker/workflow registration, no SVG in pointer/logs/errors, errors raised outside except blocks.
+Note: lock __enter__/__exit__ via to_thread could leak the lock if cancelled mid-acquire; acceptable for now. Next: scribe.

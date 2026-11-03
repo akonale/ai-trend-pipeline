@@ -93,6 +93,9 @@ Rules:
   approves specs and merges PRs. For `no` tasks the orchestrator does both (CI green first); agents
   never merge.
 - A PR is ready to merge only when the CI check is green.
+- After every merge to `main`, redeploy with `just deploy` and check the prod web and worker
+  containers are up. The orchestrator does this for `no` tasks; the human (or an agent they ask)
+  does it for `yes` tasks.
 
 ## Review checklist
 

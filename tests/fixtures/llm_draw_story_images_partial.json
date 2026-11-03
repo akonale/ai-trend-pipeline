@@ -1,0 +1,43 @@
+{
+  "id": "msg_01partial",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-5-5",
+  "content": [
+    {
+      "type": "text",
+      "text": "Drawing."
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_01Draw",
+      "name": "report_drawings",
+      "input": {
+        "images": [
+          {
+            "role": "hero",
+            "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 800 600\">\n<rect x=\"0\" y=\"0\" width=\"800\" height=\"600\" fill=\"#e3ecdf\"/>\n<circle cx=\"400\" cy=\"300\" r=\"190\" fill=\"#a8c8ff\" stroke=\"#15172b\" stroke-width=\"8\"/>\n<rect x=\"290\" y=\"230\" width=\"220\" height=\"170\" rx=\"20\" fill=\"#ffc93c\" stroke=\"#15172b\" stroke-width=\"8\"/>\n<polygon points=\"400,120 470,230 330,230\" fill=\"#2448d8\" stroke=\"#15172b\" stroke-width=\"8\" stroke-linejoin=\"round\"/>\n<line x1=\"150\" y1=\"500\" x2=\"650\" y2=\"500\" stroke=\"#15172b\" stroke-width=\"10\" stroke-linecap=\"round\"/>\n</svg>"
+          },
+          {
+            "role": "concept",
+            "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 800 600\"><script>LEAKSENTINEL</script><rect x=\"0\" y=\"0\" width=\"800\" height=\"600\" fill=\"#15172b\"/></svg>"
+          },
+          {
+            "role": "detail",
+            "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 800 600\">\n<rect x=\"0\" y=\"0\" width=\"800\" height=\"600\" fill=\"#ffc93c\"/>\n<polyline points=\"100,450 250,300 400,380 550,200 700,260\" fill=\"none\" stroke=\"#15172b\" stroke-width=\"10\" stroke-linejoin=\"round\"/>\n<circle cx=\"250\" cy=\"300\" r=\"34\" fill=\"#ffffff\" stroke=\"#15172b\" stroke-width=\"8\"/>\n<circle cx=\"550\" cy=\"200\" r=\"34\" fill=\"#2448d8\" stroke=\"#15172b\" stroke-width=\"8\"/>\n<rect x=\"120\" y=\"470\" width=\"560\" height=\"60\" rx=\"12\" fill=\"#a8c8ff\" stroke=\"#15172b\" stroke-width=\"8\"/>\n</svg>"
+          },
+          {
+            "role": "hero",
+            "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 800 600\">\n<rect x=\"0\" y=\"0\" width=\"800\" height=\"600\" fill=\"#e3ecdf\"/>\n<circle cx=\"400\" cy=\"300\" r=\"190\" fill=\"#a8c8ff\" stroke=\"#15172b\" stroke-width=\"8\"/>\n<rect x=\"290\" y=\"230\" width=\"220\" height=\"170\" rx=\"20\" fill=\"#ffc93c\" stroke=\"#15172b\" stroke-width=\"8\"/>\n<polygon points=\"400,120 470,230 330,230\" fill=\"#2448d8\" stroke=\"#15172b\" stroke-width=\"8\" stroke-linejoin=\"round\"/>\n<line x1=\"150\" y1=\"500\" x2=\"650\" y2=\"500\" stroke=\"#15172b\" stroke-width=\"10\" stroke-linecap=\"round\"/>\n</svg>"
+          }
+        ]
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {
+    "input_tokens": 900,
+    "output_tokens": 1500
+  }
+}

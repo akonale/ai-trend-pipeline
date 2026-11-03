@@ -1,6 +1,6 @@
 # 068: `draw_story_images` activity (Anthropic, idempotent, capped)
 
-Status: planned
+Status: built
 
 ## Goal
 
@@ -219,3 +219,5 @@ Constants:
 <!-- Each agent appends at most 5 lines: "**agent**: what I did. Next: ...". Newest at the bottom. -->
 
 **planner**: wrote spec
+
+**builder**: added drawn/store.py and drawn/activities.py, 6 fixtures, 2 test files. lint and full suite pass (1834). Not registered in worker. Next: verifier.

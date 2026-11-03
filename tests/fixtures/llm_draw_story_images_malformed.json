@@ -1,0 +1,30 @@
+{
+  "id": "msg_01malformed",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-5-5",
+  "content": [
+    {
+      "type": "text",
+      "text": "Drawing."
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_01Draw",
+      "name": "report_drawings",
+      "input": {
+        "images": [
+          {
+            "role": "hero"
+          }
+        ]
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {
+    "input_tokens": 900,
+    "output_tokens": 1500
+  }
+}

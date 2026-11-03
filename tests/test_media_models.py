@@ -204,6 +204,10 @@ def test_artifact_id_changes_with_brief_kind_or_renderer_version() -> None:
 ILLUSTRATION_KEYS = {"illustration_artifact", "illustration_status", "selected"}
 PRE_065_PACKAGE_HASH = "108f57c12e08b7f317e357cf8820262f041a21a5ba1734889daa5849a3df9a93"
 PRE_065_GIF_PACKAGE_HASH = "855c28a843fe38403dc57e4b1f242ad0a19481c08ecc8057fee066a1977ef0cf"
+# Computed on main before task 069: a matched illustration with selected=illustration.
+ILLUSTRATED_SELECTED_PACKAGE_HASH = (
+    "e03670efffcf4444a3e40fb7ac22b7f3907f25e8d771caf0f3ec279be8571f88"
+)
 
 
 def _illustration_artifact(**overrides: object) -> MediaArtifact:
@@ -231,6 +235,14 @@ def test_pinned_pre_065_package_hashes_are_unchanged() -> None:
     assert story_package_hash(make_package("story-1")) == PRE_065_PACKAGE_HASH
     with_media = make_package("story-1", media=make_manifest(MediaOutcome.GIF))
     assert story_package_hash(with_media) == PRE_065_GIF_PACKAGE_HASH
+    illustrated = make_manifest(
+        MediaOutcome.GIF,
+        illustration_artifact=_illustration_artifact(),
+        illustration_status=IllustrationStatus.MATCHED,
+        selected=MediaSelection.ILLUSTRATION,
+    )
+    illustrated_package = make_package("story-1", media=illustrated)
+    assert story_package_hash(illustrated_package) == ILLUSTRATED_SELECTED_PACKAGE_HASH
 
 
 def test_manifest_with_illustration_round_trips_and_is_served_by_artifact() -> None:

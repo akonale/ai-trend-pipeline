@@ -1,12 +1,15 @@
 """Media contract validation, hashes and IDs."""
 
 import re
+from typing import cast
 
 import pytest
 from pydantic import ValidationError
 
 from ai_trend_pipeline.media.models import (
     ARTIFACT_ID_PATTERN,
+    DRAWN_ROLE_ORDER,
+    MAX_MANIFEST_JSON_BYTES,
     DrawImagesInput,
     DrawnArtifact,
     DrawnImagesResult,
@@ -204,6 +207,10 @@ def test_artifact_id_changes_with_brief_kind_or_renderer_version() -> None:
 ILLUSTRATION_KEYS = {"illustration_artifact", "illustration_status", "selected"}
 PRE_065_PACKAGE_HASH = "108f57c12e08b7f317e357cf8820262f041a21a5ba1734889daa5849a3df9a93"
 PRE_065_GIF_PACKAGE_HASH = "855c28a843fe38403dc57e4b1f242ad0a19481c08ecc8057fee066a1977ef0cf"
+# Computed on main before task 069: a matched illustration with selected=illustration.
+ILLUSTRATED_SELECTED_PACKAGE_HASH = (
+    "e03670efffcf4444a3e40fb7ac22b7f3907f25e8d771caf0f3ec279be8571f88"
+)
 
 
 def _illustration_artifact(**overrides: object) -> MediaArtifact:
@@ -231,6 +238,14 @@ def test_pinned_pre_065_package_hashes_are_unchanged() -> None:
     assert story_package_hash(make_package("story-1")) == PRE_065_PACKAGE_HASH
     with_media = make_package("story-1", media=make_manifest(MediaOutcome.GIF))
     assert story_package_hash(with_media) == PRE_065_GIF_PACKAGE_HASH
+    illustrated = make_manifest(
+        MediaOutcome.GIF,
+        illustration_artifact=_illustration_artifact(),
+        illustration_status=IllustrationStatus.MATCHED,
+        selected=MediaSelection.ILLUSTRATION,
+    )
+    illustrated_package = make_package("story-1", media=illustrated)
+    assert story_package_hash(illustrated_package) == ILLUSTRATED_SELECTED_PACKAGE_HASH
 
 
 def test_manifest_with_illustration_round_trips_and_is_served_by_artifact() -> None:
@@ -495,3 +510,194 @@ def test_drawn_artifact_id_for() -> None:
     )
     ids = {drawn_artifact_id_for(*v) for v in variants}
     assert first not in ids and len(ids) == 5
+
+
+# --- 069: drawn images in the manifest -----------------------------------------------------
+
+DRAWN_KEYS = {"drawn_artifacts", "drawn_status"}
+
+
+def _drawn_images(*roles: DrawnRole) -> tuple[DrawnArtifact, ...]:
+    return tuple(_drawn(role, n) for n, role in enumerate(roles, start=1))
+
+
+def _with_drawings(
+    outcome: MediaOutcome = MediaOutcome.GIF,
+    roles: tuple[DrawnRole, ...] = (DrawnRole.HERO, DrawnRole.CONCEPT),
+    **overrides: object,
+) -> MediaManifest:
+    fields: dict[str, object] = {
+        "drawn_artifacts": _drawn_images(*roles),
+        "drawn_status": DrawnStatus.DRAWN,
+    }
+    fields.update(overrides)
+    return make_manifest(outcome, **fields)
+
+
+def test_manifest_without_drawn_fields_dumps_without_the_drawn_keys() -> None:
+    manifest = make_manifest(MediaOutcome.GIF)
+    assert DRAWN_KEYS.isdisjoint(manifest.model_dump(mode="json"))
+    assert DRAWN_KEYS.isdisjoint(manifest.model_dump())
+    assert "drawn" not in manifest.model_dump_json()
+    failed = make_manifest(MediaOutcome.GIF, drawn_status=DrawnStatus.FAILED)
+    assert "drawn_artifacts" not in failed.model_dump(mode="json")
+    assert failed.model_dump(mode="json")["drawn_status"] == "failed"
+
+
+def test_manifest_with_drawings_keeps_the_keys_with_the_right_shape() -> None:
+    manifest = _with_drawings()
+    dumped = manifest.model_dump(mode="json")
+    assert dumped["drawn_status"] == "drawn"
+    shown = cast(list[dict[str, object]], dumped["drawn_artifacts"])
+    roles = [d["role"] for d in shown]
+    assert roles == ["hero", "concept"]
+    assert isinstance(manifest.model_dump()["drawn_artifacts"], tuple)
+    assert MediaManifest.model_validate_json(manifest.model_dump_json()) == manifest
+
+
+def test_manifest_drawn_rules_reject_each_bad_shape() -> None:
+    images = _drawn_images(DrawnRole.HERO)
+    static = make_artifact(MediaKind.STATIC)
+    cases: list[tuple[MediaOutcome, dict[str, object]]] = [
+        (MediaOutcome.GIF, {"drawn_status": DrawnStatus.DISABLED}),
+        (MediaOutcome.GIF, {"drawn_status": DrawnStatus.DRAWN}),
+        (MediaOutcome.GIF, {"drawn_artifacts": images}),
+        (MediaOutcome.GIF, {"drawn_artifacts": images, "drawn_status": DrawnStatus.FAILED}),
+        (MediaOutcome.GIF, {"drawn_artifacts": images, "drawn_status": DrawnStatus.CAPPED}),
+        (
+            MediaOutcome.TEXT_ONLY,
+            {"drawn_artifacts": images, "drawn_status": DrawnStatus.DRAWN},
+        ),
+        (MediaOutcome.TEXT_ONLY, {"drawn_status": DrawnStatus.FAILED}),
+        (
+            MediaOutcome.GIF,
+            {
+                "drawn_artifacts": (_drawn(DrawnRole.HERO, 1), _drawn(DrawnRole.HERO, 2)),
+                "drawn_status": DrawnStatus.DRAWN,
+            },
+        ),
+        (
+            MediaOutcome.GIF,
+            {
+                "drawn_artifacts": (
+                    DrawnArtifact(
+                        role=DrawnRole.HERO,
+                        artifact=make_artifact(artifact_id=static.artifact_id),
+                    ),
+                ),
+                "drawn_status": DrawnStatus.DRAWN,
+            },
+        ),
+        (
+            MediaOutcome.GIF,
+            {
+                "drawn_artifacts": (_drawn(DrawnRole.HERO, 1), _drawn(DrawnRole.DETAIL, 1)),
+                "drawn_status": DrawnStatus.DRAWN,
+            },
+        ),
+    ]
+    for outcome, overrides in cases:
+        with pytest.raises(ValidationError):
+            make_manifest(outcome, **overrides)
+
+
+def test_drawings_need_the_card_and_clash_with_no_other_id() -> None:
+    with pytest.raises(ValidationError):
+        MediaManifest.model_validate(
+            {
+                "story_id": "s",
+                "story_content_hash": HASH_A,
+                "brief_hash": HASH_B,
+                "outcome": MediaOutcome.STATIC,
+                "drawn_artifacts": _drawn_images(DrawnRole.HERO),
+                "drawn_status": DrawnStatus.DRAWN,
+            }
+        )
+    illustration = _illustration_artifact()
+    clash = DrawnArtifact(
+        role=DrawnRole.HERO,
+        artifact=make_artifact(
+            artifact_id=illustration.artifact_id,
+            content_hash="d" * 64,
+            relative_path="d" * 64 + ".png",
+        ),
+    )
+    with pytest.raises(ValidationError):
+        make_manifest(
+            MediaOutcome.STATIC,
+            illustration_artifact=illustration,
+            illustration_status=IllustrationStatus.GENERIC,
+            drawn_artifacts=(clash,),
+            drawn_status=DrawnStatus.DRAWN,
+        )
+
+
+@pytest.mark.parametrize("status", [DrawnStatus.FAILED, DrawnStatus.CAPPED])
+def test_failed_and_capped_drawn_statuses_are_valid_without_images(status: DrawnStatus) -> None:
+    manifest = make_manifest(MediaOutcome.STATIC, drawn_status=status)
+    assert manifest.drawn_artifacts == () and manifest.drawn_status is status
+    assert manifest.review_gallery() == ()
+
+
+def test_artifact_lookup_finds_drawn_ids() -> None:
+    manifest = _with_drawings()
+    for image in manifest.drawn_artifacts:
+        assert manifest.artifact(image.artifact.artifact_id) == image.artifact
+
+
+def test_review_gallery_orders_by_role() -> None:
+    roles = (DrawnRole.SETTING, DrawnRole.HERO, DrawnRole.DETAIL, DrawnRole.CONCEPT)
+    manifest = _with_drawings(roles=roles)
+    assert [i.role for i in manifest.review_gallery()] == [
+        DrawnRole.HERO,
+        DrawnRole.CONCEPT,
+        DrawnRole.DETAIL,
+        DrawnRole.SETTING,
+    ]
+    assert make_manifest(MediaOutcome.GIF).review_gallery() == ()
+
+
+def test_candidates_and_media_choice_ignore_drawings() -> None:
+    plain = _illustrated(IllustrationStatus.MATCHED)
+    drawn = _with_drawings(
+        illustration_artifact=_illustration_artifact(),
+        illustration_status=IllustrationStatus.MATCHED,
+    )
+    assert drawn.candidates() == plain.candidates()
+    chosen = with_media_choice(drawn, MediaSelection.ILLUSTRATION)
+    assert chosen.selected is MediaSelection.ILLUSTRATION
+    assert chosen.drawn_artifacts == drawn.drawn_artifacts
+    assert chosen.drawn_status is DrawnStatus.DRAWN
+    card_only = _with_drawings()
+    assert with_media_choice(card_only, MediaSelection.ILLUSTRATION) is card_only
+    drawn_ids = {i.artifact.artifact_id for i in drawn.drawn_artifacts}
+    assert all(c.artifact.artifact_id not in drawn_ids for c in drawn.candidates())
+
+
+def test_worst_case_ascii_manifest_fits() -> None:
+    alt = "x" * 1000
+    drawn_alt = "y" * 240
+    images = tuple(
+        _drawn(role, n, alt_text=drawn_alt) for n, role in enumerate(DRAWN_ROLE_ORDER, start=1)
+    )
+    manifest = make_manifest(
+        MediaOutcome.GIF,
+        static_artifact=make_artifact(MediaKind.STATIC, alt_text=alt),
+        animated_artifact=make_artifact(MediaKind.ANIMATED, alt_text=alt),
+        illustration_artifact=_illustration_artifact(alt_text=alt),
+        illustration_status=IllustrationStatus.MATCHED,
+        selected=MediaSelection.ILLUSTRATION,
+        drawn_artifacts=images,
+        drawn_status=DrawnStatus.DRAWN,
+    )
+    assert len(manifest.model_dump_json().encode("utf-8")) <= MAX_MANIFEST_JSON_BYTES
+
+
+def test_drawings_change_the_package_hash_but_not_the_content_hash() -> None:
+    from ai_trend_pipeline.media.briefs import story_content_hash, story_package_hash
+    from tests.story_generation_fixtures import make_package
+
+    without = make_package("story-1", media=make_manifest(MediaOutcome.GIF))
+    with_drawings = make_package("story-1", media=_with_drawings())
+    assert story_package_hash(without) != story_package_hash(with_drawings)
+    assert story_content_hash(without) == story_content_hash(with_drawings)

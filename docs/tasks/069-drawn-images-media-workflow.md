@@ -1,6 +1,6 @@
 # 069: Drawn images in the manifest and `StoryMediaWorkflow`
 
-Status: planned
+Status: pr-open
 
 ## Goal
 
@@ -203,3 +203,11 @@ manifests and assertions stay unchanged. These helpers include `_run` in
 <!-- Each agent appends at most 5 lines: "**agent**: what I did. Next: ...". Newest at the bottom. -->
 
 **planner**: wrote spec
+**builder**: added drawn fields, validator, `review_gallery()` to `MediaManifest`; `draw_story_images` in `StoryMediaWorkflow` (patch `story-drawn-v1`, size guard); worker registration; v3 history recorded; pinned illustrated hash committed first.
+**builder**: deviation: a hung activity blocks the time-skipping server (verified), so the "never finishes" test uses an unserved activity (fails after 2 retries); `schedule_to_close` 150s is pinned by the history assertions.
+**verifier**: ran `just lint` (pass: ruff check, ruff format, pyright 0 errors) and `just test` (1862 passed, 2 pydantic warnings, exit 0) with ANTHROPIC_* unset.
+All checks pass.
+**reviewer**: Approved. Workflow code is deterministic (pure `build`/`ValidationError` fallback, patch `story-drawn-v1` after the illustration block); v1/v2/v3 histories replay.
+Note 1: the unserved-activity test is an acceptable stand-in. An unserved activity can only end by the 150s schedule_to_close timeout (no retries occur, so the builder's "retries twice" wording is inaccurate), and time-skipping does work for it. History assertions pin 150s/110s/2 attempts.
+Note 2: that test does not assert the timeout type; optional hardening only.
+**scribe**: updated README and tech.md (drawn step, worker registration); opened PR https://github.com/akonale/ai-trend-pipeline/pull/83 (not merged). Next: human merges.

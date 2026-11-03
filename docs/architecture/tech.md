@@ -124,6 +124,11 @@ researching ─▶ analyzing ─▶ writing ─▶ checking ─┬─ passed ─
   `StoryMediaWorkflow` child (id `media-v1-<hash>`, 6 minute execution timeout, `story-media-task-queue`) and
   attaches its `MediaManifest` to the package. A failed, timed-out or ID-clashing child gives a
   `text_only` manifest instead; media never fails a story and only the manifest enters the parent history.
+  Drawn images (task 069): behind `workflow.patched("story-drawn-v1")`, after the card succeeds, `StoryMediaWorkflow`
+  starts `draw_story_images` beside the GIF (110 s start-to-close, 150 s schedule-to-close, 2 attempts, `DrawingFailed`
+  non-retryable). Its result fills `drawn_artifacts`/`drawn_status` in the manifest and never changes the outcome
+  or other artifacts; a failure or cap records `failed`/`capped`. The budget (150 s + 2 x 60 s) stays under the 6 minute
+  child timeout, pinned by a test. Drawings are excluded from `candidates()` and never publish.
   `story_package_hash` (text and media) is the content hash. The review query returns the package and
   hash, the `ready` result freezes the hash, and an approve with a different hash is ignored
   (`IGNORED_SIGNAL`, `cause=stale_content`). The service refuses a stale approve first (`StoryReviewStale`,
@@ -434,7 +439,8 @@ the seven activities from `daily_chart_activities`), `story-candidate-task-queue
 (`STORY_WORKFLOWS = [StoryGenerationWorkflow]`, with the four activities from `story_activities`
 and `activity_executor=ThreadPoolExecutor(max_workers=4)` for the sync fact activity), and
 `story-media-task-queue` (`MEDIA_WORKFLOWS = [StoryMediaWorkflow]`, with `render_static_media` and
-`render_animated_media` from `media_activities(settings)`, the `MEDIA_PROVIDER` renderer (default `story-card`),
+`render_animated_media` from `media_activities(settings, anthropic_client)`, `illustrate_story`, and `draw_story_images`
+(always registered; returns `disabled` when `DRAWN_IMAGES_ENABLED` is off), the `MEDIA_PROVIDER` renderer (default `story-card`),
 2 concurrent activities and 1 concurrent animation), and `story-publishing-task-queue`
 (`PUBLISHING_WORKFLOWS = [StoryPublishingWorkflow]`, with `publish_story_to_bluesky` from
 `publishing_activities(bluesky_client, credentials, settings)`, 2 concurrent activities, reusing the

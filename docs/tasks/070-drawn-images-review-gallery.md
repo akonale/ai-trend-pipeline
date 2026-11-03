@@ -1,6 +1,6 @@
 # 070: Reviewer gallery for AI-drawn images, and docs
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -274,3 +274,9 @@ screenshot was taken. The human checks these in light and dark themes:
 
 **builder**: built the view-only drawn gallery (view models, template, CSS, tests) and docs (README, tech.md, runbook + manual checklist). No deviations. Full suite 1877 passed; ruff and pyright clean.
 No screenshot taken (did not try a headless browser); CSS assertions stand in, manual checklist is in the runbook. Next: verifier.
+
+**verifier**: ran `just lint` (exit 0: ruff check, ruff format, pyright 0 errors) and `just test` (1877 passed, exit 0) with ANTHROPIC_* unset.
+All checks pass. Next: reviewer.
+
+**reviewer**: Approved. Checked diff against all criteria: shaping is in view_models.py, template has only if/for, routes untouched, no `|safe` so alt text is autoescaped, drawn set only when not ready.
+No screenshot is acceptable: spec allows it if stated plainly, CSS assertions and the manual runbook checklist are present. Note: human must run the manual visual check before merge. Next: scribe.

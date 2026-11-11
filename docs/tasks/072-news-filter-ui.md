@@ -1,6 +1,6 @@
 # 072: Tune news classification in the UI
 
-Status: built
+Status: pr-open
 
 ## Goal
 
@@ -138,3 +138,15 @@ Next: builder to fix the flaky test, then re-verify. Fix loop 1 of 2.
 **builder (fix 1)**: Root cause was a test race, not a workflow bug: with `max_polls_per_run=1` the test sent `stop` while run 2 was continuing as new, so the signal could hit a run that had just completed (`RPCError: Completed workflow`).
 Fix: the test now waits for the third run's poll (`poller.wait_for_call(3)`) before `stop_ingestion`, so the handover is finished; no sleeps added. Only `tests/test_source_ingestion.py` changed.
 Verified: 3 sequential full runs 1947 passed each, `just lint` clean.
+
+**verifier (re-verify after fix 1)**: `just lint` passed (ruff check, ruff format, pyright 0 errors).
+`just test` run 1: 1947 passed, 0 failed. Run 2: 1947 passed, 0 failed (sequential, ANTHROPIC_* unset, ~4.5 min each).
+The flaky `test_continue_as_new_preserves_global_ui_policy` passed both runs. Set status to verified.
+All checks pass.
+
+**reviewer**: Approved. All criteria met, all 14 listed tests exist, patch-gated workflow load fails closed (no Jev call, batch left unprocessed), no secrets.
+Notes: (1) Top-level `news_filter.py` is justified: activities must not import `services/`; services re-export it. (2) Reusing 071's `NewsPolicyMode` follows the "no duplicated policy" rule, so the spec's `NewsFilterMode` name is just stale. (3) `worker.py` importing the Postgres store is wiring only, acceptable; screenshots at 360/1280px were not taken (no browser), worth a manual look.
+
+**scribe**: Docs were already current (README, architecture, deploy and ingestion runbooks), so no doc edits were needed. Pushed the branch and opened PR #89: https://github.com/akonale/ai-trend-pipeline/pull/89
+PR notes: News filter page not checked at 360px/1280px (no headless browser); prod worker now needs `DATABASE_URL`; 071 prerequisite `TYPESAFE_API_KEY` in `.env.prod` still applies.
+Next: human reviews the PR and merges (not merged by an agent).

@@ -26,8 +26,8 @@ and stops. The next agent picks up from the note, not from a long conversation.
 
 **Why these models:** planning mistakes are the most expensive to undo, so the planner gets the
 strongest model, and its output is short. Building and reviewing need solid coding judgment, so they
-use the mid-tier model. Running commands and writing commit messages are mechanical, so they use
-the cheapest one.
+use the mid-tier model. Running commands and writing commit messages are mechanical, so they
+use the cheapest one.
 
 ## The handoff file
 
@@ -279,7 +279,7 @@ full internal state machine as additional badges or a lifecycle diagram.
 | 052 | Story drafting and critique activities: define the versioned StoryPackage, DraftInput/Output, CritiqueInput/Output, and bounded critique result. Implement a structured-tool LLM writer that receives only the approved candidate, compact research context, and FactSet, then returns headline, summary, body, key points with fact IDs, source links, caveats, and optional post text. Implement a separate checker for unsupported claims, numerical fidelity, headline overstatement, missing caveats, and source/date fidelity. Validate all returned fact IDs and URLs in code | Recorded LLM fixtures cover a clean draft, one useful critique, unsupported numbers, invented fact IDs, malformed output, missing citations, and injected instructions in research text; invalid outputs fail closed; the activities do not start workflows or publish; retry and non-retryable behaviour matches existing LLM policy | no |
 | 053 | `StoryGenerationWorkflow` and approval handoff: orchestrate 050-052 through `researching → analyzing → writing → checking → review`, with one bounded revision and terminal `ready / rejected / unsupported / failed / expired` handling. Add story review queries and final Approve/Reject signals, activity retry policies, worker registration, and deterministic story IDs. After candidate approval, start the story workflow once without waiting and include its ID in the candidate result. Add the shared visibility attributes and five-status mapping to both workflow types, inherit the original detection timestamp, cap review deadlines at the 48-hour cutoff, and preserve old candidate replay | Time-skipping tests cover every internal state and all five UI mappings, unsupported before writing, critique revision, exhausted failure, final approve/reject, review expiry at the UI cutoff, first-decision-wins, duplicate candidate approval, duplicate story start, and handoff de-duplication metadata; old candidate and chart histories replay; exactly one story starts per approved candidate; nothing publishes | no |
 | 054 | Unified `/stories` status page with 48-hour retention: add a new page and `StoryStatusService` that lists candidate and generation workflows through shared visibility attributes. Each row shows title, source, one of the five primary status badges, an optional short status detail, updated time, and a detail link. Provide simple filters for All, Pending, Writing, Review, Ready, and Closed. Make Stories the primary nav destination; keep `/candidates` as the pending-action inbox. Apply the same rolling 48-hour cutoff to both pages, all filters, pagination, and pending counts. Add empty/error states and a light htmx fragment refresh only while visible rows are active | Fake-clock/gateway tests cover all internal-to-UI mappings, handoff de-duplication, generation-start failure, filters, pagination, stale metadata, unsafe text, and service failure; an item is visible at 47:59:59 and absent at 48:00:00 for active and terminal states; generation never resets `StoryCreatedAt`; old items leave pending counts; no per-row query renders the list; active polling stops for terminal-only pages; responsive light/dark screenshots pass | no |
-| 055 | Story detail and final review UI: add `/stories/{id}` for candidate or generation workflows. While active, show the primary status and one short progress explanation; at `review`, render the StoryPackage with headline, summary, body, key points, clickable fact/evidence references, caveats, and final Approve/Reject actions; at `ready`, show the approved package read-only. Show one `closed` badge with clear rejected, unsupported, failed, or expired reason text. Open workflows use queries and closed workflows use typed results through the service; no arbitrary history parsing or detailed lifecycle graphic in templates | Route tests cover all five primary states and each closed reason, missing, already-decided, repeated decision, malformed result, source-link safety, and the 48-hour cutoff; final approval does not publish; active detail updates via htmx without a JavaScript build; keyboard/focus behaviour, long body text, citations, mobile/desktop layouts, and existing candidate/chart tests pass | no |
+| 055 | Story detail and final review UI: add `/stories/{id}` for candidate or generation workflows. While active, show the primary status and one short progress explanation; at `review`, render the StoryPackage with headline, summary, body, key points with fact/evidence references, caveats, and final Approve/Reject actions; at `ready`, show the approved package read-only. Show one `closed` badge with clear rejected, unsupported, failed, or expired reason text. Open workflows use queries and closed workflows use typed results through the service; no arbitrary history parsing or detailed lifecycle graphic in templates | Route tests cover all five primary states and each closed reason, missing, already-decided, repeated decision, malformed result, source-link safety, and the 48-hour cutoff; final approval does not publish; active detail updates via htmx without a JavaScript build; keyboard/focus behaviour, long body text, citations, mobile/desktop layouts, and existing candidate/chart tests pass | no |
 | 056 | Story-generation end-to-end hardening and docs: exercise HN candidate → approval → internal research/analysis/writing/checking → review → ready using recorded HTTP/LLM fixtures and the real Temporal service/gateway/UI boundaries. Verify that the UI shows only Pending, Writing, Review, Ready, or Closed throughout. Add bounded budgets, sanitized operational logs, failure-recovery runbooks, search-attribute setup, five-status semantics, and 48-hour UI retention to architecture docs and README. Document the two human decisions explicitly: candidate approval starts generation; story approval marks the package ready and never publishes | The full local stack demonstrates success, unsupported, failed-after-retry, critique-revision, candidate rejection, story rejection, and review expiry; no duplicate rows or story workflows appear across the handoff; terminal stories remain visible only until 48 hours after original detection; hidden items leave no pending counts or filters; no histories are deleted; old replay suites, Ruff, strict Pyright, and full pytest pass; a fresh operator can run and troubleshoot the feature from committed docs alone | no |
 
 ### Story media and explicit publishing
@@ -408,8 +408,8 @@ the media workflow. Task 070 adds the reviewer gallery and the docs.
   sanitiser's element allow-list. No text, digits, logos, real people, flags, maps or value charts.
 - Alt text is fixed copy built from the headline and the image's role. Model text is never used for
   alt text.
-- Only PNGs are stored, content-addressed through `write_artifact`. They are served only through the
-  existing manifest-checked media route.
+- Only PNGs are stored, content-addressed through `write_artifact`. They are served only through
+  the existing manifest-checked media route.
 - Off by default. The model name, the image count and a per-day call cap are settings in
   `config.py`. A pointer file keyed by `story_content_hash` means a story is drawn at most once.
   Nothing regenerates without a human action, and that action is out of scope here.
@@ -428,6 +428,45 @@ the media workflow. Task 070 adds the reviewer gallery and the docs.
 | 068 | `draw_story_images` activity: forced tool use against the configured model with SDK retries off, transient/permanent error classification, kill switch, a daily call cap kept in a locked usage file, and an idempotency pointer file per `story_content_hash` holding only artifact metadata. Valid images are stored content-addressed; invalid ones are dropped. Not registered in any worker or workflow | Recorded-fixture tests cover success, partial success, all rejected, malformed tool input, no tool call, truncated output, 429/529/5xx/connection (retryable), 400/401 (not retryable), disabled, cap reached, pointer reuse with no HTTP call, and a corrupt pointer; no SVG or model text appears in errors, results or logs | no |
 | 069 | Manifest and `StoryMediaWorkflow` integration: optional `drawn_artifacts`/`drawn_status` on `MediaManifest` (dropped when empty), `artifact()` lookup for drawings, `review_gallery()` accessor, `candidates()` unchanged; start the activity under patch `story-drawn-v1` after the card succeeds, alongside the GIF and illustration; failures and the cap fall back silently; register it in the worker | Time-skipping tests cover drawn, failed, capped, disabled and activity error; card/illustration/GIF outcomes are unchanged; old `story_media_v1_gif`/`v2_illustrated` and all story-generation histories replay, plus a new `story_media_v3_drawn` history; pinned package hashes are unchanged; the worst-case manifest fits 8 KB; no image bytes or SVG in history | no |
 | 070 | Reviewer gallery and docs: in review, `/stories/{id}` shows a view-only gallery of the drawings at the end of the reading column, with role labels, visible alt text, a "Drawn by an AI model" note, a grid-green tray with no shadows and no radio controls, plus a one-line note for failed or capped. Built through `web/view_models.py`, with only loops and ifs in the template and plain CSS that works at 360px with no JavaScript. Update README, `tech.md` and a runbook section (enabling, cost, cap, kill switch) | View-model, markup and CSS tests cover drawn, failed, capped, off and old stories; the route serves a drawn PNG only through the manifest; picker, Approve form, Ready view and publishing are byte-for-byte unchanged; a manual visual checklist is added; Ruff, Pyright and full pytest pass | no |
+
+### General-audience AI news classification and tuning
+
+**Goal:** classify source events with TypeSafe Jev before editorial writing, keep only compelling
+AI-centered stories ordinary readers can understand, and let an authenticated operator tune the
+classification from the web UI.
+
+**Done when:** Jev supplies typed judgments, deterministic code applies Strict/Balanced/Relaxed
+policies, only eligible events reach the existing Anthropic summary/angle selector, and a global
+News filter UI setting applies to subsequent polls without restarting ingestion or changing existing
+candidates.
+
+**Order:** 071 → 072. Task 071 adds classification, policy rules, ingestion integration, credentials,
+and recorded fixtures. Task 072 adds the persisted global setting, per-poll loading, and UI.
+
+**Rules for 071-072:**
+- Follow the TypeSafe skill and live docs: Jev makes narrow typed judgments; code owns the complete
+  decision table. Keep questions, criteria, thresholds, and policy definitions together and auditable.
+- AI centrality is a hard gate in every mode. Strict is the default; Balanced and Relaxed change
+  human-interest, comprehension, and routine-industry boundaries without using engagement as a gate.
+- The South African author/370-books story is the positive calibration example; ClickHouse or other
+  data-platform acquisition news without clear everyday impact is the negative example.
+- Jev classifies and Anthropic writes. Do not ask Jev for prose or let either model control cursors,
+  budgets, workflow IDs, review state, or publishing.
+- Send no engagement metrics to Jev. Bundle independent questions, chunk bounded batches within
+  current context limits, validate all responses, and never convert API/storage failure into a reject
+  or a relaxed fallback.
+- `TYPESAFE_API_KEY` and a pinned `TYPESAFE_MODEL` are read only in `config.py`; secrets stay out of
+  workflow history, logs, and templates. Tests use recorded fixtures and never require live calls.
+- The UI setting is global editorial configuration in Postgres, not per-user chart style and not
+  candidate state. Each poll reads it through an activity; changes affect future batches only.
+- Add optional/defaulted workflow fields and named Temporal patches so old ingestion histories and
+  continue-as-new chains replay safely. Existing candidate, story, media, chart, and publishing
+  behaviour remains unchanged.
+
+| # | Task | Done when | Your approval? |
+| --- | --- | --- | --- |
+| 071 | Jev general-audience AI news classification: add the TypeSafe SDK, atomic typed questions, bounded classification models, deterministic Strict/Balanced/Relaxed policy tables, and a `classify_story_events` activity; integrate it before the existing Anthropic selector with replay-safe ingestion changes, sanitized logs, worker/configuration/infra wiring, and recorded fixtures | AI centrality is required in every mode; engagement is absent from model state and decisions; the author and ClickHouse examples calibrate the criteria; zero eligible events skip Anthropic; failures leave batches unprocessed rather than becoming rejections; Strict/Balanced/Relaxed truth-table and chunking tests pass; old histories replay; Ruff, strict Pyright, and full pytest pass | no |
+| 072 | Tune news classification in the UI: add a global Postgres-backed News filter setting, authenticated GET/POST `/news-filter`, three explained native-control choices, shared navigation, and a `load_news_filter_settings` ingestion activity that applies the saved mode to each future poll without restart | Saving each mode affects the next poll; tightening and relaxing produce the expected deterministic eligibility change; invalid/unavailable storage fails safely; existing candidates are untouched; old and new histories replay; responsive keyboard-accessible route/service/workflow tests, Ruff, strict Pyright, and full pytest pass | no |
 
 ## Web architecture (rules for every Topic Studio task)
 

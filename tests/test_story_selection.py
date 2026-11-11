@@ -295,6 +295,15 @@ async def test_several_selections_and_overlapping_stories_are_handled() -> None:
     assert "overlapping" in SYSTEM_PROMPT.lower()
 
 
+def test_editorial_guidance_assumes_events_are_already_screened() -> None:
+    low = SYSTEM_PROMPT.lower()
+    assert "already been screened" in low
+    assert "general audience" in low
+    # Anthropic still compares, collapses overlaps, writes the fields, and may pick none.
+    for needle in ("compare", "overlapping", "select none", "summary", "selection_reason"):
+        assert needle in low
+
+
 @pytest.mark.asyncio
 async def test_over_cap_selections_are_truncated_in_model_order() -> None:
     result = await _run(_input(max_candidates=2), fixture=OVER_CAP)

@@ -1,6 +1,6 @@
 # 071: Jev general-audience AI news classification
 
-Status: approved
+Status: built
 
 ## Goal
 
@@ -144,3 +144,6 @@ every accept/reject decision.
 <!-- Each agent appends at most 5 lines: "**agent**: what I did. Next: ...". Newest at the bottom. -->
 
 **planner**: Revised the spec to use TypeSafe Jev for typed judgments, deterministic policy code for decisions, and the existing Anthropic activity only for editorial writing. Next: approve, then builder writes recorded-fixture and policy tests first.
+**builder**: Added `story_classification.py` (Jev Noul/Score questions, policy table, pure `decide`, `classify_story_events`), patched `story-classification-v1` into `SourceIngestionWorkflow`, config/worker/compose/docs; pinned `typesafe-sdk==0.7.5`, default `jev-1.14.0`.
+**builder**: Fixtures `typesafe_story_classification_*.json` are hand-built in the recorded API shape (no live call was made, none permitted); pre-071 replay history generated from unmodified code. Policy thresholds are starting points, uncalibrated.
+**builder**: Also touched, outside the listed files, to keep existing tests green: `tests/test_worker.py`, `test_source_ingestion_e2e.py`, `test_source_ingestion_two_sources.py`, `story_e2e_harness.py`, new `tests/typesafe_fixtures.py` (ingestion workers now need the classifier activity).

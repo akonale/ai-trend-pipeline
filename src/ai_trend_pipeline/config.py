@@ -32,6 +32,9 @@ DEFAULT_RESEARCH_USER_AGENT = "ai-trend-pipeline-research/0.1"
 DEFAULT_DRAWN_IMAGES_MODEL = "claude-sonnet-5-5"
 DEFAULT_DRAWN_IMAGES_DAILY_CAP = 20
 DRAWN_MODEL_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]*$"
+# A versioned Jev ID, not the moving `jev-latest` alias, so tuned thresholds do not drift.
+DEFAULT_TYPESAFE_MODEL = "jev-1.14.0"
+TYPESAFE_MODEL_PATTERN = r"^jev-[0-9]+\.[0-9]+\.[0-9]+$"
 
 
 class Settings(BaseModel):
@@ -45,6 +48,8 @@ class Settings(BaseModel):
     media_provider: MediaProviderName = MediaProviderName.STORY_CARD
     illustration_provider: IllustrationProviderName = IllustrationProviderName.ILLUSTRATED_CARD
     anthropic_api_key: SecretStr | None = None
+    typesafe_api_key: SecretStr | None = None
+    typesafe_model: str = Field(default=DEFAULT_TYPESAFE_MODEL, pattern=TYPESAFE_MODEL_PATTERN)
     bluesky_handle: str | None = None
     bluesky_app_password: SecretStr | None = None
     bluesky_service: str = DEFAULT_BLUESKY_SERVICE
@@ -176,6 +181,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
     env = os.environ if environ is None else environ
     api_key = env.get("ANTHROPIC_API_KEY")
     password = env.get("BLUESKY_APP_PASSWORD")
+    typesafe_key = env.get("TYPESAFE_API_KEY")
     return Settings(
         temporal_address=env.get("TEMPORAL_ADDRESS", DEFAULT_TEMPORAL_ADDRESS),
         temporal_ui_url=(env.get("TEMPORAL_UI_URL") or DEFAULT_TEMPORAL_UI_URL).rstrip("/"),
@@ -185,6 +191,8 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         media_provider=_parse_media_provider(env.get("MEDIA_PROVIDER")),
         illustration_provider=_parse_illustration_provider(env.get("ILLUSTRATION_PROVIDER")),
         anthropic_api_key=SecretStr(api_key) if api_key else None,
+        typesafe_api_key=SecretStr(typesafe_key) if typesafe_key else None,
+        typesafe_model=(env.get("TYPESAFE_MODEL") or "").strip() or DEFAULT_TYPESAFE_MODEL,
         bluesky_handle=env.get("BLUESKY_HANDLE") or None,
         bluesky_app_password=SecretStr(password) if password else None,
         bluesky_service=env.get("BLUESKY_SERVICE") or DEFAULT_BLUESKY_SERVICE,

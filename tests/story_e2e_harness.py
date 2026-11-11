@@ -94,6 +94,7 @@ from ai_trend_pipeline.web.view_models import (
 )
 from tests.publishing_fixtures import FakePds, make_activities
 from tests.story_generation_fixtures import make_media_worker
+from tests.typesafe_fixtures import positive_classification
 
 FIXTURES = Path(__file__).parent / "fixtures"
 ARTICLE_HTML = (FIXTURES / "research" / "article_supported.html").read_text(encoding="utf-8")
@@ -284,6 +285,7 @@ async def story_e2e(
     research = StoryResearchActivities(article, owid, settings, resolver=public_resolver)
     source = HNSourceActivities(hn)
     selection = StorySelectionActivities(llm)
+    classification = positive_classification()
     drafting = StoryDraftActivities(llm)
     critique = StoryCritiqueActivities(llm)
     facts = FactActivities()
@@ -336,7 +338,11 @@ async def story_e2e(
                     env.client,
                     task_queue=SOURCE_INGESTION_TASK_QUEUE,
                     workflows=[SourceIngestionWorkflow],
-                    activities=[source.poll_hn_source, selection.select_story_candidates],
+                    activities=[
+                        source.poll_hn_source,
+                        classification.classify_story_events,
+                        selection.select_story_candidates,
+                    ],
                 ),
                 Worker(
                     env.client,

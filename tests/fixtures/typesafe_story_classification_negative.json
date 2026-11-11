@@ -1,0 +1,68 @@
+{
+  "model": "jev-1.14.0",
+  "answers": {
+    "e0__ai_central": {
+      "type": "noul",
+      "noul": 0.12
+    },
+    "e0__routine_industry": {
+      "type": "noul",
+      "noul": 0.96
+    },
+    "e0__human_interest": {
+      "type": "score",
+      "score": 0.35,
+      "confidence": 0.7,
+      "legend": {
+        "0": "No human angle: a product, system, or company action with no person or community affected",
+        "1": "A faint human angle: people are mentioned but the story is mainly about technology or business",
+        "2": "A clear human angle: a person's experience, a creative or ethical dispute, or an effect on a community",
+        "3": "A strong human story that most people would want to read or discuss, with personal stakes, creativity, fairness, or surprise"
+      },
+      "probabilities": {
+        "0": 0.7,
+        "1": 0.25,
+        "2": 0.05,
+        "3": 0.0
+      }
+    },
+    "e0__clarity": {
+      "type": "score",
+      "score": 1.0,
+      "confidence": 0.6,
+      "legend": {
+        "0": "Full of jargon, product names, or abbreviations that a layperson cannot decode",
+        "1": "Mostly technical wording; a layperson would get only a vague idea",
+        "2": "A layperson understands the gist, though a term or two is unfamiliar",
+        "3": "Plain language; anyone can tell what happened"
+      },
+      "probabilities": {
+        "0": 0.2,
+        "1": 0.6,
+        "2": 0.2,
+        "3": 0.0
+      }
+    },
+    "e0__everyday_impact": {
+      "type": "score",
+      "score": 0.12,
+      "confidence": 0.9,
+      "legend": {
+        "0": "No effect on ordinary people is stated",
+        "1": "An effect on ordinary people is only implied or merely possible",
+        "2": "A concrete effect on some ordinary people is stated",
+        "3": "A concrete effect on many ordinary people's daily lives is stated"
+      },
+      "probabilities": {
+        "0": 0.9,
+        "1": 0.08,
+        "2": 0.02,
+        "3": 0.0
+      }
+    }
+  },
+  "usage": {
+    "input_tokens": 812,
+    "output_tokens": 95
+  }
+}

@@ -45,6 +45,7 @@ from ai_trend_pipeline.story_candidate import (
 from ai_trend_pipeline.story_selection import StorySelectionActivities
 from ai_trend_pipeline.story_status import STORY_UI_RETENTION
 from ai_trend_pipeline.temporal_client import ensure_candidate_search_attributes
+from tests.typesafe_fixtures import positive_classification
 
 FIXTURES = Path(__file__).parent / "fixtures"
 HN_FIXTURE = "hn_source_poll.json"
@@ -111,6 +112,7 @@ async def ingestion_run() -> AsyncGenerator[
     selection_client = _anthropic_client()
     source_activities = HNSourceActivities(hn_client)
     selection_activities = StorySelectionActivities(selection_client)
+    classification = positive_classification()
     service = CandidateService(TemporalCandidateGateway(env.client), settings)
     workflow_id = source_ingestion_workflow_id(SourceName.HN)
     async with env:
@@ -122,6 +124,7 @@ async def ingestion_run() -> AsyncGenerator[
                     workflows=[SourceIngestionWorkflow],
                     activities=[
                         source_activities.poll_hn_source,
+                        classification.classify_story_events,
                         selection_activities.select_story_candidates,
                     ],
                 ),

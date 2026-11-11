@@ -1,9 +1,10 @@
 # Ingestion runbook
 
 `SourceIngestionWorkflow` is one long-running Temporal workflow per enabled source. It polls the
-source activity, drops stories already in its bounded processed-id set, asks
-`select_story_candidates` for a bounded batch, and starts one `StoryCandidateWorkflow` per selected
-story. Cursor, processed ids and the per-day candidate budget live only in workflow state. Worker
+source activity, drops stories already in its bounded processed-id set, classifies the batch with
+TypeSafe Jev (`classify_story_events`; `strict`, `balanced` or `relaxed` policy, default `strict`),
+asks `select_story_candidates` for a bounded batch of the eligible events, and starts one
+`StoryCandidateWorkflow` per selected story. Cursor, processed ids and the per-day candidate budget live only in workflow state. Worker
 startup never starts ingestion; the operator command below does.
 
 Read [search-attributes.md](search-attributes.md) first on a fresh stack: candidate starts fail
@@ -101,6 +102,10 @@ Work through this order.
   stop plus ensure procedure in sections 1 and 2.
 - Repeated `candidate_ingestion.poll_failed`: the poll activity retries three times and the loop
   continues; check the source service and worker logs. No restart is needed.
+- `candidate_ingestion.classification_failed`: check `TYPESAFE_API_KEY`, `TYPESAFE_MODEL` and the
+  TypeSafe quota. The batch is left unprocessed, no Anthropic call is made and nothing is started;
+  the same stories are classified again on a later poll. Zero eligible events is not a failure:
+  `candidate_ingestion.classification` reports `eligible_count: 0` and the batch is marked processed.
 - `candidate_ingestion.selection_failed`: check `ANTHROPIC_API_KEY` and quota. The failed batch is
   marked processed by design, so new stories continue on later polls.
 - Search-attribute or inbox-unavailable errors: follow the
@@ -124,7 +129,11 @@ Rules for changing the workflow:
 
 - Add input and state fields only with defaults; 049's `candidate_budget`, `budget_day`,
   `candidates_started` and `budget_exhausted_day` all have defaults, so 048-era histories replay.
-- Keep activity names and loop order unchanged.
+- Keep activity names and loop order unchanged, except behind a `workflow.patched` gate: task 071
+  added `classify_story_events` before selection under `story-classification-v1`, and
+  `news_policy` (default `strict`) on `SourceIngestionInput`. Pre-071 histories replay without the
+  classification step (`tests/fixtures/histories/source_ingestion_v1_selected.json`); runs started
+  afterwards classify. Deploy the worker with `TYPESAFE_API_KEY` set or it exits at startup.
 - Bump `SOURCE_INGESTION_WORKFLOW_ID_PREFIX` to `source-ingestion-v2-` for an incompatible loop
   change. That has not been done in 049.
 

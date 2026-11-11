@@ -231,8 +231,9 @@ or renders.
 
 `ai_trend_pipeline.source_ingestion` provides `SourceIngestionWorkflow`: one long-running workflow
 per enabled source on `source-ingestion-task-queue` that polls through the source activity on a
-Temporal timer, prefilters new events, asks `select_story_candidates` for a bounded batch, and
-starts one candidate workflow per selection. Cursor, processed-story state and the per-source
+Temporal timer, prefilters new events, classifies them for general-audience AI news (below), asks
+`select_story_candidates` for a bounded batch of the eligible ones, and starts one candidate
+workflow per selection. Cursor, processed-story state and the per-source
 UTC-day candidate budget live in the workflow (continue-as-new carries them), never in Postgres.
 Before calling the selector it checks the budget; at zero it skips the LLM call entirely, leaves the
 batch unprocessed, and logs `candidate_ingestion.budget_exhausted` once for that UTC day.
@@ -254,10 +255,33 @@ env -i PATH="$PATH" HOME="$HOME" docker compose -f infra/compose.prod.yaml --env
 
 Re-running it is safe (`USE_EXISTING`); `SOURCE_ENABLED=none` ensures nothing and exits 0.
 
+### General-audience AI news classification
+
+Before the Anthropic editorial step, the `classify_story_events` activity asks TypeSafe Jev five
+independent questions per event: is AI or its effect central, how much human interest, how easy it
+is for a non-technical reader, is it routine enterprise/technical/industry news, and does it state
+an everyday impact. Jev only supplies typed judgments (Noul probabilities and Score levels); fixed
+code in `story_classification.py` decides eligibility. Scores, comments and other engagement metrics
+are never sent, and answer `confidence` is never used as a gate. Anthropic then compares only the
+eligible events, collapses overlaps, writes the summary, angle and reason, and may still select
+none.
+
+Three named policies exist: `strict` (the default; only exceptional, clearly understandable
+human-interest stories), `balanced` and `relaxed`. They progressively lower the human-interest and
+clarity gates and soften the routine-industry exclusion. AI centrality is a hard gate in every mode,
+and a routine story passes only with strong enough explicit everyday impact. The mode is the
+`news_policy` field of `SourceIngestionInput`; a UI to change it arrives in a later task.
+
+Configuration: `TYPESAFE_API_KEY` (required by the worker) and `TYPESAFE_MODEL` (default
+`jev-1.14.0`; a versioned ID such as `jev-1.15.0`, never the moving `jev-latest` alias, so tuned
+thresholds do not drift). If no event is eligible, Anthropic is not called and the batch is marked
+processed. If classification still fails after retries, the batch is left unprocessed for a later
+poll and nothing is started (`candidate_ingestion.classification_failed`).
+
 ### Structured ingestion logs
 
 Operational events are a fixed `candidate_ingestion.*` set: `started`, `poll`, `poll_failed`,
-`events_normalized`, `selection`, `selection_failed`, `selection_outside_batch`,
+`events_normalized`, `classification`, `classification_failed`, `selection`, `selection_failed`, `selection_outside_batch`,
 `candidate_started`, `candidate_duplicate`, `budget_exhausted`, `continue_as_new` and `stopped`.
 Each record carries `event` and `source` plus primitive counters or ids. A guard rejects titles,
 URLs, summaries, angles, reasons, prompts, payloads, credentials and non-primitive values, and
@@ -343,7 +367,8 @@ deterministic end-to-end proof runs the real workers, services and routes agains
 
 `ai_trend_pipeline.topic` provides the `TopicActivities.pick_topic` activity, which asks Claude to
 pick a chartable topic from HN stories. It chooses one of the titles in `owid.CATALOG`, and an
-off-catalog pick is retried. It needs `ANTHROPIC_API_KEY` in the environment.
+off-catalog pick is retried. It needs `ANTHROPIC_API_KEY` in the environment. The worker also needs `TYPESAFE_API_KEY` for
+story classification.
 
 ## Our World in Data
 

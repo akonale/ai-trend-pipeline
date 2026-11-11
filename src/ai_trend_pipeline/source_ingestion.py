@@ -1,4 +1,4 @@
-"""Long-running per-source ingestion: poll, prefilter, select, start candidate children.
+"""Long-running per-source ingestion: poll, prefilter, classify, select, start candidate children.
 
 Everything here is deterministic workflow code. HTTP and LLM calls happen only inside the
 activities named by the source registry and `story_selection`.
@@ -51,6 +51,12 @@ with workflow.unsafe.imports_passed_through():
         candidate_memo,
         candidate_search_attributes,
     )
+    from ai_trend_pipeline.story_classification import (
+        DEFAULT_NEWS_POLICY_MODE,
+        ClassifyStoryEventsInput,
+        ClassifyStoryEventsOutput,
+        NewsPolicyMode,
+    )
     from ai_trend_pipeline.story_selection import (
         DEFAULT_MAX_CANDIDATES,
         MAX_BATCH_EVENTS,
@@ -64,6 +70,9 @@ with workflow.unsafe.imports_passed_through():
 SOURCE_INGESTION_TASK_QUEUE = "source-ingestion-task-queue"
 SOURCE_INGESTION_WORKFLOW_ID_PREFIX = "source-ingestion-v1-"
 SELECT_STORY_CANDIDATES_ACTIVITY = "select_story_candidates"
+CLASSIFY_STORY_EVENTS_ACTIVITY = "classify_story_events"
+# Histories recorded before task 071 have no marker and replay without the classification step.
+STORY_CLASSIFICATION_PATCH = "story-classification-v1"
 
 MAX_PROCESSED_IDS = 1000
 MAX_PROCESSED_ID_LENGTH = 128
@@ -83,6 +92,7 @@ MAX_SOURCE_CANDIDATE_BUDGET = 500
 
 POLL_ACTIVITY_TIMEOUT = timedelta(seconds=60)
 SELECT_ACTIVITY_TIMEOUT = timedelta(seconds=120)
+CLASSIFY_ACTIVITY_TIMEOUT = timedelta(seconds=180)
 ACTIVITY_MAX_ATTEMPTS = 3
 
 ProcessedId = Annotated[
@@ -143,6 +153,7 @@ class SourceIngestionInput(BaseModel):
         ge=MIN_CANDIDATE_REVIEW_TIMEOUT_S,
         le=MAX_CANDIDATE_REVIEW_TIMEOUT_S,
     )
+    news_policy: NewsPolicyMode = DEFAULT_NEWS_POLICY_MODE
     cursor: str | None = Field(default=None, max_length=MAX_CURSOR_LENGTH)
     processed_ids: tuple[ProcessedId, ...] = Field(default=(), max_length=MAX_PROCESSED_IDS)
     polls_in_run: int = Field(default=0, ge=0)
@@ -422,6 +433,50 @@ class SourceIngestionWorkflow:
             )
             return None
 
+    async def _classify(
+        self,
+        batch: Sequence[SourceEvent],
+        mode: NewsPolicyMode,
+        source: SourceName,
+    ) -> list[SourceEvent] | None:
+        """Events the policy lets through, or None when classification failed."""
+        try:
+            # Same string-name overload; the activity is named by contract, not imported.
+            output = cast(
+                ClassifyStoryEventsOutput,
+                await workflow.execute_activity(
+                    CLASSIFY_STORY_EVENTS_ACTIVITY,
+                    ClassifyStoryEventsInput(events=list(batch), mode=mode),
+                    start_to_close_timeout=CLASSIFY_ACTIVITY_TIMEOUT,
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+                    result_type=ClassifyStoryEventsOutput,
+                ),
+            )
+        except ActivityError as exc:
+            if is_cancelled_exception(exc):
+                raise
+            log_event(
+                workflow.logger,
+                IngestionLogEvent.CLASSIFICATION_FAILED,
+                source,
+                mode=mode.value,
+                batch_size=len(batch),
+                error_type=type(exc).__name__,
+            )
+            return None
+        eligible_ids = output.eligible_ids()
+        eligible = [event for event in batch if event.external_id in eligible_ids]
+        log_event(
+            workflow.logger,
+            IngestionLogEvent.CLASSIFICATION,
+            source,
+            mode=output.mode.value,
+            model=output.model,
+            batch_size=len(batch),
+            eligible_count=len(eligible),
+        )
+        return eligible
+
     async def _select(
         self,
         batch: Sequence[SourceEvent],
@@ -533,6 +588,27 @@ class SourceIngestionWorkflow:
             )
         return started
 
+    async def _process_batch(
+        self,
+        batch: Sequence[SourceEvent],
+        limit: int,
+        data: SourceIngestionInput,
+    ) -> None:
+        """Classify (when patched in), select over eligible events, start candidates."""
+        eligible: Sequence[SourceEvent] = batch
+        if workflow.patched(STORY_CLASSIFICATION_PATCH):
+            classified = await self._classify(batch, data.news_policy, data.source)
+            if classified is None:
+                # Leave the batch unprocessed so a later poll tries again.
+                return
+            eligible = classified
+        selections = await self._select(eligible, limit, data.source) if eligible else []
+        self._processed_ids = append_processed_ids(
+            self._processed_ids,
+            [event.external_id for event in batch],
+        )
+        self._last_selected_count = await self._start_candidates(eligible, selections, limit, data)
+
     @workflow.run
     async def run(self, data: SourceIngestionInput) -> SourceIngestionResult:
         self._source = data.source
@@ -592,14 +668,7 @@ class SourceIngestionWorkflow:
                             self._budget_exhausted_day = day
                     else:
                         limit = min(data.max_candidates, remaining)
-                        selections = await self._select(batch, limit, data.source)
-                        self._processed_ids = append_processed_ids(
-                            self._processed_ids,
-                            [event.external_id for event in batch],
-                        )
-                        self._last_selected_count = await self._start_candidates(
-                            batch, selections, limit, data
-                        )
+                        await self._process_batch(batch, limit, data)
 
             if self._stop_requested:
                 return self._stopped()

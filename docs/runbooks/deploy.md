@@ -18,6 +18,8 @@ Cloudflare Tunnel is covered in [cloudflare.md](cloudflare.md). Source ingestion
 - `TEMPORAL_UI_URL` (optional; public Temporal UI URL, for example `https://temporal.example.com`)
 - `DAILY_CHART_CAP` (optional, default 10; charts each person can start from the web per UTC day, resets at 00:00 UTC, every started run counts, the CLI is not capped)
 - `ANTHROPIC_API_KEY`
+- `TYPESAFE_API_KEY` (TypeSafe Jev story classification; the worker exits at startup without it)
+- `TYPESAFE_MODEL` (optional, default `jev-1.14.0`; a pinned Jev version, never the `jev-latest` alias)
 - `BLUESKY_HANDLE`
 - `BLUESKY_APP_PASSWORD` (an app password, never the account password; setup and recovery in [publishing.md](publishing.md))
 - `APP_URL` (optional, documentation only; the web hostname, for example `app.example.com`)

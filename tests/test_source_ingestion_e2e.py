@@ -45,6 +45,7 @@ from ai_trend_pipeline.story_candidate import (
 from ai_trend_pipeline.story_selection import StorySelectionActivities
 from ai_trend_pipeline.story_status import STORY_UI_RETENTION
 from ai_trend_pipeline.temporal_client import ensure_candidate_search_attributes
+from tests.news_filter_fakes import ScriptedPolicyLoader
 from tests.typesafe_fixtures import positive_classification
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -125,6 +126,7 @@ async def ingestion_run() -> AsyncGenerator[
                     activities=[
                         source_activities.poll_hn_source,
                         classification.classify_story_events,
+                        ScriptedPolicyLoader().load_news_filter_settings,
                         selection_activities.select_story_candidates,
                     ],
                 ),

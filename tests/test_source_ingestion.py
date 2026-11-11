@@ -53,6 +53,7 @@ from ai_trend_pipeline.story_classification import (
     EventClassification,
     NewsPolicyMode,
     StoryJudgments,
+    decide,
 )
 from ai_trend_pipeline.story_selection import (
     SelectedStory,
@@ -61,6 +62,7 @@ from ai_trend_pipeline.story_selection import (
     StorySelectionActivities,
 )
 from ai_trend_pipeline.temporal_client import ensure_candidate_search_attributes
+from tests.news_filter_fakes import ScriptedPolicyLoader
 
 FIXTURES = Path(__file__).parent / "fixtures"
 OBSERVED = datetime.now(UTC)
@@ -366,15 +368,17 @@ async def ingestion_env(
     *,
     pre_start: timedelta | None = None,
     classifier: ScriptedClassifier | None = None,
+    policy: ScriptedPolicyLoader | None = None,
 ) -> AsyncGenerator[tuple[WorkflowEnvironment, StateHandle], None]:
     env = await WorkflowEnvironment.start_time_skipping(data_converter=pydantic_data_converter)
     await ensure_candidate_search_attributes(env.client)
     classify = (classifier or ScriptedClassifier()).classify_story_events
+    load_policy = (policy or ScriptedPolicyLoader()).load_news_filter_settings
     ingestion_worker = Worker(
         env.client,
         task_queue=SOURCE_INGESTION_TASK_QUEUE,
         workflows=[SourceIngestionWorkflow],
-        activities=[poller.poll_hn_source, classify, selection],
+        activities=[poller.poll_hn_source, classify, load_policy, selection],
     )
     candidate_worker = Worker(
         env.client,
@@ -1062,22 +1066,19 @@ async def test_only_eligible_events_reach_existing_editorial_selection() -> None
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("overrides", "expected"),
-    [
-        ({}, NewsPolicyMode.STRICT),
-        ({"news_policy": "balanced"}, NewsPolicyMode.BALANCED),
-        ({"news_policy": NewsPolicyMode.RELAXED}, NewsPolicyMode.RELAXED),
-    ],
-)
-async def test_workflow_passes_its_policy_mode_to_classification(
-    overrides: dict[str, object], expected: NewsPolicyMode
-) -> None:
+@pytest.mark.parametrize("expected", list(NewsPolicyMode))
+async def test_workflow_passes_the_saved_mode_to_classification(expected: NewsPolicyMode) -> None:
     poller = GatedPoller([poll_output(event("2001"))])
     classifier = ScriptedClassifier(eligible=set())
     selector = ScriptedSelector()
+    # The input's own policy is ignored once the store is patched in.
+    data = make_input(news_policy="relaxed" if expected is NewsPolicyMode.STRICT else "strict")
     async with ingestion_env(
-        make_input(**overrides), poller, selector.select_story_candidates, classifier=classifier
+        data,
+        poller,
+        selector.select_story_candidates,
+        classifier=classifier,
+        policy=ScriptedPolicyLoader(expected),
     ) as (_, handle):
         await poller.wait_for_call(1)
         await poller.release()
@@ -1133,6 +1134,225 @@ async def _state_selected(handle: StateHandle) -> bool:
     return (await query_state(handle)).last_selected_count == 1
 
 
+class JudgingClassifier(ScriptedClassifier):
+    """Fixed Jev judgments per event, decided by the real 071 policy for the requested mode."""
+
+    def __init__(self, judgments: dict[str, StoryJudgments]) -> None:
+        super().__init__()
+        self._judgments = judgments
+
+    @activity.defn(name="classify_story_events")
+    async def classify_story_events(
+        self, data: ClassifyStoryEventsInput
+    ) -> ClassifyStoryEventsOutput:
+        self.calls += 1
+        self.inputs.append(data)
+        results: list[EventClassification] = []
+        for item in data.events:
+            judgments = self._judgments[item.external_id]
+            decision = decide(judgments.levels(), data.mode)
+            results.append(
+                EventClassification(
+                    external_id=item.external_id,
+                    judgments=judgments,
+                    eligible=decision.eligible,
+                    reason=decision.reason,
+                )
+            )
+        return ClassifyStoryEventsOutput(model="jev-1.14.0", mode=data.mode, results=results)
+
+
+def judged(interest: float, clarity: float) -> StoryJudgments:
+    return StoryJudgments(
+        ai_central=0.9,
+        routine_industry=0.1,
+        human_interest=interest,
+        clarity=clarity,
+        everyday_impact=0,
+    )
+
+
+# Strict needs interest 3, balanced 2, relaxed 1 (clarity 2, 2, 1): 071's table.
+LADDER = {"3001": judged(3, 3), "3002": judged(2, 2), "3003": judged(1, 1)}
+
+
+async def eligible_after_polling(mode: NewsPolicyMode) -> set[str]:
+    poller = GatedPoller([poll_output(*(event(external_id) for external_id in LADDER))])
+    classifier = JudgingClassifier(LADDER)
+    selector = AutoSelectAll()
+    async with ingestion_env(
+        make_input(max_candidates=10),
+        poller,
+        selector.select_story_candidates,
+        classifier=classifier,
+        policy=ScriptedPolicyLoader(mode),
+    ) as (_, handle):
+        await poller.wait_for_call(1)
+        await poller.release()
+        await eventually(lambda: processed_contains(handle, "3003"), "batch was not completed")
+        await stop_ingestion(handle, poller)
+    return {item.external_id for item in selector.inputs[0].events} if selector.inputs else set()
+
+
+class AutoSelectAll:
+    def __init__(self) -> None:
+        self.inputs: list[SelectStoryCandidatesInput] = []
+
+    @activity.defn(name="select_story_candidates")
+    async def select_story_candidates(
+        self, data: SelectStoryCandidatesInput
+    ) -> SelectStoryCandidatesOutput:
+        self.inputs.append(data)
+        return SelectStoryCandidatesOutput(
+            selections=[selected(item.external_id) for item in data.events]
+        )
+
+
+@pytest.mark.asyncio
+async def test_next_poll_loads_saved_mode_without_restart() -> None:
+    poller = GatedPoller([poll_output(event("2001")), poll_output(event("2002"))])
+    classifier = ScriptedClassifier(eligible=set())
+    policy = ScriptedPolicyLoader(NewsPolicyMode.STRICT)
+    selector = ScriptedSelector()
+    # The input's fixed policy is only the pre-store fallback; the saved setting wins.
+    data = make_input(news_policy="relaxed")
+    async with ingestion_env(
+        data, poller, selector.select_story_candidates, classifier=classifier, policy=policy
+    ) as (env, handle):
+        first_run = (await handle.describe()).run_id
+        await poller.wait_for_call(1)
+        await poller.release()
+        await eventually(lambda: processed_contains(handle, "2001"), "first batch not completed")
+        policy.mode = NewsPolicyMode.BALANCED  # the operator saves in the UI
+        await env.sleep(timedelta(seconds=30))
+        await poller.wait_for_call(2)
+        await poller.release()
+        await eventually(lambda: processed_contains(handle, "2002"), "second batch not completed")
+        assert (await handle.describe()).run_id == first_run
+        await stop_ingestion(handle, poller)
+    assert [call.mode for call in classifier.inputs] == [
+        NewsPolicyMode.STRICT,
+        NewsPolicyMode.BALANCED,
+    ]
+    assert policy.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_policy_store_failure_leaves_batch_unprocessed_and_calls_no_model() -> None:
+    poller = GatedPoller([poll_output(event("2001"))])
+    classifier = ScriptedClassifier()
+    policy = ScriptedPolicyLoader(
+        NewsPolicyMode.RELAXED, errors=[ApplicationError("db down", non_retryable=True)]
+    )
+    selector = ScriptedSelector([selected("2001")])
+    async with ingestion_env(
+        make_input(), poller, selector.select_story_candidates, classifier=classifier, policy=policy
+    ) as (env, handle):
+        await poller.wait_for_call(1)
+        await poller.release()
+        await wait_for_total_polls(handle, 1)
+        state = await query_state(handle)
+        assert state.processed_ids == ()
+        assert policy.calls == 1
+        assert classifier.calls == 0  # never a Jev call, never treated as relaxed
+        assert selector.calls == 0
+        assert await candidate_status(env, "2001") is None
+
+        # The batch stays unprocessed, so the next poll tries it again once storage is back.
+        await env.sleep(timedelta(seconds=30))
+        await poller.wait_for_call(2)
+        await poller.release()
+        await eventually(lambda: candidate_awaiting(env, "2001"), "candidate not started")
+        await stop_ingestion(handle, poller)
+    assert [call.mode for call in classifier.inputs] == [NewsPolicyMode.RELAXED]
+
+
+@pytest.mark.asyncio
+async def test_tightening_and_relaxing_change_only_future_eligibility() -> None:
+    strict = await eligible_after_polling(NewsPolicyMode.STRICT)
+    balanced = await eligible_after_polling(NewsPolicyMode.BALANCED)
+    relaxed = await eligible_after_polling(NewsPolicyMode.RELAXED)
+    assert strict == {"3001"}
+    assert balanced == {"3001", "3002"}
+    assert relaxed == {"3001", "3002", "3003"}
+
+
+@pytest.mark.asyncio
+async def test_mode_change_does_not_reclassify_existing_candidates() -> None:
+    poller = GatedPoller([poll_output(event("2001")), poll_output(event("2001"))])
+    classifier = ScriptedClassifier()
+    policy = ScriptedPolicyLoader(NewsPolicyMode.STRICT)
+    selector = ScriptedSelector([selected("2001")])
+    async with ingestion_env(
+        make_input(), poller, selector.select_story_candidates, classifier=classifier, policy=policy
+    ) as (env, handle):
+        await poller.wait_for_call(1)
+        await poller.release()
+        await eventually(lambda: candidate_awaiting(env, "2001"), "candidate not started")
+        policy.mode = NewsPolicyMode.RELAXED
+        await env.sleep(timedelta(seconds=30))
+        await poller.wait_for_call(2)
+        await poller.release()
+        await wait_for_total_polls(handle, 2)
+        assert await candidate_awaiting(env, "2001")  # still pending, not reopened or removed
+        await stop_ingestion(handle, poller)
+    assert [call.mode for call in classifier.inputs] == [NewsPolicyMode.STRICT]
+    assert selector.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_continue_as_new_preserves_global_ui_policy() -> None:
+    poller = GatedPoller([poll_output(event("2001")), poll_output(event("2002"))])
+    classifier = ScriptedClassifier(eligible=set())
+    policy = ScriptedPolicyLoader(NewsPolicyMode.BALANCED)
+    selector = ScriptedSelector()
+    async with ingestion_env(
+        make_input(max_polls_per_run=1),
+        poller,
+        selector.select_story_candidates,
+        classifier=classifier,
+        policy=policy,
+    ) as (_, handle):
+        await poller.wait_for_call(1)
+        await poller.release()
+        await poller.wait_for_call(2)  # the second run is polling: continue-as-new happened
+        await poller.release()
+        await eventually(
+            lambda: classifier_reached(classifier, 2), "second batch was not classified"
+        )
+        # Run two now continues as new. Signal only once run three is polling, so the stop
+        # cannot race the run handover and hit a run that has just completed.
+        await poller.wait_for_call(3)
+        await stop_ingestion(handle, poller)
+    # Neither run fell back to the input's strict default; both read the saved global mode.
+    assert [call.mode for call in classifier.inputs] == [NewsPolicyMode.BALANCED] * 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "name",
+    [
+        "source_ingestion_v1_selected.json",  # before 071: no classification
+        "source_ingestion_v2_classified.json",  # 071: fixed default policy
+        "source_ingestion_v3_ui_filter.json",  # 072: policy loaded from the store
+    ],
+)
+async def test_pre_071_071_and_ui_controlled_histories_replay(name: str) -> None:
+    path = FIXTURES / "histories" / name
+    history = WorkflowHistory.from_json(f"replay-{name}", path.read_text("utf-8"))
+    replayer = Replayer(workflows=[SourceIngestionWorkflow], data_converter=pydantic_data_converter)
+    result = await replayer.replay_workflow(history)
+    assert result.replay_failure is None
+
+
+def test_ui_controlled_history_loads_the_policy_through_the_activity() -> None:
+    text = (FIXTURES / "histories" / "source_ingestion_v3_ui_filter.json").read_text("utf-8")
+    assert "load_news_filter_settings" in text
+    assert "load_news_filter_settings" not in (
+        FIXTURES / "histories" / "source_ingestion_v2_classified.json"
+    ).read_text("utf-8")
+
+
 def test_workflow_source_has_no_io_wall_clock_or_random_calls() -> None:
     module_file = source_ingestion.__file__
     assert module_file is not None
@@ -1168,6 +1388,8 @@ def test_workflow_source_has_no_io_wall_clock_or_random_calls() -> None:
         "Client.connect",
     ):
         assert needle not in source, needle
+    assert "psycopg" not in source
+    assert "os.environ" not in source
     for present in (
         "workflow.now",
         "workflow.wait_condition",

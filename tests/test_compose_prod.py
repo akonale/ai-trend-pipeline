@@ -195,7 +195,11 @@ def test_web_database_url_and_dependencies() -> None:
     deps = cast(dict[str, dict[str, str]], services["web"]["depends_on"])
     assert deps["postgres"]["condition"] == "service_healthy"
     assert "temporal" in deps
-    assert "DATABASE_URL" not in _env(services["worker"])
+    # The worker loads the News filter from the same database.
+    assert _env(services["worker"])["DATABASE_URL"] == url
+    worker_deps = cast(dict[str, dict[str, str]], services["worker"]["depends_on"])
+    assert worker_deps["postgres"]["condition"] == "service_healthy"
+    assert "temporal" in worker_deps
 
 
 def test_worker_passes_the_illustration_kill_switch_with_a_safe_default() -> None:

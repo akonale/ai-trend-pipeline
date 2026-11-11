@@ -270,7 +270,19 @@ Three named policies exist: `strict` (the default; only exceptional, clearly und
 human-interest stories), `balanced` and `relaxed`. They progressively lower the human-interest and
 clarity gates and soften the routine-industry exclusion. AI centrality is a hard gate in every mode,
 and a routine story passes only with strong enough explicit everyday impact. The mode is the
-`news_policy` field of `SourceIngestionInput`; a UI to change it arrives in a later task.
+saved News filter (below). `SourceIngestionInput.news_policy` is only the fallback for old histories.
+
+### News filter
+
+`/news-filter` ("News filter" in the header) lets any signed-in operator choose Strict, Balanced or
+Relaxed. It is one global setting, because source ingestion is global, not a per-person style. The
+choice is stored in Postgres (`topic_studio.news_filter_settings`, one row, created at first use,
+with who changed it and when) and read by the ingestion worker before each batch, so it applies from
+the next poll with no restart and no `just ingest`. It never touches candidates already in the
+inbox, review decisions, budgets or polling. If the setting cannot be read, the batch is left for a
+later poll and no classification call is made; a failure never counts as Relaxed. The page shows
+only the three named modes; numeric thresholds stay in the reviewed policy table. The worker needs
+`DATABASE_URL` too (prod compose sets it).
 
 Configuration: `TYPESAFE_API_KEY` (required by the worker) and `TYPESAFE_MODEL` (default
 `jev-1.14.0`; a versioned ID such as `jev-1.15.0`, never the moving `jev-latest` alias, so tuned
@@ -281,7 +293,7 @@ poll and nothing is started (`candidate_ingestion.classification_failed`).
 ### Structured ingestion logs
 
 Operational events are a fixed `candidate_ingestion.*` set: `started`, `poll`, `poll_failed`,
-`events_normalized`, `classification`, `classification_failed`, `selection`, `selection_failed`, `selection_outside_batch`,
+`events_normalized`, `policy_load_failed`, `classification`, `classification_failed`, `selection`, `selection_failed`, `selection_outside_batch`,
 `candidate_started`, `candidate_duplicate`, `budget_exhausted`, `continue_as_new` and `stopped`.
 Each record carries `event` and `source` plus primitive counters or ids. A guard rejects titles,
 URLs, summaries, angles, reasons, prompts, payloads, credentials and non-primitive values, and

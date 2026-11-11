@@ -92,6 +92,7 @@ from ai_trend_pipeline.web.dependencies import (
 from ai_trend_pipeline.web.view_models import (
     STORY_STATUS_LABELS,
 )
+from tests.news_filter_fakes import ScriptedPolicyLoader
 from tests.publishing_fixtures import FakePds, make_activities
 from tests.story_generation_fixtures import make_media_worker
 from tests.typesafe_fixtures import positive_classification
@@ -341,6 +342,7 @@ async def story_e2e(
                     activities=[
                         source.poll_hn_source,
                         classification.classify_story_events,
+                        ScriptedPolicyLoader().load_news_filter_settings,
                         selection.select_story_candidates,
                     ],
                 ),

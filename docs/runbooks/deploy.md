@@ -35,8 +35,8 @@ Cloudflare Tunnel is covered in [cloudflare.md](cloudflare.md). Source ingestion
 - `RESEARCH_USER_AGENT` (optional, default `ai-trend-pipeline-research/0.1`, 1-200 characters)
 - `RESEARCH_EXTRA_CONTEXT_HOSTS` (optional, empty; comma-separated exact host names for approved extra article context)
 
-`DATABASE_URL` (style profiles) is assembled in compose from `POSTGRES_PASSWORD`, so it needs no new
-`.env.prod` key. It requires a password without spaces, quotes or backslashes.
+`DATABASE_URL` (style profiles for the web, the News filter for web and worker) is assembled in
+compose from `POSTGRES_PASSWORD`, so it needs no new `.env.prod` key. It requires a password without spaces, quotes or backslashes.
 
 Never commit `.env.prod`.
 

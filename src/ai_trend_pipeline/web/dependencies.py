@@ -8,9 +8,12 @@ from temporalio.service import RPCError
 
 from ai_trend_pipeline import temporal_client
 from ai_trend_pipeline.config import Settings
+from ai_trend_pipeline.news_filter import NewsFilterStore
 from ai_trend_pipeline.services.candidates import CandidateService, CandidateUnavailable
 from ai_trend_pipeline.services.charts import ChartService
 from ai_trend_pipeline.services.media import MediaService, StoryMediaPreviewService
+from ai_trend_pipeline.services.news_filter import NewsFilterService
+from ai_trend_pipeline.services.postgres_news_filter_store import PostgresNewsFilterStore
 from ai_trend_pipeline.services.postgres_style_store import PostgresStyleStore
 from ai_trend_pipeline.services.publishing import StoryPublishingService
 from ai_trend_pipeline.services.stories import (
@@ -71,6 +74,23 @@ async def get_style_store(
 
 async def get_style_service(store: StyleStore = Depends(get_style_store)) -> StyleService:
     return StyleService(store)
+
+
+async def get_news_filter_store(
+    request: Request, settings: Settings = Depends(get_settings)
+) -> NewsFilterStore:
+    """Build the store once per process. It connects lazily, so this does no I/O."""
+    cached = getattr(request.app.state, "news_filter_store", None)
+    if not isinstance(cached, PostgresNewsFilterStore):
+        cached = PostgresNewsFilterStore(settings.database_url.get_secret_value())
+        request.app.state.news_filter_store = cached
+    return cached
+
+
+async def get_news_filter_service(
+    store: NewsFilterStore = Depends(get_news_filter_store),
+) -> NewsFilterService:
+    return NewsFilterService(store)
 
 
 async def get_chart_service(

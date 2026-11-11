@@ -1,6 +1,6 @@
 # 072: Tune news classification in the UI
 
-Status: approved
+Status: pr-open
 
 ## Goal
 
@@ -125,3 +125,28 @@ polls without a restart, and leave candidates already in the inbox unchanged.
 <!-- Each agent appends at most 5 lines: "**agent**: what I did. Next: ...". Newest at the bottom. -->
 
 **planner**: Wrote the global UI policy spec with Postgres persistence, per-poll activity loading, replay gates, and no retroactive candidate changes. Depends on 071; next: approve after 071's contracts are settled, then builder writes tests first.
+
+**builder**: Built the News filter page, Postgres store, `load_news_filter_settings` activity and patched (`news-filter-store-v1`) workflow load; tests, replay fixtures v2/v3 and docs done. Ruff and Pyright clean.
+Deviation: model/protocol/activity live in new top-level `news_filter.py` (not in the spec's file list) so activities never import `services/`; 071's `NewsPolicyMode` is the mode type.
+Also touched: tests that list nav items, `test_compose_prod.py` (worker now gets `DATABASE_URL`), test_worker, other ingestion test workers (register the loader fake).
+No headless browser was available, so no screenshots; layout is one column at 360px by CSS. `test_continue_as_new_preserves_global_ui_policy` failed once under full-suite load and not in 20+ reruns; watch for flakiness.
+
+**verifier**: `just lint` passed (ruff check, ruff format, pyright 0 errors). `just test` run 1 failed: `tests/test_source_ingestion.py:1304` `test_continue_as_new_preserves_global_ui_policy`, `temporalio.service.RPCError: Completed workflow` (signal after workflow completed).
+Full suite re-run 2: 1947 passed, 0 failed. So the test flaked 1 of 2 full runs (1946 passed + 1 failed on run 1).
+Next: builder to fix the flaky test, then re-verify. Fix loop 1 of 2.
+
+**builder (fix 1)**: Root cause was a test race, not a workflow bug: with `max_polls_per_run=1` the test sent `stop` while run 2 was continuing as new, so the signal could hit a run that had just completed (`RPCError: Completed workflow`).
+Fix: the test now waits for the third run's poll (`poller.wait_for_call(3)`) before `stop_ingestion`, so the handover is finished; no sleeps added. Only `tests/test_source_ingestion.py` changed.
+Verified: 3 sequential full runs 1947 passed each, `just lint` clean.
+
+**verifier (re-verify after fix 1)**: `just lint` passed (ruff check, ruff format, pyright 0 errors).
+`just test` run 1: 1947 passed, 0 failed. Run 2: 1947 passed, 0 failed (sequential, ANTHROPIC_* unset, ~4.5 min each).
+The flaky `test_continue_as_new_preserves_global_ui_policy` passed both runs. Set status to verified.
+All checks pass.
+
+**reviewer**: Approved. All criteria met, all 14 listed tests exist, patch-gated workflow load fails closed (no Jev call, batch left unprocessed), no secrets.
+Notes: (1) Top-level `news_filter.py` is justified: activities must not import `services/`; services re-export it. (2) Reusing 071's `NewsPolicyMode` follows the "no duplicated policy" rule, so the spec's `NewsFilterMode` name is just stale. (3) `worker.py` importing the Postgres store is wiring only, acceptable; screenshots at 360/1280px were not taken (no browser), worth a manual look.
+
+**scribe**: Docs were already current (README, architecture, deploy and ingestion runbooks), so no doc edits were needed. Pushed the branch and opened PR #89: https://github.com/akonale/ai-trend-pipeline/pull/89
+PR notes: News filter page not checked at 360px/1280px (no headless browser); prod worker now needs `DATABASE_URL`; 071 prerequisite `TYPESAFE_API_KEY` in `.env.prod` still applies.
+Next: human reviews the PR and merges (not merged by an agent).

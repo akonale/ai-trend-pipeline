@@ -2,7 +2,8 @@
 
 `SourceIngestionWorkflow` is one long-running Temporal workflow per enabled source. It polls the
 source activity, drops stories already in its bounded processed-id set, classifies the batch with
-TypeSafe Jev (`classify_story_events`; `strict`, `balanced` or `relaxed` policy, default `strict`),
+TypeSafe Jev (`classify_story_events`; `strict`, `balanced` or `relaxed` policy chosen on the web
+News filter page, default `strict`),
 asks `select_story_candidates` for a bounded batch of the eligible events, and starts one
 `StoryCandidateWorkflow` per selected story. Cursor, processed ids and the per-day candidate budget live only in workflow state. Worker
 startup never starts ingestion; the operator command below does.
@@ -106,6 +107,11 @@ Work through this order.
   TypeSafe quota. The batch is left unprocessed, no Anthropic call is made and nothing is started;
   the same stories are classified again on a later poll. Zero eligible events is not a failure:
   `candidate_ingestion.classification` reports `eligible_count: 0` and the batch is marked processed.
+- `candidate_ingestion.policy_load_failed`: the News filter setting could not be read (check the
+  worker's `DATABASE_URL` and Postgres health). The batch is left unprocessed, no Jev or Anthropic
+  call is made and nothing is started; it is retried on a later poll, never treated as Relaxed.
+  Change the mode on `/news-filter`; it applies from the next poll with no restart, and does not
+  reclassify candidates already in the inbox.
 - `candidate_ingestion.selection_failed`: check `ANTHROPIC_API_KEY` and quota. The failed batch is
   marked processed by design, so new stories continue on later polls.
 - Search-attribute or inbox-unavailable errors: follow the
@@ -134,6 +140,10 @@ Rules for changing the workflow:
   `news_policy` (default `strict`) on `SourceIngestionInput`. Pre-071 histories replay without the
   classification step (`tests/fixtures/histories/source_ingestion_v1_selected.json`); runs started
   afterwards classify. Deploy the worker with `TYPESAFE_API_KEY` set or it exits at startup.
+- Task 072 loads the saved News filter through `load_news_filter_settings` under
+  `news-filter-store-v1`. Replay fixtures: `source_ingestion_v1_selected.json` (pre-071),
+  `source_ingestion_v2_classified.json` (071, fixed policy) and `source_ingestion_v3_ui_filter.json`.
+  Continue-as-new needs no state for it: the mode is read from Postgres on every batch.
 - Bump `SOURCE_INGESTION_WORKFLOW_ID_PREFIX` to `source-ingestion-v2-` for an incompatible loop
   change. That has not been done in 049.
 

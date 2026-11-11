@@ -79,6 +79,7 @@ def test_ingestion_workflow_and_activities_registered_on_ingestion_queue() -> No
     )
     assert sorted(activity.__name__ for activity in activities) == [
         "classify_story_events",
+        "load_news_filter_settings",
         "poll_fake_source",
         "poll_hn_source",
         "select_story_candidates",

@@ -30,6 +30,11 @@ with workflow.unsafe.imports_passed_through():
         IngestionLogEvent,
         log_event,
     )
+    from ai_trend_pipeline.news_filter import (
+        LOAD_NEWS_FILTER_SETTINGS_ACTIVITY,
+        LoadNewsFilterSettingsInput,
+        LoadNewsFilterSettingsOutput,
+    )
     from ai_trend_pipeline.sources.models import (
         MAX_POLL_LIMIT,
         SourceEvent,
@@ -73,6 +78,8 @@ SELECT_STORY_CANDIDATES_ACTIVITY = "select_story_candidates"
 CLASSIFY_STORY_EVENTS_ACTIVITY = "classify_story_events"
 # Histories recorded before task 071 have no marker and replay without the classification step.
 STORY_CLASSIFICATION_PATCH = "story-classification-v1"
+# Histories from 071 classify with the input's fixed policy; later ones load the saved global mode.
+NEWS_FILTER_STORE_PATCH = "news-filter-store-v1"
 
 MAX_PROCESSED_IDS = 1000
 MAX_PROCESSED_ID_LENGTH = 128
@@ -93,6 +100,7 @@ MAX_SOURCE_CANDIDATE_BUDGET = 500
 POLL_ACTIVITY_TIMEOUT = timedelta(seconds=60)
 SELECT_ACTIVITY_TIMEOUT = timedelta(seconds=120)
 CLASSIFY_ACTIVITY_TIMEOUT = timedelta(seconds=180)
+POLICY_ACTIVITY_TIMEOUT = timedelta(seconds=30)
 ACTIVITY_MAX_ATTEMPTS = 3
 
 ProcessedId = Annotated[
@@ -433,6 +441,33 @@ class SourceIngestionWorkflow:
             )
             return None
 
+    async def _load_policy(self, batch_size: int, source: SourceName) -> NewsPolicyMode | None:
+        """The saved global mode, or None when it could not be loaded (never a default)."""
+        try:
+            # Same string-name overload; the activity is named by contract, not imported.
+            output = cast(
+                LoadNewsFilterSettingsOutput,
+                await workflow.execute_activity(
+                    LOAD_NEWS_FILTER_SETTINGS_ACTIVITY,
+                    LoadNewsFilterSettingsInput(),
+                    start_to_close_timeout=POLICY_ACTIVITY_TIMEOUT,
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+                    result_type=LoadNewsFilterSettingsOutput,
+                ),
+            )
+        except ActivityError as exc:
+            if is_cancelled_exception(exc):
+                raise
+            log_event(
+                workflow.logger,
+                IngestionLogEvent.POLICY_LOAD_FAILED,
+                source,
+                batch_size=batch_size,
+                error_type=type(exc).__name__,
+            )
+            return None
+        return output.mode
+
     async def _classify(
         self,
         batch: Sequence[SourceEvent],
@@ -594,10 +629,17 @@ class SourceIngestionWorkflow:
         limit: int,
         data: SourceIngestionInput,
     ) -> None:
-        """Classify (when patched in), select over eligible events, start candidates."""
+        """Load the policy and classify (when patched in), select, start candidates."""
         eligible: Sequence[SourceEvent] = batch
         if workflow.patched(STORY_CLASSIFICATION_PATCH):
-            classified = await self._classify(batch, data.news_policy, data.source)
+            mode = data.news_policy
+            if workflow.patched(NEWS_FILTER_STORE_PATCH):
+                loaded = await self._load_policy(len(batch), data.source)
+                if loaded is None:
+                    # No policy means no Jev call; a later poll tries the batch again.
+                    return
+                mode = loaded
+            classified = await self._classify(batch, mode, data.source)
             if classified is None:
                 # Leave the batch unprocessed so a later poll tries again.
                 return

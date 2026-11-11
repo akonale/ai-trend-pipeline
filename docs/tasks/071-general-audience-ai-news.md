@@ -1,6 +1,6 @@
 # 071: Jev general-audience AI news classification
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -151,3 +151,4 @@ every accept/reject decision.
 **verifier**: The 2 warnings did not fail the run. Next: reviewer.
 **reviewer**: Approved. All criteria and 16 listed tests present; workflow patch/replay gating, fail-closed validation, code-owned decisions and sanitized logs check out.
 **reviewer**: Notes: (1) worker startup now needs TYPESAFE_API_KEY (RuntimeError if unset); mentioned in docs, confirm prod `.env.prod` has it before deploy. (2) Extra test/harness files touched beyond the list were logged by builder and are justified. (3) Fixtures are hand-built, thresholds uncalibrated.
+**scribe**: No doc changes needed beyond the builder's README, architecture, deploy and ingestion updates. Opened PR https://github.com/akonale/ai-trend-pipeline/pull/88 (body notes TYPESAFE_API_KEY must be in .env.prod before deploy). Next: human reviews CI and merges.

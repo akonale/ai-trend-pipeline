@@ -1,6 +1,6 @@
 # 071: Jev general-audience AI news classification
 
-Status: built
+Status: reviewed
 
 ## Goal
 
@@ -147,3 +147,7 @@ every accept/reject decision.
 **builder**: Added `story_classification.py` (Jev Noul/Score questions, policy table, pure `decide`, `classify_story_events`), patched `story-classification-v1` into `SourceIngestionWorkflow`, config/worker/compose/docs; pinned `typesafe-sdk==0.7.5`, default `jev-1.14.0`.
 **builder**: Fixtures `typesafe_story_classification_*.json` are hand-built in the recorded API shape (no live call was made, none permitted); pre-071 replay history generated from unmodified code. Policy thresholds are starting points, uncalibrated.
 **builder**: Also touched, outside the listed files, to keep existing tests green: `tests/test_worker.py`, `test_source_ingestion_e2e.py`, `test_source_ingestion_two_sources.py`, `story_e2e_harness.py`, new `tests/typesafe_fixtures.py` (ingestion workers now need the classifier activity).
+**verifier**: `just lint` passed (ruff check, ruff format --check, pyright 0 errors). `just test` passed: 1920 passed, 2 pydantic serializer warnings (test_web_story_detail.py), ANTHROPIC_* unset (none set).
+**verifier**: The 2 warnings did not fail the run. Next: reviewer.
+**reviewer**: Approved. All criteria and 16 listed tests present; workflow patch/replay gating, fail-closed validation, code-owned decisions and sanitized logs check out.
+**reviewer**: Notes: (1) worker startup now needs TYPESAFE_API_KEY (RuntimeError if unset); mentioned in docs, confirm prod `.env.prod` has it before deploy. (2) Extra test/harness files touched beyond the list were logged by builder and are justified. (3) Fixtures are hand-built, thresholds uncalibrated.

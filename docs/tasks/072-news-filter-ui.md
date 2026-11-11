@@ -130,3 +130,11 @@ polls without a restart, and leave candidates already in the inbox unchanged.
 Deviation: model/protocol/activity live in new top-level `news_filter.py` (not in the spec's file list) so activities never import `services/`; 071's `NewsPolicyMode` is the mode type.
 Also touched: tests that list nav items, `test_compose_prod.py` (worker now gets `DATABASE_URL`), test_worker, other ingestion test workers (register the loader fake).
 No headless browser was available, so no screenshots; layout is one column at 360px by CSS. `test_continue_as_new_preserves_global_ui_policy` failed once under full-suite load and not in 20+ reruns; watch for flakiness.
+
+**verifier**: `just lint` passed (ruff check, ruff format, pyright 0 errors). `just test` run 1 failed: `tests/test_source_ingestion.py:1304` `test_continue_as_new_preserves_global_ui_policy`, `temporalio.service.RPCError: Completed workflow` (signal after workflow completed).
+Full suite re-run 2: 1947 passed, 0 failed. So the test flaked 1 of 2 full runs (1946 passed + 1 failed on run 1).
+Next: builder to fix the flaky test, then re-verify. Fix loop 1 of 2.
+
+**builder (fix 1)**: Root cause was a test race, not a workflow bug: with `max_polls_per_run=1` the test sent `stop` while run 2 was continuing as new, so the signal could hit a run that had just completed (`RPCError: Completed workflow`).
+Fix: the test now waits for the third run's poll (`poller.wait_for_call(3)`) before `stop_ingestion`, so the handover is finished; no sleeps added. Only `tests/test_source_ingestion.py` changed.
+Verified: 3 sequential full runs 1947 passed each, `just lint` clean.

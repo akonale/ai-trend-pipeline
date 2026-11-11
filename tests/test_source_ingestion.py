@@ -1320,6 +1320,9 @@ async def test_continue_as_new_preserves_global_ui_policy() -> None:
         await eventually(
             lambda: classifier_reached(classifier, 2), "second batch was not classified"
         )
+        # Run two now continues as new. Signal only once run three is polling, so the stop
+        # cannot race the run handover and hit a run that has just completed.
+        await poller.wait_for_call(3)
         await stop_ingestion(handle, poller)
     # Neither run fell back to the input's strict default; both read the saved global mode.
     assert [call.mode for call in classifier.inputs] == [NewsPolicyMode.BALANCED] * 2

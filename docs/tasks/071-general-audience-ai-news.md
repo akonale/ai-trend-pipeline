@@ -1,6 +1,6 @@
 # 071: Jev general-audience AI news classification
 
-Status: pr-open
+Status: merged
 
 ## Goal
 

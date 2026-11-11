@@ -415,12 +415,14 @@ def test_nav_marks_stories_current_and_candidates_on_the_inbox() -> None:
     assert [item.label for item in shell.nav] == [
         "Stories",
         "Candidates",
+        "News filter",
         "New chart",
         "Your style",
     ]
     assert [item.href for item in shell.nav] == [
         "/stories",
         "/candidates",
+        "/news-filter",
         "/new",
         "/settings",
     ]

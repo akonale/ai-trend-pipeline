@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}News filter - Topic Studio{% endblock %}
+{% block content %}
+<h1>News filter</h1>
+<p>Choose how strictly new stories are screened before they reach the inbox. The filter applies to future polls only. Stories already in the inbox stay as they are.</p>
+{% if view.saved %}<p class="notice" role="status">{{ view.saved_notice }}</p>{% endif %}
+{% if view.error %}<p class="error" role="alert">{{ view.error }}</p>{% endif %}
+{% if view.can_save %}
+<section class="card">
+  <form class="settings-form" method="post" action="/news-filter">
+    <fieldset aria-describedby="news-filter-updated">
+      <legend>How selective should the inbox be?</legend>
+      <div class="filter-options">
+        {% for o in view.options %}<label class="filter-option">
+          <input type="radio" name="mode" value="{{ o.key }}"{% if o.checked %} checked{% endif %}>
+          <span class="filter-option-name">{{ o.label }}</span>
+          <span class="filter-option-help">{{ o.description }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <p class="meta" id="news-filter-updated">Now: {{ view.current_label }}. {{ view.updated }}</p>
+    <button type="submit" class="btn btn--primary">Save filter</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

@@ -18,6 +18,7 @@ from temporalio import activity
 from temporalio.client import Client, WorkflowHandle
 from temporalio.common import WorkflowIDConflictPolicy
 from temporalio.contrib.pydantic import pydantic_data_converter
+from temporalio.exceptions import ApplicationError
 from temporalio.service import RPCError, RPCStatusCode
 from temporalio.testing import ActivityEnvironment, WorkflowEnvironment
 from temporalio.worker import Worker
@@ -68,6 +69,7 @@ from ai_trend_pipeline.story_selection import (
     StorySelectionActivities,
 )
 from ai_trend_pipeline.temporal_client import ensure_candidate_search_attributes
+from tests.news_filter_fakes import ScriptedPolicyLoader
 from tests.typesafe_fixtures import TEST_API_KEY, positive_typesafe_client
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -107,7 +109,8 @@ def test_event_names_are_namespaced_and_unique() -> None:
     values = [event.value for event in IngestionLogEvent]
     assert all(value.startswith("candidate_ingestion.") for value in values)
     assert len(values) == len(set(values))
-    assert len(values) == 14
+    assert len(values) == 15
+    assert IngestionLogEvent.POLICY_LOAD_FAILED.value == "candidate_ingestion.policy_load_failed"
     assert IngestionLogEvent.CLASSIFICATION.value == "candidate_ingestion.classification"
     assert (
         IngestionLogEvent.CLASSIFICATION_FAILED.value == "candidate_ingestion.classification_failed"
@@ -364,6 +367,7 @@ async def multi_run_env(
     poll_activities: Sequence[PollActivity],
     selection: SelectActivity,
     classification: ClassifyActivity = allow_all_classification,
+    policy: ScriptedPolicyLoader | None = None,
 ) -> AsyncGenerator[tuple[WorkflowEnvironment, list[StateHandle]], None]:
     env = await WorkflowEnvironment.start_time_skipping(data_converter=pydantic_data_converter)
     await ensure_candidate_search_attributes(env.client)
@@ -373,7 +377,12 @@ async def multi_run_env(
                 env.client,
                 task_queue=SOURCE_INGESTION_TASK_QUEUE,
                 workflows=[SourceIngestionWorkflow],
-                activities=[*poll_activities, classification, selection],
+                activities=[
+                    *poll_activities,
+                    classification,
+                    (policy or ScriptedPolicyLoader()).load_news_filter_settings,
+                    selection,
+                ],
             ),
             Worker(
                 env.client,
@@ -547,6 +556,36 @@ async def test_classification_logs_are_sanitized(caplog: pytest.LogCaptureFixtur
     for name in ("title", "url", "payload", "prompt", "response", "api_key", "secret"):
         with pytest.raises(ValueError):
             log_event(_logger(), IngestionLogEvent.CLASSIFICATION, SourceName.HN, **{name: "value"})
+
+
+@pytest.mark.asyncio
+async def test_policy_loading_logs_are_sanitized(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO, logger="temporalio.workflow")
+    poller = GatedPoller([poll_output(event("2001"))])
+    loader = ScriptedPolicyLoader(
+        errors=[ApplicationError("postgresql://u:secret text@db", non_retryable=True)]
+    )
+    selector = ScriptedSelector()
+    data = make_input()
+    async with multi_run_env(
+        [data], [poller.poll_hn_source], selector.select_story_candidates, policy=loader
+    ) as (_env, handles):
+        handle = handles[0]
+        await poller.wait_for_call(1)
+        await poller.release()
+        await wait_total_polls(handle, 1)
+        await stop(handle)
+    (failure,) = records_for(caplog, IngestionLogEvent.POLICY_LOAD_FAILED)
+    assert failure.levelno == logging.ERROR
+    assert record_field(failure, "error_type") == "ActivityError"
+    assert record_field(failure, "batch_size") == 1
+    assert "mode" not in failure.__dict__  # nothing is assumed about the mode
+    workflow_records = [r for r in caplog.records if r.name == "temporalio.workflow"]
+    assert workflow_records
+    for record in workflow_records:
+        assert "secret text" not in log_text(record)
+        assert "postgresql" not in log_text(record)
+    assert records_for(caplog, IngestionLogEvent.CLASSIFICATION) == []
 
 
 @pytest.mark.asyncio

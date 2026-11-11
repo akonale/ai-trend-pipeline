@@ -562,6 +562,27 @@ main {
 .swatch-colors { display: flex; height: 1.25rem; border: var(--border-thin) solid var(--color-on-fill); }
 .swatch-colors i { flex: 1; }
 
+/* News filter options: a native radio per mode, stacked so 360px needs no horizontal scroll */
+.filter-options { display: flex; flex-direction: column; gap: var(--space-3); }
+.filter-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: var(--space-3);
+  align-items: start;
+  padding: var(--space-3) var(--space-4);
+  color: var(--color-text);
+  background: var(--color-field-bg);
+  border: var(--border-width) solid var(--color-field-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.filter-option input { grid-row: 1 / span 2; width: 1.25rem; height: 1.25rem; margin: 0.2rem 0 0; accent-color: var(--color-accent); }
+.filter-option-name { font-weight: 800; font-size: var(--text-lg); }
+.filter-option-help { grid-column: 2; font-size: var(--text-sm); color: var(--color-muted); }
+.filter-option:has(input:checked) { background: var(--color-highlight); color: var(--color-on-fill); box-shadow: var(--shadow-sm); }
+.filter-option:has(input:checked) .filter-option-help { color: var(--color-on-fill-muted); }
+.filter-option:has(input:focus-visible) { outline: var(--border-width) solid var(--color-focus); outline-offset: 4px; }
+
 @media (min-width: 40rem) {
   .topic-row { flex-direction: row; }
   .topic-row .btn { flex: none; }

@@ -17,7 +17,7 @@ it, and approval posts it to Bluesky. Everything is orchestrated by one Temporal
                                      services/ (ChartService, StyleService)
                                           │ gateway            │ StyleStore
                                           ▼                    ▼
-                              Temporal server  ◀──────  Postgres topic_studio.style_profiles
+                              Temporal server  ◀──────  Postgres topic_studio.style_profiles, news_filter_settings
                                    │  (task queue daily-chart-task-queue)
                                    ▼
                          worker: DailyChartWorkflow ──▶ activities
@@ -138,6 +138,7 @@ cutoff and replay-safe histories.
 | `operational_logging.py` | Shared pure primitives: `MAX_LOG_VALUE_LENGTH`, `FORBIDDEN_LOG_FIELDS`, the `StructuredLogger` protocol and `check_log_field` |
 | `story_logging.py` | Pure fixed `story_generation.*` event set, story forbidden-field set and level mapping |
 | `story_classification.py` | Jev questions, criteria, `strict`/`balanced`/`relaxed` policy table, pure `decide` and activity `classify_story_events` |
+| `news_filter.py` | Global News filter setting model, store contract and activity `load_news_filter_settings` |
 | `story_selection.py` | Pure `prefilter_events` and activity `select_story_candidates` (batch LLM editorial selection) |
 | `source_ingestion.py` | `SourceIngestionWorkflow`: one long-running poll/select/start loop per enabled source, bounded cursor, processed ids and per-source UTC-day candidate budget |
 | `ingestion_starter.py` | Operator entry point (`just ingest`) that ensures source ingestion workflows exist |
@@ -178,6 +179,7 @@ cutoff and replay-safe histories.
 | Source cursor, processed ids, poll counters | Temporal workflow history (`SourceIngestionWorkflow`) | Bounded (1000 processed ids) and carried through continue-as-new; no Postgres table |
 | Source candidate budget (UTC day, starts) | Temporal workflow history (`SourceIngestionWorkflow`) | Per source, resets on a new UTC day with `workflow.now()`; carried through continue-as-new; no Postgres table |
 | Per-person style profile | Postgres `topic_studio.style_profiles` (default `postgres` db) | Created lazily on first use |
+| Global News filter mode | Postgres `topic_studio.news_filter_settings` (one row) | Created lazily on first use; read per batch by the ingestion worker; default `strict` when absent |
 | Chart PNGs | Directory `CHART_OUTPUT_DIR` (prod volume `charts`, mounted in worker and web) | File name `chart-<spec hash>.png` |
 | Story media | Directory `MEDIA_DIR` (prod volume `media`, mounted in worker and web) | File name `<sha256>.<ext>`; looked up only through a `MediaManifest` |
 | Daily cap count | Derived from Temporal visibility (memo `requested_by`) | Not stored separately |

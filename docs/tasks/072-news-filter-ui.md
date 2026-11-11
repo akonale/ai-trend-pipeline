@@ -1,6 +1,6 @@
 # 072: Tune news classification in the UI
 
-Status: approved
+Status: built
 
 ## Goal
 
@@ -125,3 +125,8 @@ polls without a restart, and leave candidates already in the inbox unchanged.
 <!-- Each agent appends at most 5 lines: "**agent**: what I did. Next: ...". Newest at the bottom. -->
 
 **planner**: Wrote the global UI policy spec with Postgres persistence, per-poll activity loading, replay gates, and no retroactive candidate changes. Depends on 071; next: approve after 071's contracts are settled, then builder writes tests first.
+
+**builder**: Built the News filter page, Postgres store, `load_news_filter_settings` activity and patched (`news-filter-store-v1`) workflow load; tests, replay fixtures v2/v3 and docs done. Ruff and Pyright clean.
+Deviation: model/protocol/activity live in new top-level `news_filter.py` (not in the spec's file list) so activities never import `services/`; 071's `NewsPolicyMode` is the mode type.
+Also touched: tests that list nav items, `test_compose_prod.py` (worker now gets `DATABASE_URL`), test_worker, other ingestion test workers (register the loader fake).
+No headless browser was available, so no screenshots; layout is one column at 360px by CSS. `test_continue_as_new_preserves_global_ui_policy` failed once under full-suite load and not in 20+ reruns; watch for flakiness.

@@ -106,7 +106,7 @@ private, and commit it.
 A long-running source workflow turns new source events into a small reviewable inbox:
 
 ```
-poll source ─▶ drop processed ids ─▶ deterministic prefilter ─▶ Jev classification + policy
+poll source ─▶ drop processed ids ─▶ deterministic prefilter ─▶ Jev classification + News filter policy
             ─▶ batch LLM selection (eligible events only)
             ─▶ StoryCandidateWorkflow per selected story ─▶ /candidates inbox ─▶ approve/reject
 ```

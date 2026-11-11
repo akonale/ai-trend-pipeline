@@ -100,12 +100,14 @@ def test_build_shell_nav_order_and_current_flags() -> None:
     assert [item.label for item in shell.nav] == [
         "Stories",
         "Candidates",
+        "News filter",
         "New chart",
         "Your style",
     ]
     assert [item.href for item in shell.nav] == [
         "/stories",
         "/candidates",
+        "/news-filter",
         "/new",
         "/settings",
     ]

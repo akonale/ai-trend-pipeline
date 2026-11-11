@@ -152,7 +152,8 @@ researching ─▶ analyzing ─▶ writing ─▶ checking ─┬─ passed ─
 source with id `source_ingestion_workflow_id(source)` = `source-ingestion-v1-<source>`.
 
 - Loop: `poll_hn_source` (registry activity name) -> drop `processed_ids` -> `prefilter_events` ->
-  `classify_story_events` (behind `workflow.patched("story-classification-v1")`, so pre-071
+  `load_news_filter_settings` (behind `workflow.patched("news-filter-store-v1")`, 30 s / 3
+  attempts; the saved global mode, see below) -> `classify_story_events` (behind `workflow.patched("story-classification-v1")`, so pre-071
   histories replay without it) -> `select_story_candidates` over the eligible events if any ->
   mark the batch processed -> start one
   `StoryCandidateWorkflow` child per selection (deterministic id, `CANDIDATE_TASK_QUEUE`,
@@ -188,8 +189,12 @@ source with id `source_ingestion_workflow_id(source)` = `source-ingestion-v1-<so
   1 / 1, only a yes blocks, override 2). AI centrality must be yes in every mode and `confidence` is
   never read. The activity applies the policy and returns bounded results (judgments, `eligible`,
   `reason`); the workflow only filters by `eligible`, so a later threshold change cannot alter a
-  replayed history. The mode is `SourceIngestionInput.news_policy` (default `strict`; the persisted
-  UI control is task 072). Zero eligible events skip Anthropic and mark the batch processed. After
+  replayed history. The mode is the saved News filter (task 072): the workflow loads it through the
+  `load_news_filter_settings` activity before each otherwise selectable batch, so a change applies
+  to the next polled batch with no restart and survives continue-as-new. `SourceIngestionInput.news_policy`
+  (default `strict`) is only used by histories recorded before the patch. If the load fails after
+  retries, `policy_load_failed` is logged (`batch_size`, `error_type`), the batch stays unprocessed
+  and no Jev or Anthropic call is made; it is never treated as Relaxed. Zero eligible events skip Anthropic and mark the batch processed. After
   exhausted retries the batch stays unprocessed, `classification_failed` is logged and nothing is
   started or selected.
 - Activity failures: poll 60 s / 3 attempts, selector 120 s / 3 attempts. After retries an
@@ -224,6 +229,7 @@ The message is the event value; the payload carries `event`, `source` and the li
 | `candidate_ingestion.poll` | workflow, after a successful poll | INFO | `poll`, `event_count`, `new_event_count`, `batch_size`, `cursor`, `budget_remaining` |
 | `candidate_ingestion.poll_failed` | workflow, retries exhausted | ERROR | `poll`, `error_type` |
 | `candidate_ingestion.events_normalized` | `poll_hn_source`, `poll_fake_source` | INFO | `requested_limit`, `event_count` |
+| `candidate_ingestion.policy_load_failed` | workflow, retries exhausted | ERROR | `batch_size`, `error_type` |
 | `candidate_ingestion.classification` | workflow, classifier returned | INFO | `mode`, `model`, `batch_size`, `eligible_count` |
 | `candidate_ingestion.classification_failed` | workflow, retries exhausted | ERROR | `mode`, `batch_size`, `error_type` |
 | `candidate_ingestion.selection` | workflow, selector returned | INFO | `batch_size`, `selected_count`, `max_candidates`, `budget_remaining` |
@@ -287,6 +293,7 @@ non-primitives raise, and strings truncate at 256 characters. Never log exceptio
 | `poll_hn_source` | `HNSourceActivities` | `SourcePollInput` -> `SourcePollOutput` |
 | `poll_fake_source` | `FakeSourceActivities` | `SourcePollInput` -> `SourcePollOutput` |
 | `classify_story_events` | `StoryClassificationActivities` | `ClassifyStoryEventsInput` -> `ClassifyStoryEventsOutput` |
+| `load_news_filter_settings` | `NewsFilterActivities` (`news_filter.py`) | `LoadNewsFilterSettingsInput` -> `LoadNewsFilterSettingsOutput` (mode only) |
 | `select_story_candidates` | `StorySelectionActivities` | `SelectStoryCandidatesInput` -> `SelectStoryCandidatesOutput` |
 | `pick_topic` | `TopicActivities` | `PickTopicInput` -> `PickTopicOutput` |
 | `fetch_owid_dataset` | `OwidActivities` | `FetchOwidInput` -> `OwidTable` |
@@ -465,7 +472,7 @@ attributes, builds the Anthropic, HN, OWID, Bluesky and research clients and run
 the seven activities from `daily_chart_activities`), `story-candidate-task-queue`
 (`CANDIDATE_WORKFLOWS = [StoryCandidateWorkflow]`, no activities), `source-ingestion-task-queue`
 (`INGESTION_WORKFLOWS = [SourceIngestionWorkflow]`, with `poll_hn_source`, `poll_fake_source`,
-`classify_story_events` and `select_story_candidates` from `ingestion_activities`, which also
+`classify_story_events`, `load_news_filter_settings` and `select_story_candidates` from `ingestion_activities`, which also
 takes the `AsyncTypeSafeClient` from `make_typesafe_client(settings)`), and `story-generation-task-queue`
 (`STORY_WORKFLOWS = [StoryGenerationWorkflow]`, with the four activities from `story_activities`
 and `activity_executor=ThreadPoolExecutor(max_workers=4)` for the sync fact activity), and
@@ -546,8 +553,9 @@ helper does I/O, and the badge is built only from an already-fetched `CandidateP
 | GET | `/candidates/{id}` | Candidate detail and decision form | 404 not-available page for a missing candidate, 410 status-specific page for approved/rejected/expired; renders only an `http`/`https` source link |
 | POST | `/candidates/{id}/decide` | Approve or reject, 303 to the inbox | uses `current_user`; 400 invalid decision re-renders the detail with an error; repeated/raced decisions 303 with `notice=closed`; 404 unknown |
 | GET, POST | `/settings` | Style profile form | uses `current_user`; 400 invalid, 503 store down |
+| GET, POST | `/news-filter` | Global News filter (Strict, Balanced, Relaxed radio group) | uses `current_user` (401 in Cloudflare mode without a user); `POST` saves `mode`, audit fields `updated_by`/`updated_at`, 303 to `/news-filter?saved=1`; 400 for any other mode, 503 when the store is down or its row is invalid |
 
-Which routes touch Postgres: `POST /runs` (style lookup, and the "Save as my default" write), `/settings`, and `GET /new/style`
+Which routes touch Postgres: `POST /runs` (style lookup, and the "Save as my default" write), `/settings`, `/news-filter`, and `GET /new/style`
 (read-only; if the store is down the page still renders 200 with a notice). Other routes work
 while Postgres is down.
 
@@ -647,13 +655,20 @@ while Postgres is down.
   created on first use and retried if setup fails; `psycopg.Error` or `OSError` become
   `StyleStoreUnavailable`; a stored profile that no longer validates is ignored (defaults used).
   Table `topic_studio.style_profiles(email primary key, profile jsonb, updated_at)`.
+- News filter: `NewsFilterSettings` (`news_filter.py`: `mode`, `updated_at`, optional `updated_by`),
+  the `NewsFilterStore` protocol, `NewsFilterService` (`services/news_filter.py`, get/update; a
+  missing row means `strict`) and `PostgresNewsFilterStore` (`services/postgres_news_filter_store.py`,
+  same connection style as the style store). Table `topic_studio.news_filter_settings(id smallint
+  primary key check (id = 1), mode, updated_at, updated_by)`. A stored mode that no longer validates
+  raises `NewsFilterStoreError` (fails closed, never relaxed); `psycopg.Error` or `OSError` become
+  `NewsFilterUnavailable`. The worker's activity uses its own store instance on the same database.
 
 ### Auth (`optional_user`, `current_user`)
 
 | `AUTH_MODE` | Behaviour |
 | --- | --- |
 | `local` (default) | everyone is `dev@localhost` |
-| `cloudflare` | email from header `Cf-Access-Authenticated-User-Email`, lower-cased; missing header gives 401 on POST routes and `GET /settings` (it needs an email); other GET pages render with no user chip |
+| `cloudflare` | email from header `Cf-Access-Authenticated-User-Email`, lower-cased; missing header gives 401 on POST routes, `GET /settings` and `GET /news-filter` (they need an email); other GET pages render with no user chip |
 
 The Access JWT is not verified. That is acceptable only because prod publishes the web port on
 `127.0.0.1` and the only way in is the tunnel, which sits behind Access; nothing else can set the
@@ -741,7 +756,7 @@ by auto-setup) next to the `topic_studio` schema in the default `postgres` datab
 gets Anthropic and Bluesky settings, the web gets `AUTH_MODE: cloudflare`, `WEB_HOST: 0.0.0.0`,
 `DATABASE_URL` and `TEMPORAL_UI_URL`. Prod `DATABASE_URL` is built in compose in key/value form
 from `POSTGRES_PASSWORD`, so the password may not contain spaces, quotes or backslashes. The worker
-gets no `DATABASE_URL`.
+gets the same `DATABASE_URL` and waits for a healthy Postgres, because it loads the News filter.
 
 ### Env files and deploy
 
@@ -793,7 +808,7 @@ environment variables.
 | `BLUESKY_SERVICE` | `bluesky_service` | PDS base URL | `https://bsky.social` |
 | `AUTH_MODE` | `auth_mode` | `local` or `cloudflare` | `local` |
 | `DAILY_CHART_CAP` | `daily_chart_cap` | runs per person per UTC day, at least 1 | `10` |
-| `DATABASE_URL` | `database_url` | Postgres for style profiles | local dev Postgres URL |
+| `DATABASE_URL` | `database_url` | Postgres for style profiles and the News filter (web and worker) | local dev Postgres URL |
 | `SOURCE_ENABLED` | `source_enabled` | comma-separated registered sources; `none` disables all | `hn` |
 | `SOURCE_POLL_LIMIT` | `source_poll_limit` | raw items requested and events returned per poll, 1-100 | `30` |
 | `SOURCE_POLL_INTERVAL_S` | `source_poll_interval_s` | seconds between source ingestion polls, 30-3600 | `300` |

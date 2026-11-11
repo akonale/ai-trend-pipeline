@@ -12,7 +12,7 @@ from ai_trend_pipeline.config import Settings
 from ai_trend_pipeline.services.candidates import CandidateUnavailable
 from ai_trend_pipeline.services.stories import StoryStatusUnavailable, story_filter
 from ai_trend_pipeline.web.dependencies import get_templates, shell_context
-from ai_trend_pipeline.web.routes import candidates, health, home, runs, stories
+from ai_trend_pipeline.web.routes import candidates, health, home, news_filter, runs, stories
 from ai_trend_pipeline.web.routes import settings as settings_routes
 from ai_trend_pipeline.web.view_models import (
     build_candidate_unavailable_view,
@@ -34,6 +34,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(runs.router)
     app.include_router(settings_routes.router)
     app.include_router(candidates.router)
+    app.include_router(news_filter.router)
     app.include_router(stories.router)
 
     @app.exception_handler(CandidateUnavailable)

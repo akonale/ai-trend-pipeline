@@ -17,6 +17,7 @@ from ai_trend_pipeline.media.models import (
     MediaOutcome,
     MediaSelection,
 )
+from ai_trend_pipeline.news_filter import NewsFilterSettings
 from ai_trend_pipeline.post_options import (
     CHART_TYPES,
     MAX_COUNTRIES,
@@ -39,6 +40,7 @@ from ai_trend_pipeline.services.stories import (
 )
 from ai_trend_pipeline.sources import SourceName
 from ai_trend_pipeline.story_candidate import CandidateReviewState, candidate_id_for
+from ai_trend_pipeline.story_classification import NewsPolicyMode
 from ai_trend_pipeline.story_drafting.models import StoryPackage
 from ai_trend_pipeline.story_publishing import (
     FAILURE_DETAILS,
@@ -104,6 +106,7 @@ def build_shell(
                 current=on_candidates,
                 badge=pending,
             ),
+            NavItem(label="News filter", href="/news-filter", current=path == "/news-filter"),
             NavItem(label="New chart", href="/new", current=on_new),
             NavItem(label="Your style", href="/settings", current=path == "/settings"),
         ],
@@ -2095,3 +2098,79 @@ def drawn_note_for(manifest: MediaManifest | None) -> str:
     if manifest.drawn_status is DrawnStatus.CAPPED:
         return DRAWN_CAPPED_NOTE
     return ""
+
+
+NEWS_FILTER_OPTIONS: dict[NewsPolicyMode, tuple[str, str]] = {
+    NewsPolicyMode.STRICT: (
+        "Strict",
+        "Selects only exceptional general-audience stories. Expect the fewest candidates.",
+    ),
+    NewsPolicyMode.BALANCED: (
+        "Balanced",
+        "Admits more clearly relevant stories while keeping routine industry news out.",
+    ),
+    NewsPolicyMode.RELAXED: (
+        "Relaxed",
+        "Admits more borderline or industry-adjacent stories, still requiring central AI.",
+    ),
+}
+NEWS_FILTER_SAVED_NOTICE = "Saved. The new filter applies from the next poll."
+NEWS_FILTER_INVALID_ERROR = "Choose Strict, Balanced or Relaxed."
+NEWS_FILTER_UNAVAILABLE_ERROR = (
+    "We couldn't reach the News filter settings. Nothing was changed. Try again in a moment."
+)
+NEWS_FILTER_INVALID_STORED_ERROR = (
+    "The saved News filter could not be read, so it can't be shown or changed right now."
+)
+
+
+class NewsFilterOption(BaseModel):
+    key: str
+    label: str
+    description: str
+    checked: bool
+
+
+class NewsFilterView(BaseModel):
+    options: list[NewsFilterOption]
+    current_label: str = ""
+    updated: str = ""
+    saved: bool = False
+    saved_notice: str = NEWS_FILTER_SAVED_NOTICE
+    error: str = ""
+    can_save: bool = True
+
+
+def _news_filter_updated(settings: NewsFilterSettings) -> str:
+    if settings.updated_at is None:
+        return "Using the default. Nobody has changed it yet."
+    stamp = settings.updated_at.strftime("%Y-%m-%d %H:%M UTC")
+    if settings.updated_by:
+        return f"Last changed by {settings.updated_by} on {stamp}."
+    return f"Last changed on {stamp}."
+
+
+def build_news_filter_view(
+    settings: NewsFilterSettings | None,
+    *,
+    saved: bool = False,
+    error: str = "",
+) -> NewsFilterView:
+    """The form for the saved mode; `settings=None` means it could not be read, so no choice."""
+    selected = settings.mode if settings else None
+    return NewsFilterView(
+        options=[
+            NewsFilterOption(
+                key=mode.value,
+                label=label,
+                description=description,
+                checked=mode is selected,
+            )
+            for mode, (label, description) in NEWS_FILTER_OPTIONS.items()
+        ],
+        current_label=NEWS_FILTER_OPTIONS[settings.mode][0] if settings else "",
+        updated=_news_filter_updated(settings) if settings else "",
+        saved=saved,
+        error=error,
+        can_save=settings is not None,
+    )

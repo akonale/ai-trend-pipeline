@@ -51,8 +51,14 @@ services:
   worker:
     <<: *app
     command: ["python", "-m", "ai_trend_pipeline.worker"]
+    depends_on:
+      temporal:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     environment:
       TEMPORAL_ADDRESS: temporal:7233
+      DATABASE_URL: "host=postgres port=5432 dbname=postgres user=postgres password=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}"
       CHART_OUTPUT_DIR: /data/charts
       MEDIA_DIR: /data/media
       ILLUSTRATION_PROVIDER: ${ILLUSTRATION_PROVIDER:-illustrated-card}

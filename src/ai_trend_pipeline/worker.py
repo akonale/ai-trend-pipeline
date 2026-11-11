@@ -31,6 +31,7 @@ from ai_trend_pipeline.media.drawn.activities import DrawnImageActivities
 from ai_trend_pipeline.media.illustration import IllustrationProvider, illustration_provider_for
 from ai_trend_pipeline.media.illustration_activities import IllustrationActivities
 from ai_trend_pipeline.media.providers import renderer_for
+from ai_trend_pipeline.news_filter import NewsFilterActivities
 from ai_trend_pipeline.owid import OwidActivities, make_owid_client
 from ai_trend_pipeline.publishing.bluesky_story import BlueskyStoryActivities
 from ai_trend_pipeline.render import render_chart_png
@@ -38,6 +39,7 @@ from ai_trend_pipeline.research.activities import (
     StoryResearchActivities,
     make_research_client,
 )
+from ai_trend_pipeline.services.postgres_news_filter_store import PostgresNewsFilterStore
 from ai_trend_pipeline.source_ingestion import (
     SOURCE_INGESTION_TASK_QUEUE,
     SourceIngestionWorkflow,
@@ -123,10 +125,15 @@ def ingestion_activities(
     source_fake = FakeSourceActivities()
     classification = StoryClassificationActivities(typesafe_client, settings.typesafe_model)
     selection = StorySelectionActivities(anthropic_client)
+    # Connects lazily on the first load, so building the worker does no database I/O.
+    news_filter = NewsFilterActivities(
+        PostgresNewsFilterStore(settings.database_url.get_secret_value())
+    )
     return [
         source_hn.poll_hn_source,
         source_fake.poll_fake_source,
         classification.classify_story_events,
+        news_filter.load_news_filter_settings,
         selection.select_story_candidates,
     ]
 

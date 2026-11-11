@@ -40,6 +40,7 @@ def test_build_shell_current_flags() -> None:
         assert current_labels(build_shell(path, None, "local")) == ["New chart"], path
     assert current_labels(build_shell("/", None, "local")) == ["Stories"]
     assert current_labels(build_shell("/settings", None, "local")) == ["Your style"]
+    assert current_labels(build_shell("/news-filter", None, "local")) == ["News filter"]
     assert current_labels(build_shell("/health", None, "local")) == []
     assert current_labels(build_shell("/stories", None, "local")) == ["Stories"]
     assert current_labels(build_shell("/stories/story-v1-abc", None, "local")) == ["Stories"]
@@ -58,6 +59,7 @@ def test_build_shell_fields() -> None:
     assert [item.href for item in local.nav] == [
         "/stories",
         "/candidates",
+        "/news-filter",
         "/new",
         "/settings",
     ]
@@ -65,6 +67,7 @@ def test_build_shell_fields() -> None:
     assert [item.label for item in local.nav] == [
         "Stories",
         "Candidates",
+        "News filter",
         "New chart",
         "Your style",
     ]

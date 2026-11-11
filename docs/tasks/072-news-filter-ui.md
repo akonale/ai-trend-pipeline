@@ -1,6 +1,6 @@
 # 072: Tune news classification in the UI
 
-Status: pr-open
+Status: merged
 
 ## Goal
 

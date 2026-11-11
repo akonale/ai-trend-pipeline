@@ -1,0 +1,6 @@
+{
+  "status": 503,
+  "body": {
+    "error": "The service is temporarily overloaded."
+  }
+}

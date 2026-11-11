@@ -18,13 +18,14 @@ from temporalio.client import (
     Client,
     WorkflowFailureError,
     WorkflowHandle,
+    WorkflowHistory,
 )
 from temporalio.common import WorkflowIDConflictPolicy
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.exceptions import ApplicationError
 from temporalio.service import RPCError, RPCStatusCode
 from temporalio.testing import WorkflowEnvironment
-from temporalio.worker import Worker
+from temporalio.worker import Replayer, Worker
 
 import ai_trend_pipeline.source_ingestion as source_ingestion
 from ai_trend_pipeline.ingestion_logging import IngestionLogEvent
@@ -44,6 +45,14 @@ from ai_trend_pipeline.story_candidate import (
     StoryCandidateInput,
     StoryCandidateWorkflow,
     candidate_id_for,
+)
+from ai_trend_pipeline.story_classification import (
+    ClassifyStoryEventsInput,
+    ClassifyStoryEventsOutput,
+    DecisionReason,
+    EventClassification,
+    NewsPolicyMode,
+    StoryJudgments,
 )
 from ai_trend_pipeline.story_selection import (
     SelectedStory,
@@ -188,6 +197,45 @@ class AutoSelector:
         return SelectStoryCandidatesOutput(selections=[selected(data.events[0].external_id)])
 
 
+JUDGMENTS = StoryJudgments(
+    ai_central=0.9, routine_industry=0.1, human_interest=3, clarity=3, everyday_impact=0
+)
+
+
+class ScriptedClassifier:
+    """Stands in for the Jev activity; `eligible=None` lets every event through."""
+
+    def __init__(
+        self,
+        eligible: set[str] | None = None,
+        *,
+        errors: Sequence[BaseException] = (),
+    ) -> None:
+        self._eligible = eligible
+        self._errors = list(errors)
+        self.calls = 0
+        self.inputs: list[ClassifyStoryEventsInput] = []
+
+    @activity.defn(name="classify_story_events")
+    async def classify_story_events(
+        self, data: ClassifyStoryEventsInput
+    ) -> ClassifyStoryEventsOutput:
+        self.calls += 1
+        self.inputs.append(data)
+        if self._errors:
+            raise self._errors.pop(0)
+        results = [
+            EventClassification(
+                external_id=item.external_id,
+                judgments=JUDGMENTS,
+                eligible=self._eligible is None or item.external_id in self._eligible,
+                reason=DecisionReason.ELIGIBLE,
+            )
+            for item in data.events
+        ]
+        return ClassifyStoryEventsOutput(model="jev-1.14.0", mode=data.mode, results=results)
+
+
 def record_field(record: logging.LogRecord, name: str) -> object:
     return record.__dict__.get(name)
 
@@ -317,14 +365,16 @@ async def ingestion_env(
     selection: SelectActivity,
     *,
     pre_start: timedelta | None = None,
+    classifier: ScriptedClassifier | None = None,
 ) -> AsyncGenerator[tuple[WorkflowEnvironment, StateHandle], None]:
     env = await WorkflowEnvironment.start_time_skipping(data_converter=pydantic_data_converter)
     await ensure_candidate_search_attributes(env.client)
+    classify = (classifier or ScriptedClassifier()).classify_story_events
     ingestion_worker = Worker(
         env.client,
         task_queue=SOURCE_INGESTION_TASK_QUEUE,
         workflows=[SourceIngestionWorkflow],
-        activities=[poller.poll_hn_source, selection],
+        activities=[poller.poll_hn_source, classify, selection],
     )
     candidate_worker = Worker(
         env.client,
@@ -910,6 +960,173 @@ async def test_failure_logs_use_error_type_only(caplog: pytest.LogCaptureFixture
         assert "secret text" not in record.getMessage()
         assert all("secret text" not in str(value) for value in record.__dict__.values())
         assert record_field(record, "title") is None
+
+
+async def classifier_reached(classifier: ScriptedClassifier, count: int) -> bool:
+    return classifier.calls >= count
+
+
+@pytest.mark.asyncio
+async def test_zero_eligible_events_skip_anthropic_and_complete_the_batch() -> None:
+    poller = GatedPoller([poll_output(event("2001"), event("2002"))])
+    classifier = ScriptedClassifier(eligible=set())
+    selector = ScriptedSelector([selected("2001")])
+    async with ingestion_env(
+        make_input(), poller, selector.select_story_candidates, classifier=classifier
+    ) as (env, handle):
+        await poller.wait_for_call(1)
+        await poller.release()
+        await eventually(lambda: processed_contains(handle, "2002"), "batch was not completed")
+        state = await query_state(handle)
+        assert state.processed_ids == ("2001", "2002")
+        assert state.last_selected_count == 0
+        assert await candidate_status(env, "2001") is None
+        await stop_ingestion(handle, poller)
+    assert classifier.calls == 1
+    assert selector.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_classification_failure_leaves_batch_unprocessed_and_starts_nothing() -> None:
+    poller = GatedPoller([poll_output(event("2001"))])
+    classifier = ScriptedClassifier(errors=[ApplicationError("jev down", non_retryable=True)] * 2)
+    selector = ScriptedSelector([selected("2001")])
+    async with ingestion_env(
+        make_input(), poller, selector.select_story_candidates, classifier=classifier
+    ) as (env, handle):
+        await poller.wait_for_call(1)
+        await poller.release()
+        await eventually(
+            lambda: classifier_reached(classifier, 1), "classification was never attempted"
+        )
+        await wait_for_total_polls(handle, 1)
+        state = await query_state(handle)
+        assert state.processed_ids == ()
+        assert await candidate_status(env, "2001") is None
+        assert selector.calls == 0
+
+        # A later poll tries the same batch again; this time classification works.
+        await env.sleep(timedelta(seconds=30))
+        await poller.wait_for_call(2)
+        await poller.release()
+        await eventually(lambda: classifier_reached(classifier, 2), "batch was not retried")
+        await wait_for_total_polls(handle, 2)
+        assert (await query_state(handle)).processed_ids == ()
+        assert selector.calls == 0
+        await env.sleep(timedelta(seconds=30))
+        await poller.wait_for_call(3)
+        await poller.release()
+        await eventually(lambda: processed_contains(handle, "2001"), "retry did not complete")
+        await eventually(lambda: candidate_awaiting(env, "2001"), "candidate not started")
+        await stop_ingestion(handle, poller)
+    assert selector.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_transient_classification_error_is_retried_by_temporal() -> None:
+    poller = GatedPoller([poll_output(event("2001"))])
+    classifier = ScriptedClassifier(errors=[RuntimeError("temporarily unavailable")])
+    selector = ScriptedSelector([selected("2001")])
+    async with ingestion_env(
+        make_input(), poller, selector.select_story_candidates, classifier=classifier
+    ) as (env, handle):
+        await poller.wait_for_call(1)
+        await poller.release()
+        await eventually(lambda: processed_contains(handle, "2001"), "retry did not complete")
+        await eventually(lambda: candidate_awaiting(env, "2001"), "candidate not started")
+        await stop_ingestion(handle, poller)
+    assert classifier.calls == 2
+    assert selector.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_only_eligible_events_reach_existing_editorial_selection() -> None:
+    poller = GatedPoller([poll_output(event("2001"), event("2002"), event("2003"))])
+    classifier = ScriptedClassifier(eligible={"2002"})
+    selector = ScriptedSelector([selected("2002"), selected("2001")])
+    async with ingestion_env(
+        make_input(), poller, selector.select_story_candidates, classifier=classifier
+    ) as (env, handle):
+        await poller.wait_for_call(1)
+        await poller.release()
+        await eventually(lambda: candidate_awaiting(env, "2002"), "eligible story not started")
+        state = await query_state(handle)
+        # Every polled event is processed, but a selection outside the eligible set is ignored.
+        assert state.processed_ids == ("2001", "2002", "2003")
+        assert await candidate_status(env, "2001") is None
+        await stop_ingestion(handle, poller)
+    (classified,) = classifier.inputs
+    assert [item.external_id for item in classified.events] == ["2001", "2002", "2003"]
+    (selected_input,) = selector.inputs
+    assert [item.external_id for item in selected_input.events] == ["2002"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("overrides", "expected"),
+    [
+        ({}, NewsPolicyMode.STRICT),
+        ({"news_policy": "balanced"}, NewsPolicyMode.BALANCED),
+        ({"news_policy": NewsPolicyMode.RELAXED}, NewsPolicyMode.RELAXED),
+    ],
+)
+async def test_workflow_passes_its_policy_mode_to_classification(
+    overrides: dict[str, object], expected: NewsPolicyMode
+) -> None:
+    poller = GatedPoller([poll_output(event("2001"))])
+    classifier = ScriptedClassifier(eligible=set())
+    selector = ScriptedSelector()
+    async with ingestion_env(
+        make_input(**overrides), poller, selector.select_story_candidates, classifier=classifier
+    ) as (_, handle):
+        await poller.wait_for_call(1)
+        await poller.release()
+        await eventually(lambda: processed_contains(handle, "2001"), "batch was not completed")
+        await stop_ingestion(handle, poller)
+    assert classifier.inputs[0].mode is expected
+
+
+def test_old_ingestion_input_without_a_policy_defaults_to_strict() -> None:
+    data = SourceIngestionInput.model_validate({"source": "hn", "cursor": "5"})
+    assert data.news_policy is NewsPolicyMode.STRICT
+    carried = data.model_copy(update={"cursor": "9"})
+    assert carried.news_policy is NewsPolicyMode.STRICT
+
+
+@pytest.mark.asyncio
+async def test_pre_071_ingestion_histories_replay() -> None:
+    path = FIXTURES / "histories" / "source_ingestion_v1_selected.json"
+    history = WorkflowHistory.from_json("source-ingestion-pre071", path.read_text("utf-8"))
+    replayer = Replayer(workflows=[SourceIngestionWorkflow], data_converter=pydantic_data_converter)
+    result = await replayer.replay_workflow(history)
+    assert result.replay_failure is None
+
+
+@pytest.mark.asyncio
+async def test_classification_failure_logs_are_sanitized(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO, logger="temporalio.workflow")
+    poller = GatedPoller([poll_output(event("2001", "secret text headline"))])
+    failing = ScriptedClassifier(errors=[ApplicationError("secret text", non_retryable=True)])
+    selector = ScriptedSelector()
+    async with ingestion_env(
+        make_input(), poller, selector.select_story_candidates, classifier=failing
+    ) as (_, handle):
+        await poller.wait_for_call(1)
+        await poller.release()
+        await eventually(lambda: classifier_reached(failing, 1), "no classification attempt")
+        await wait_for_total_polls(handle, 1)
+        await stop_ingestion(handle, poller)
+    (failure,) = budget_records(caplog, IngestionLogEvent.CLASSIFICATION_FAILED)
+    assert record_field(failure, "error_type") == "ActivityError"
+    assert record_field(failure, "mode") == "strict"
+    assert record_field(failure, "batch_size") == 1
+    workflow_records = [r for r in caplog.records if r.name == "temporalio.workflow"]
+    assert workflow_records
+    for record in workflow_records:
+        assert "secret text" not in record.getMessage()
+        assert all("secret text" not in str(value) for value in record.__dict__.values())
 
 
 async def _state_selected(handle: StateHandle) -> bool:

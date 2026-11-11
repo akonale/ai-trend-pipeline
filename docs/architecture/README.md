@@ -46,7 +46,8 @@ it, and approval posts it to Bluesky. Everything is orchestrated by one Temporal
 
 `SourceIngestionWorkflow` (one per enabled source, id `source-ingestion-v1-<source>`, task queue
 `source-ingestion-task-queue`) polls the source activity on a Temporal timer, drops stories already
-in its bounded processed-id set, prefilters the rest, calls `select_story_candidates`, and starts
+in its bounded processed-id set, prefilters the rest, classifies the batch with TypeSafe Jev (`classify_story_events`, policy applied
+in code), calls `select_story_candidates` over the eligible events only, and starts
 one `StoryCandidateWorkflow` per selected story. Two sources are registered: `hn` (Hacker News) and
 `fake` (Test source, test-only, off by default). Cursor, processed ids and the per-source UTC-day
 candidate budget live only in workflow state and are carried through continue-as-new.
@@ -136,6 +137,7 @@ cutoff and replay-safe histories.
 | `ingestion_logging.py` | Pure fixed `candidate_ingestion.*` event set, forbidden-field guard and truncation |
 | `operational_logging.py` | Shared pure primitives: `MAX_LOG_VALUE_LENGTH`, `FORBIDDEN_LOG_FIELDS`, the `StructuredLogger` protocol and `check_log_field` |
 | `story_logging.py` | Pure fixed `story_generation.*` event set, story forbidden-field set and level mapping |
+| `story_classification.py` | Jev questions, criteria, `strict`/`balanced`/`relaxed` policy table, pure `decide` and activity `classify_story_events` |
 | `story_selection.py` | Pure `prefilter_events` and activity `select_story_candidates` (batch LLM editorial selection) |
 | `source_ingestion.py` | `SourceIngestionWorkflow`: one long-running poll/select/start loop per enabled source, bounded cursor, processed ids and per-source UTC-day candidate budget |
 | `ingestion_starter.py` | Operator entry point (`just ingest`) that ensures source ingestion workflows exist |

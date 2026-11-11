@@ -34,6 +34,8 @@ class IngestionLogEvent(StrEnum):
     POLL = "candidate_ingestion.poll"
     POLL_FAILED = "candidate_ingestion.poll_failed"
     EVENTS_NORMALIZED = "candidate_ingestion.events_normalized"
+    CLASSIFICATION = "candidate_ingestion.classification"
+    CLASSIFICATION_FAILED = "candidate_ingestion.classification_failed"
     SELECTION = "candidate_ingestion.selection"
     SELECTION_FAILED = "candidate_ingestion.selection_failed"
     SELECTION_OUTSIDE_BATCH = "candidate_ingestion.selection_outside_batch"
@@ -44,7 +46,13 @@ class IngestionLogEvent(StrEnum):
     STOPPED = "candidate_ingestion.stopped"
 
 
-_ERROR_EVENTS = frozenset({IngestionLogEvent.POLL_FAILED, IngestionLogEvent.SELECTION_FAILED})
+_ERROR_EVENTS = frozenset(
+    {
+        IngestionLogEvent.POLL_FAILED,
+        IngestionLogEvent.CLASSIFICATION_FAILED,
+        IngestionLogEvent.SELECTION_FAILED,
+    }
+)
 _WARNING_EVENTS = frozenset(
     {
         IngestionLogEvent.SELECTION_OUTSIDE_BATCH,

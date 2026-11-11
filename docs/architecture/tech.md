@@ -152,7 +152,9 @@ researching ─▶ analyzing ─▶ writing ─▶ checking ─┬─ passed ─
 source with id `source_ingestion_workflow_id(source)` = `source-ingestion-v1-<source>`.
 
 - Loop: `poll_hn_source` (registry activity name) -> drop `processed_ids` -> `prefilter_events` ->
-  `select_story_candidates` if the batch is non-empty -> mark the batch processed -> start one
+  `classify_story_events` (behind `workflow.patched("story-classification-v1")`, so pre-071
+  histories replay without it) -> `select_story_candidates` over the eligible events if any ->
+  mark the batch processed -> start one
   `StoryCandidateWorkflow` child per selection (deterministic id, `CANDIDATE_TASK_QUEUE`,
   `ParentClosePolicy.ABANDON`, `REJECT_DUPLICATE`) -> stop check -> continue-as-new -> wait
   `poll_interval_seconds` with `workflow.wait_condition`.
@@ -171,6 +173,25 @@ source with id `source_ingestion_workflow_id(source)` = `source-ingestion-v1-<so
   ran is marked processed in full even when starts were truncated. Continue-as-new carries the day
   and count, and the exhaustion-log day; terminating the chain starts a fresh count. `ingestion_state`
   reports `candidate_budget`, `budget_day`, `candidates_started` and `budget_remaining`.
+- Classification (task 071, `story_classification.py`): the activity chunks the batch
+  deterministically (at most 10 events and an estimated 24k tokens per request, well inside Jev
+  1.14's 64k per-request and 32k per-question limits, long-context mode off), sends only
+  `title`, `url` and `published_at` per event under `events.e<n>` (never `metrics`), and asks five
+  questions per event in one shared request: Noul `ai_central` and `routine_industry`; Score
+  (levels 0-3) `human_interest`, `clarity` and `everyday_impact`. Question ids, result
+  completeness, ranges and event mapping are validated; invalid content raises the non-retryable
+  `StoryClassificationInvalid`, transient SDK/API errors propagate for Temporal retry (180 s / 3
+  attempts) and are never turned into a "no". Noul answers are read as yes at 0.7 or more, no at
+  0.3 or less, otherwise unsure; Score answers round to the nearest level. `decide(levels, mode)` is
+  a pure, total function over a policy table (`strict` human interest 3 / clarity 2, unsure
+  routine blocks, override impact 3; `balanced` 2 / 2, only a yes blocks, override 3; `relaxed`
+  1 / 1, only a yes blocks, override 2). AI centrality must be yes in every mode and `confidence` is
+  never read. The activity applies the policy and returns bounded results (judgments, `eligible`,
+  `reason`); the workflow only filters by `eligible`, so a later threshold change cannot alter a
+  replayed history. The mode is `SourceIngestionInput.news_policy` (default `strict`; the persisted
+  UI control is task 072). Zero eligible events skip Anthropic and mark the batch processed. After
+  exhausted retries the batch stays unprocessed, `classification_failed` is logged and nothing is
+  started or selected.
 - Activity failures: poll 60 s / 3 attempts, selector 120 s / 3 attempts. After retries an
   `ActivityError` is logged with `error_type` (never the exception text) and the loop continues: a
   failed poll only advances counters, and a failed selection still marks its batch processed.
@@ -203,6 +224,8 @@ The message is the event value; the payload carries `event`, `source` and the li
 | `candidate_ingestion.poll` | workflow, after a successful poll | INFO | `poll`, `event_count`, `new_event_count`, `batch_size`, `cursor`, `budget_remaining` |
 | `candidate_ingestion.poll_failed` | workflow, retries exhausted | ERROR | `poll`, `error_type` |
 | `candidate_ingestion.events_normalized` | `poll_hn_source`, `poll_fake_source` | INFO | `requested_limit`, `event_count` |
+| `candidate_ingestion.classification` | workflow, classifier returned | INFO | `mode`, `model`, `batch_size`, `eligible_count` |
+| `candidate_ingestion.classification_failed` | workflow, retries exhausted | ERROR | `mode`, `batch_size`, `error_type` |
 | `candidate_ingestion.selection` | workflow, selector returned | INFO | `batch_size`, `selected_count`, `max_candidates`, `budget_remaining` |
 | `candidate_ingestion.selection_failed` | workflow, retries exhausted | ERROR | `batch_size`, `error_type` |
 | `candidate_ingestion.selection_outside_batch` | workflow | WARNING | `external_id` |
@@ -263,6 +286,7 @@ non-primitives raise, and strings truncate at 256 characters. Never log exceptio
 | `fetch_hn_top_stories` | `HNActivities` | `HNTopStoriesInput` -> `HNTopStoriesOutput` |
 | `poll_hn_source` | `HNSourceActivities` | `SourcePollInput` -> `SourcePollOutput` |
 | `poll_fake_source` | `FakeSourceActivities` | `SourcePollInput` -> `SourcePollOutput` |
+| `classify_story_events` | `StoryClassificationActivities` | `ClassifyStoryEventsInput` -> `ClassifyStoryEventsOutput` |
 | `select_story_candidates` | `StorySelectionActivities` | `SelectStoryCandidatesInput` -> `SelectStoryCandidatesOutput` |
 | `pick_topic` | `TopicActivities` | `PickTopicInput` -> `PickTopicOutput` |
 | `fetch_owid_dataset` | `OwidActivities` | `FetchOwidInput` -> `OwidTable` |
@@ -440,8 +464,9 @@ attributes, builds the Anthropic, HN, OWID, Bluesky and research clients and run
 `hello-task-queue` (`HelloWorkflow`, `say_hello`), the daily chart queue (`DailyChartWorkflow` and
 the seven activities from `daily_chart_activities`), `story-candidate-task-queue`
 (`CANDIDATE_WORKFLOWS = [StoryCandidateWorkflow]`, no activities), `source-ingestion-task-queue`
-(`INGESTION_WORKFLOWS = [SourceIngestionWorkflow]`, with `poll_hn_source`, `poll_fake_source` and
-`select_story_candidates` from `ingestion_activities`), and `story-generation-task-queue`
+(`INGESTION_WORKFLOWS = [SourceIngestionWorkflow]`, with `poll_hn_source`, `poll_fake_source`,
+`classify_story_events` and `select_story_candidates` from `ingestion_activities`, which also
+takes the `AsyncTypeSafeClient` from `make_typesafe_client(settings)`), and `story-generation-task-queue`
 (`STORY_WORKFLOWS = [StoryGenerationWorkflow]`, with the four activities from `story_activities`
 and `activity_executor=ThreadPoolExecutor(max_workers=4)` for the sync fact activity), and
 `story-media-task-queue` (`MEDIA_WORKFLOWS = [StoryMediaWorkflow]`, with `render_static_media` and
@@ -451,7 +476,7 @@ and `activity_executor=ThreadPoolExecutor(max_workers=4)` for the sync fact acti
 (`PUBLISHING_WORKFLOWS = [StoryPublishingWorkflow]`, with `publish_story_to_bluesky` from
 `publishing_activities(bluesky_client, credentials, settings)`, 2 concurrent activities, reusing the
 Bluesky client; no new env vars). It exits at
-startup if `ANTHROPIC_API_KEY`, `BLUESKY_HANDLE` or `BLUESKY_APP_PASSWORD` is missing. Worker
+startup if `ANTHROPIC_API_KEY`, `TYPESAFE_API_KEY`, `BLUESKY_HANDLE` or `BLUESKY_APP_PASSWORD` is missing. Worker
 startup does not start ingestion; `just ingest` does. `DraftChartWorkflow` (in `chart_loop.py`) is
 not registered.
 
@@ -761,6 +786,8 @@ environment variables.
 | `DRAWN_IMAGES_COUNT` | `drawn_images_count` | drawings per story, 1-4 | `3` |
 | `DRAWN_IMAGES_DAILY_CAP` | `drawn_images_daily_cap` | drawn-image API calls per UTC day, 1-1000 | `20` |
 | `ANTHROPIC_API_KEY` | `anthropic_api_key` | LLM calls (worker) | unset |
+| `TYPESAFE_API_KEY` | `typesafe_api_key` | TypeSafe Jev story classification (worker) | unset |
+| `TYPESAFE_MODEL` | `typesafe_model` | pinned Jev version, `jev-<major>.<minor>.<patch>`; the moving `jev-latest` alias is rejected | `jev-1.14.0` |
 | `BLUESKY_HANDLE` | `bluesky_handle` | posting account (worker) | unset |
 | `BLUESKY_APP_PASSWORD` | `bluesky_app_password` | app password (worker) | unset |
 | `BLUESKY_SERVICE` | `bluesky_service` | PDS base URL | `https://bsky.social` |

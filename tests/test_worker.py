@@ -5,6 +5,7 @@ from pathlib import Path
 
 import anthropic
 import httpx
+from typesafe_sdk import AsyncTypeSafeClient
 
 from ai_trend_pipeline.bluesky import BlueskyCredentials
 from ai_trend_pipeline.config import Settings
@@ -70,8 +71,14 @@ def test_candidate_workflow_registered_on_candidate_queue() -> None:
 def test_ingestion_workflow_and_activities_registered_on_ingestion_queue() -> None:
     assert INGESTION_WORKFLOWS == [SourceIngestionWorkflow]
     assert SOURCE_INGESTION_TASK_QUEUE == "source-ingestion-task-queue"
-    activities = ingestion_activities(anthropic.AsyncAnthropic(api_key="test"), httpx.AsyncClient())
+    activities = ingestion_activities(
+        anthropic.AsyncAnthropic(api_key="test"),
+        httpx.AsyncClient(),
+        AsyncTypeSafeClient(api_key="test"),
+        Settings(),
+    )
     assert sorted(activity.__name__ for activity in activities) == [
+        "classify_story_events",
         "poll_fake_source",
         "poll_hn_source",
         "select_story_candidates",

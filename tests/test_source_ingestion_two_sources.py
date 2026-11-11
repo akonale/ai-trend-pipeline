@@ -51,6 +51,7 @@ from ai_trend_pipeline.story_candidate import (
 )
 from ai_trend_pipeline.story_selection import StorySelectionActivities
 from ai_trend_pipeline.temporal_client import ensure_candidate_search_attributes
+from tests.typesafe_fixtures import positive_classification
 
 FIXTURES = Path(__file__).parent / "fixtures"
 HN_SELECTION = "llm_select_story_candidates_ingestion.json"
@@ -124,6 +125,7 @@ async def two_source_env(
     hn = hn_client()
     hn_activities = HNSourceActivities(hn)
     selection = StorySelectionActivities(anthropic_client())
+    classification = positive_classification()
     service = CandidateService(TemporalCandidateGateway(env.client), settings)
     async with env:
         async with hn:
@@ -135,6 +137,7 @@ async def two_source_env(
                     activities=[
                         hn_activities.poll_hn_source,
                         fake_poll,
+                        classification.classify_story_events,
                         selection.select_story_candidates,
                     ],
                 ),

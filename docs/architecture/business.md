@@ -106,10 +106,15 @@ private, and commit it.
 A long-running source workflow turns new source events into a small reviewable inbox:
 
 ```
-poll source ─▶ drop processed ids ─▶ deterministic prefilter ─▶ batch LLM selection
+poll source ─▶ drop processed ids ─▶ deterministic prefilter ─▶ Jev classification + policy
+            ─▶ batch LLM selection (eligible events only)
             ─▶ StoryCandidateWorkflow per selected story ─▶ /candidates inbox ─▶ approve/reject
 ```
 
+- Only AI-centered stories that suit a general audience are eligible. TypeSafe Jev answers typed
+  questions (AI centrality, human interest, clarity, routine industry news, everyday impact) and
+  fixed code applies the `strict` (default), `balanced` or `relaxed` policy. Popularity (score,
+  comments) never influences eligibility.
 - Only selected stories become candidates. The LLM compares a bounded batch and may select none;
   it never controls cursors, workflow ids, review state or publishing.
 - Approval means only "this candidate is approved". Nothing is generated, charted or published;

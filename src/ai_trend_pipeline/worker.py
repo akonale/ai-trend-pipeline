@@ -11,6 +11,7 @@ import anthropic
 import httpx
 from temporalio.client import Client
 from temporalio.worker import Worker
+from typesafe_sdk import AsyncTypeSafeClient
 
 from ai_trend_pipeline.analysis.activities import FactActivities
 from ai_trend_pipeline.bluesky import (
@@ -44,6 +45,10 @@ from ai_trend_pipeline.source_ingestion import (
 from ai_trend_pipeline.sources.fake import FakeSourceActivities
 from ai_trend_pipeline.sources.hn import HNSourceActivities, make_source_hn_client
 from ai_trend_pipeline.story_candidate import CANDIDATE_TASK_QUEUE, StoryCandidateWorkflow
+from ai_trend_pipeline.story_classification import (
+    StoryClassificationActivities,
+    make_typesafe_client,
+)
 from ai_trend_pipeline.story_drafting.critique import StoryCritiqueActivities
 from ai_trend_pipeline.story_drafting.writing import StoryDraftActivities
 from ai_trend_pipeline.story_generation import (
@@ -111,13 +116,17 @@ def daily_chart_activities(
 def ingestion_activities(
     anthropic_client: anthropic.AsyncAnthropic,
     source_hn_client: httpx.AsyncClient,
+    typesafe_client: AsyncTypeSafeClient,
+    settings: Settings,
 ) -> list[Callable[..., Any]]:
     source_hn = HNSourceActivities(source_hn_client)
     source_fake = FakeSourceActivities()
+    classification = StoryClassificationActivities(typesafe_client, settings.typesafe_model)
     selection = StorySelectionActivities(anthropic_client)
     return [
         source_hn.poll_hn_source,
         source_fake.poll_fake_source,
+        classification.classify_story_events,
         selection.select_story_candidates,
     ]
 
@@ -193,6 +202,7 @@ async def main() -> None:
         make_owid_client() as owid_client,
         make_bluesky_client(credentials.service) as bluesky_client,
         make_source_hn_client(settings) as source_hn_client,
+        make_typesafe_client(settings) as typesafe_client,
         make_research_client(settings) as research_client,
         make_owid_client() as research_owid_client,
     ):
@@ -216,7 +226,9 @@ async def main() -> None:
             client,
             task_queue=SOURCE_INGESTION_TASK_QUEUE,
             workflows=INGESTION_WORKFLOWS,
-            activities=ingestion_activities(anthropic_client, source_hn_client),
+            activities=ingestion_activities(
+                anthropic_client, source_hn_client, typesafe_client, settings
+            ),
         )
         story_worker = Worker(
             client,

@@ -53,6 +53,14 @@ from ai_trend_pipeline.story_candidate import (
     StoryCandidateWorkflow,
     candidate_id_for,
 )
+from ai_trend_pipeline.story_classification import (
+    ClassifyStoryEventsInput,
+    ClassifyStoryEventsOutput,
+    DecisionReason,
+    EventClassification,
+    StoryClassificationActivities,
+    StoryJudgments,
+)
 from ai_trend_pipeline.story_selection import (
     SelectedStory,
     SelectStoryCandidatesInput,
@@ -60,6 +68,7 @@ from ai_trend_pipeline.story_selection import (
     StorySelectionActivities,
 )
 from ai_trend_pipeline.temporal_client import ensure_candidate_search_attributes
+from tests.typesafe_fixtures import TEST_API_KEY, positive_typesafe_client
 
 FIXTURES = Path(__file__).parent / "fixtures"
 HN_FIXTURE = "hn_source_poll.json"
@@ -98,7 +107,11 @@ def test_event_names_are_namespaced_and_unique() -> None:
     values = [event.value for event in IngestionLogEvent]
     assert all(value.startswith("candidate_ingestion.") for value in values)
     assert len(values) == len(set(values))
-    assert len(values) == 12
+    assert len(values) == 14
+    assert IngestionLogEvent.CLASSIFICATION.value == "candidate_ingestion.classification"
+    assert (
+        IngestionLogEvent.CLASSIFICATION_FAILED.value == "candidate_ingestion.classification_failed"
+    )
 
 
 def test_log_event_sets_message_event_source_and_fields(
@@ -322,11 +335,35 @@ async def stop(handle: StateHandle) -> SourceIngestionResult:
     return await handle.result()
 
 
+ClassifyActivity = Callable[[ClassifyStoryEventsInput], Awaitable[ClassifyStoryEventsOutput]]
+JUDGMENTS = StoryJudgments(
+    ai_central=0.9, routine_industry=0.1, human_interest=3, clarity=3, everyday_impact=0
+)
+
+
+@activity.defn(name="classify_story_events")
+async def allow_all_classification(data: ClassifyStoryEventsInput) -> ClassifyStoryEventsOutput:
+    return ClassifyStoryEventsOutput(
+        model="jev-1.14.0",
+        mode=data.mode,
+        results=[
+            EventClassification(
+                external_id=item.external_id,
+                judgments=JUDGMENTS,
+                eligible=True,
+                reason=DecisionReason.ELIGIBLE,
+            )
+            for item in data.events
+        ],
+    )
+
+
 @asynccontextmanager
 async def multi_run_env(
     inputs: Sequence[SourceIngestionInput],
     poll_activities: Sequence[PollActivity],
     selection: SelectActivity,
+    classification: ClassifyActivity = allow_all_classification,
 ) -> AsyncGenerator[tuple[WorkflowEnvironment, list[StateHandle]], None]:
     env = await WorkflowEnvironment.start_time_skipping(data_converter=pydantic_data_converter)
     await ensure_candidate_search_attributes(env.client)
@@ -336,7 +373,7 @@ async def multi_run_env(
                 env.client,
                 task_queue=SOURCE_INGESTION_TASK_QUEUE,
                 workflows=[SourceIngestionWorkflow],
-                activities=[*poll_activities, selection],
+                activities=[*poll_activities, classification, selection],
             ),
             Worker(
                 env.client,
@@ -438,11 +475,13 @@ async def test_workflow_and_activity_logs_contain_no_titles_or_secrets(
     hn_activities = HNSourceActivities(hn)
     fake_activities = FakeSourceActivities()
     inputs = [make_input(), make_input(source=SourceName.FAKE)]
-    async with hn:
+    async with hn, positive_typesafe_client() as jev:
+        classifier = StoryClassificationActivities(jev, "jev-1.14.0")
         async with multi_run_env(
             inputs,
             [hn_activities.poll_hn_source, fake_activities.poll_fake_source],
             selector.select_story_candidates,
+            classifier.classify_story_events,
         ) as (_env, handles):
             for handle in handles:
                 await wait_total_polls(handle, 1)
@@ -455,6 +494,9 @@ async def test_workflow_and_activity_logs_contain_no_titles_or_secrets(
         fake_title(1),
         "https://example.com/fake-source/1001",
         SENTINEL_KEY,
+        TEST_API_KEY,
+        "ai_central",
+        "events.e0",
     ]
     assert len(caplog.records) > 0
     for record in caplog.records:
@@ -464,6 +506,47 @@ async def test_workflow_and_activity_logs_contain_no_titles_or_secrets(
         assert "title" not in record.__dict__
         assert "summary" not in record.__dict__
         assert "api_key" not in record.__dict__
+    classified = records_for(caplog, IngestionLogEvent.CLASSIFICATION)
+    assert len(classified) == 2
+    for record in classified:
+        assert record.__dict__["mode"] == "strict"
+        assert record.__dict__["model"] == "jev-1.14.0"
+        assert isinstance(record.__dict__["eligible_count"], int)
+
+
+@pytest.mark.asyncio
+async def test_classification_logs_are_sanitized(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO, logger="tests.ingestion_logging")
+    log_event(
+        _logger(),
+        IngestionLogEvent.CLASSIFICATION,
+        SourceName.HN,
+        mode="strict",
+        model="jev-1.14.0",
+        batch_size=4,
+        eligible_count=1,
+    )
+    log_event(
+        _logger(),
+        IngestionLogEvent.CLASSIFICATION_FAILED,
+        SourceName.HN,
+        mode="strict",
+        batch_size=4,
+        error_type="ActivityError",
+    )
+    done, failed = caplog.records[-2:]
+    assert done.levelno == logging.INFO
+    assert failed.levelno == logging.ERROR
+    assert record_field(done, "event") == "candidate_ingestion.classification"
+    assert record_field(done, "mode") == "strict"
+    assert record_field(done, "model") == "jev-1.14.0"
+    assert record_field(done, "eligible_count") == 1
+    for name in ("title", "url", "question", "answers", "payload", "api_key"):
+        assert name not in done.__dict__
+    # The shared guard still rejects any attempt to log source text, payloads or secrets.
+    for name in ("title", "url", "payload", "prompt", "response", "api_key", "secret"):
+        with pytest.raises(ValueError):
+            log_event(_logger(), IngestionLogEvent.CLASSIFICATION, SourceName.HN, **{name: "value"})
 
 
 @pytest.mark.asyncio

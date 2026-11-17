@@ -468,6 +468,96 @@ and recorded fixtures. Task 072 adds the persisted global setting, per-poll load
 | 071 | Jev general-audience AI news classification: add the TypeSafe SDK, atomic typed questions, bounded classification models, deterministic Strict/Balanced/Relaxed policy tables, and a `classify_story_events` activity; integrate it before the existing Anthropic selector with replay-safe ingestion changes, sanitized logs, worker/configuration/infra wiring, and recorded fixtures | AI centrality is required in every mode; engagement is absent from model state and decisions; the author and ClickHouse examples calibrate the criteria; zero eligible events skip Anthropic; failures leave batches unprocessed rather than becoming rejections; Strict/Balanced/Relaxed truth-table and chunking tests pass; old histories replay; Ruff, strict Pyright, and full pytest pass | no |
 | 072 | Tune news classification in the UI: add a global Postgres-backed News filter setting, authenticated GET/POST `/news-filter`, three explained native-control choices, shared navigation, and a `load_news_filter_settings` ingestion activity that applies the saved mode to each future poll without restart | Saving each mode affects the next poll; tightening and relaxing produce the expected deterministic eligibility change; invalid/unavailable storage fails safely; existing candidates are untouched; old and new histories replay; responsive keyboard-accessible route/service/workflow tests, Ruff, strict Pyright, and full pytest pass | no |
 
+### Illustrated carousels with fal.ai
+
+**Goal:** turn each approved story into a 3–4 slide illustrated carousel with minimum text, drawn by
+fal.ai models in one consistent house style, reviewed by a human, and posted to Bluesky as one
+multi-image post.
+
+**Done when:** a reviewer can pick "Carousel" next to the illustration and the card, see every
+slide in order with its alt text, approve, and get one Bluesky post with up to 4 images; every word
+on a slide comes from the approved story; and fal cost is capped per day and logged.
+
+**Order:** 073 → 074 → 075 → 076 → 077 → 078 → 079 → 080. Optional: 081 (refine one slide) and
+082 (vector output) after that. Tasks 073–078 change nothing a reader sees; 079–080 are the first
+public change, so they need your approval and ship behind `CAROUSEL_PUBLISH_ENABLED` (off by default).
+
+**Architecture: four swappable parts, one fixed flow.** Each part is a small protocol plus a
+registry (the `media/providers.py` pattern), so a new model, critic, layout or platform is a new
+entry, not a workflow change. The flow lives in `StoryMediaWorkflow` and never knows which model
+ran.
+
+```
+ approved story ──▶ plan_carousel ──▶ generate_images ──▶ critique_images ──▶ compose_slides ──▶ manifest
+ (package, facts)   art director     ImageBackend         ImageCritic          SlideTemplate       carousel candidate
+                    (Claude, cheap)  (fal / anthropic /   (Claude vision /     (deterministic,        │
+                                      fake)                fake)                our fonts and text)    ▼
+                                                                                         review ──▶ publish (N images)
+```
+
+| Part | Lives in | Contract | First implementations |
+| --- | --- | --- | --- |
+| Art director | `media/carousel/plan.py`, prompt in `media/carousel/prompts/` | `CarouselPlan`: slides with role, purpose, image prompt, overlay text from approved facts | Claude (cheap model), fake |
+| Image backend | `media/images/` (`backends.py` registry, one module per provider) | `ImageBackend.submit(brief) -> request ids`, `.collect(ids) -> images`; provider-neutral `ImageBrief` | `anthropic-svg` (today's drawings), `fal` with per-model input adapters (Recraft V4 Styles first), fake |
+| Critic | `media/carousel/critic.py` | `ImageVerdict` per image: ok, or a typed reason (text in image, off-style, off-topic, unsafe, blank) | Claude vision, fake |
+| Slide template | `media/carousel/templates/` registry | `SlideTemplate.compose(image, overlay) -> PNG` | hook, point, number, source |
+| Publisher | `publishing/` formatter + per-platform capabilities | up to `max_images` images, alt text each | Bluesky (4 images, ≤1 MB each today via `MAX_STATIC_BYTES`) |
+
+**Rules for 073–082:**
+- The image model never writes text. Prompts say "no text, no letters"; the critic rejects any
+  image with text; all overlay words are composed by our templates from the approved package and
+  facts, with numbers checked against facts the same way story drafting does.
+- No image bytes, prompts with story text, or fal URLs in workflow history. Activities download fal
+  results straight into media storage (fal URLs expire) and return artifact metadata only.
+- Paying is idempotent: save fal `request_id`s in a pending pointer before waiting; a retried
+  activity collects those ids instead of submitting again. Any finished pointer short-circuits.
+- Cost is bounded: the daily cap counts images, not calls (`CAROUSEL_DAILY_IMAGE_CAP`), the critic
+  regenerates a slide at most once, and every fal call logs model, image count and estimated cost.
+- Every prompt (art director, critic, per-model image prompt) is a versioned file whose hash goes
+  into artifact ids, like `drawn_prompt_hash()`. Changing a prompt never silently reuses old images.
+- `FAL_KEY`, `FAL_MODEL`, `FAL_STYLE_ID` and the carousel settings are read only in `config.py`,
+  listed in `.env.example`, and passed through in `infra/compose.prod.yaml` (see PR #86).
+- Keep fal's safety checker on. Record each model's commercial-use terms in
+  `docs/runbooks/carousels.md` before enabling it in prod.
+- New workflow behaviour sits behind named patches (`story-carousel-v1`, `story-carousel-publish-v1`);
+  old media, story and publishing histories replay. The drawing budget plus the carousel steps stay
+  under `MEDIA_CHILD_TIMEOUT`, pinned by a test.
+- Tests use recorded fal and Claude fixtures and fake backends; no live calls. Each part has a kill
+  switch setting.
+
+**Skills to use (dev time, for the planner and builder):** install these in Claude Code on the dev
+server before 074 and add them to the `skills:` list in `.claude/agents/planner.md` and
+`builder.md`. They guide how agents write prompts and pipelines; production uses our own versioned
+prompt files, written from what worked, not copied text (check each repo's licence first).
+- [fal-ai-community/skills](https://www.vibeindex.ai/collection/fal-ai-community/skills):
+  `fal-prompting` (model-specific prompt tips), `model-routing` (picking a model), `storytelling`
+  (continuity anchors across a set) and `genmedia-workflow` (multi-step pipelines with quality gates).
+- Anthropic Directory: the **Design** plugin's `design-critique` skill (input for the critic
+  checklist in 077) and the community **image-generation** prompting guide.
+- Already in use: `frontend-design` for the review UI in 079.
+- Avoid `inference-sh/skills` `social-media-carousel`: its registry security scan is rated critical.
+
+**You do these by hand before 074 (not agent work):**
+1. Create a fal account and API key; put `FAL_KEY` in `.env` and `.env.prod`.
+2. Add fal's connector to Claude Code (`claude mcp add --transport http --scope user fal
+   https://mcp.fal.ai/mcp-relay`, then `/mcp` to log in) and try 3–5 real stories until you like
+   the slides.
+3. Save what worked (model, prompts, 3–5 reference images, palette, what you rejected and why) in
+   `docs/media/carousel-art-direction.md`. Tasks 074, 075 and 077 are written from it.
+
+| # | Task | Done when | Your approval? |
+| --- | --- | --- | --- |
+| 073 | Image backend seam: move the Claude call in `DrawnImageActivities` behind an `ImageBackend` protocol and registry in `media/images/`; today's drawings become the `anthropic-svg` backend; add `DRAWN_IMAGES_PROVIDER` (default `anthropic-svg`); the pointer records the provider. No behaviour change | Existing drawn-image tests pass unchanged; registry and fake-backend tests cover unknown provider and selection; old `story_media_v3_drawn` history replays | no |
+| 074 | fal backend: add `fal-client`, settings, `.env.example` and prod compose wiring; a `fal` backend with per-model input adapters (Recraft V4 Styles text-to-image first) that submits all slides in parallel, saves request ids in a pending pointer, collects, downloads, validates (signature, size, dimensions) and re-encodes with Pillow; cost log line; images-per-day cap; `just fal-style` creates a `style_id` from reference images | Recorded-fixture tests cover success, partial failure, retry after submit (no second submit), expired or missing result, oversize image and cap; the art-direction doc's reference set produces a `style_id`; no live calls in tests | no |
+| 075 | Carousel plan (art director): `plan_carousel` activity returns `CarouselPlan` (3–4 slides: role, purpose, image prompt, overlay text) from the approved package and facts, using a versioned prompt built from `docs/media/carousel-art-direction.md` | Overlay text contains no number or claim missing from facts; prompts always forbid text in images; invalid or empty plans fail safely; fixtures cover a typical, a short and an article-only story | no |
+| 076 | Slide composer: deterministic `SlideTemplate` registry (hook, point, number, source) that places an image and overlay text with the existing fonts and palette; per-slide alt text | Golden-image tests per template; long and non-ASCII text wraps or truncates safely; every slide ≤ `MAX_STATIC_BYTES`; output is byte-identical for identical input | no |
+| 077 | Image critic: `critique_images` activity using Claude vision returns an `ImageVerdict` per image (ok, text in image, off-style, off-topic, unsafe, blank); failed slides regenerate once within the cap; versioned checklist prompt | Fixtures cover each reason; one regenerate at most; a second failure drops that slide; a carousel with fewer than 2 good slides is marked failed, not posted | no |
+| 078 | Carousel in `StoryMediaWorkflow`: under patch `story-carousel-v1`, run plan → generate → critique → compose after the card succeeds, alongside the existing media; add `carousel_artifacts`/`carousel_status` to `MediaManifest`; shown in review as view-only until 079 | Time-skipping tests cover success, partial, failed, capped and disabled; card, illustration, drawings and GIF are unchanged; old histories replay plus a new `story_media_v4_carousel`; the timing budget test passes; the worst-case manifest still fits its size limit | no |
+| 079 | Carousel review: slides shown in order with alt text and role; `MediaSelection.CAROUSEL` offered in `candidates()` when `CAROUSEL_PUBLISH_ENABLED` is on; picker shows carousel, illustration and card | View-model, markup and CSS tests at 360px; with the flag off, review and publishing are byte-for-byte unchanged; a forged choice falls back to the card | yes |
+| 080 | Multi-image publishing: the formatter publishes up to `capabilities.max_images` images with alt text each; Bluesky uploads each blob and builds one `app.bsky.embed.images` with all of them, under patch `story-carousel-publish-v1`; retries never double-post | Recorded Bluesky fixtures cover 1, 3 and 4 images, an upload failure mid-way and a retry after posting; single-image posts are unchanged; old publishing histories replay; a test post on the test account shows the carousel | yes |
+| 081 | Optional: refine one slide from review ("slide 2: warmer, fewer objects") regenerates only that slide, re-critiques and re-composes, at most 3 rounds | Time-skipping test covers refine → refine → approve; cap and cost log include refines | yes |
+| 082 | Optional: fal vector output (Recraft V4 Styles text-to-vector) as a second fal adapter, with its own SVG checks (size, elements, no external refs or scripts) separate from the strict drawn-SVG pipeline | Sanitiser tests reject scripts, external refs and oversize files; good fixtures rasterise to valid PNGs | no |
+
 ## Web architecture (rules for every Topic Studio task)
 
 Moved to the "Web app" section of [docs/architecture/tech.md](architecture/tech.md).

@@ -370,3 +370,19 @@ def test_drawn_images_rejects_bad_values(env: dict[str, str]) -> None:
 def test_drawn_images_enabled_error_names_variable() -> None:
     with pytest.raises(ValueError, match="DRAWN_IMAGES_ENABLED"):
         load_settings({"DRAWN_IMAGES_ENABLED": "maybe"})
+
+
+def test_drawn_images_provider_default_env_and_unknown_value() -> None:
+    from ai_trend_pipeline.media.images.backends import ImageBackendName
+
+    assert load_settings({}).drawn_images_provider is ImageBackendName.ANTHROPIC_SVG
+    blank = load_settings({"DRAWN_IMAGES_PROVIDER": "  "})
+    assert blank.drawn_images_provider is ImageBackendName.ANTHROPIC_SVG
+    assert load_settings({"DRAWN_IMAGES_PROVIDER": "fake"}).drawn_images_provider is (
+        ImageBackendName.FAKE
+    )
+    padded = load_settings({"DRAWN_IMAGES_PROVIDER": " Fake "})
+    assert padded.drawn_images_provider is ImageBackendName.FAKE
+    with pytest.raises(ValueError, match="Unknown drawn images provider") as info:
+        load_settings({"DRAWN_IMAGES_PROVIDER": "dall-e"})
+    assert "anthropic-svg, fake" in str(info.value)

@@ -1,35 +1,23 @@
 """Activity that asks Claude for drawn SVGs, rasterises the valid ones and returns metadata only.
 
 Never logs or raises anything the model or the story wrote. A story is drawn at most once: any
-existing pointer short-circuits before the API is called. Not registered in a worker yet.
+existing pointer short-circuits before the backend is called.
+The Claude call lives behind an `ImageBackend`.
 """
 
 import asyncio
-from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
 import anthropic
-from anthropic.types import Message, ToolUseBlock
-from pydantic import ValidationError
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
-from ai_trend_pipeline.media.drawn.pipeline import (
-    DrawingRejected,
-    RenderedDrawing,
-    render_drawn_svg,
-)
 from ai_trend_pipeline.media.drawn.prompt import (
     HEADLINE_LIMIT,
     SUMMARY_LIMIT,
-    SYSTEM_PROMPT,
-    TOOL_NAME_DRAW,
-    DrawnImagesReply,
-    build_user_prompt,
     clean_story_text,
-    draw_tool,
     drawn_alt_text,
     drawn_prompt_hash,
     requested_roles,
@@ -42,12 +30,22 @@ from ai_trend_pipeline.media.drawn.store import (
     story_lock,
     write_pointer,
 )
+from ai_trend_pipeline.media.images.anthropic_svg import (
+    DRAW_TOKENS_OVERHEAD,
+    MAX_DRAW_TOKENS_PER_IMAGE,
+    AnthropicSvgBackend,
+)
+from ai_trend_pipeline.media.images.backends import (
+    ImageBackend,
+    ImageBackendRefused,
+    ImageBackendTransient,
+)
+from ai_trend_pipeline.media.images.models import ImageBatch, ImageBrief
 from ai_trend_pipeline.media.models import (
     DRAWN_ROLE_ORDER,
     DrawImagesInput,
     DrawnArtifact,
     DrawnImagesResult,
-    DrawnRole,
     DrawnStatus,
     MediaArtifact,
     MediaKind,
@@ -63,10 +61,8 @@ from ai_trend_pipeline.media.storage import (
 DRAW_ACTIVITY = "draw_story_images"
 DRAWING_TRANSIENT_ERROR_TYPE = "DrawingTransient"
 DRAWING_FAILED_ERROR_TYPE = "DrawingFailed"
-DRAW_REQUEST_TIMEOUT_S = 100.0
-MAX_DRAW_TOKENS_PER_IMAGE = 1400
-DRAW_TOKENS_OVERHEAD = 400
-TRANSIENT_STATUSES = frozenset({408, 409, 429})
+
+__all__ = ["DRAW_TOKENS_OVERHEAD", "MAX_DRAW_TOKENS_PER_IMAGE", "DrawnImageActivities"]
 
 _log = activity.logger
 
@@ -109,8 +105,9 @@ class DrawnImageActivities:
         count: int,
         daily_cap: int,
         clock: Callable[[], datetime] = _utc_now,
+        backend: ImageBackend | None = None,
     ) -> None:
-        self._client = client
+        self._backend = backend if backend is not None else AnthropicSvgBackend(client, model)
         self._media_root = media_root
         self._enabled = enabled
         self._model = model
@@ -149,16 +146,34 @@ class DrawnImageActivities:
             return DrawnImagesResult(status=DrawnStatus.CAPPED)
 
         roles = requested_roles(self._count)
-        outcome = await self._call_api(headline, summary, roles)
+        outcome = await self._generate(ImageBrief(headline=headline, summary=summary, roles=roles))
         if isinstance(outcome, ApplicationError):
             raise outcome  # raised outside any except block so no SDK error is chained
-        response = outcome
+        batch = outcome
 
-        rejects: Counter[str] = Counter()
-        reply = self._parse_reply(response.stop_reason, response.content)
         images: list[DrawnArtifact] = []
-        if reply is not None:
-            images = await self._keep_images(reply, headline, story_hash, rejects)
+        for generated in batch.images:
+            stored = await asyncio.to_thread(
+                write_artifact, self._media_root, generated.png, MediaType.PNG
+            )
+            artifact = MediaArtifact(
+                artifact_id=drawn_artifact_id_for(
+                    story_hash,
+                    generated.role,
+                    stored.content_hash,
+                    drawn_prompt_hash(),
+                    self._model,
+                ),
+                kind=MediaKind.STATIC,
+                media_type=MediaType.PNG,
+                width=generated.width,
+                height=generated.height,
+                byte_size=stored.byte_size,
+                alt_text=drawn_alt_text(headline, generated.role),
+                content_hash=stored.content_hash,
+                relative_path=stored.relative_path,
+            )
+            images.append(DrawnArtifact(role=generated.role, artifact=artifact))
         status = DrawnStatus.DRAWN if images else DrawnStatus.FAILED
         images.sort(key=lambda image: DRAWN_ROLE_ORDER.index(image.role))
         pointer_status = "drawn" if images else "failed"
@@ -168,6 +183,7 @@ class DrawnImageActivities:
             DrawnPointer(
                 story_content_hash=story_hash,
                 model=self._model,
+                provider=self._backend.name.value,
                 prompt_hash=drawn_prompt_hash(),
                 status=pointer_status,
                 images=tuple(images),
@@ -177,88 +193,16 @@ class DrawnImageActivities:
             "draw_story_images status=%s kept=%d rejects=%s input_tokens=%d output_tokens=%d",
             status.value,
             len(images),
-            dict(sorted(rejects.items())),
-            response.usage.input_tokens,
-            response.usage.output_tokens,
+            dict(sorted(batch.rejects.items())),
+            batch.input_tokens,
+            batch.output_tokens,
         )
         return DrawnImagesResult(status=status, images=tuple(images))
 
-    async def _call_api(
-        self, headline: str, summary: str, roles: tuple[DrawnRole, ...]
-    ) -> Message | ApplicationError:
+    async def _generate(self, brief: ImageBrief) -> ImageBatch | ApplicationError:
         try:
-            return await self._client.with_options(
-                max_retries=0, timeout=DRAW_REQUEST_TIMEOUT_S
-            ).messages.create(
-                model=self._model,
-                max_tokens=MAX_DRAW_TOKENS_PER_IMAGE * self._count + DRAW_TOKENS_OVERHEAD,
-                system=SYSTEM_PROMPT,
-                tools=[draw_tool()],
-                # claude-sonnet-5-5 rejects a forced tool; a reply with no tool call becomes failed.
-                tool_choice={"type": "auto"},
-                messages=[{"role": "user", "content": build_user_prompt(headline, summary, roles)}],
-            )
-        except anthropic.APIConnectionError:
+            return await self._backend.generate(brief)
+        except ImageBackendTransient:
             return _transient()
-        except anthropic.APIStatusError as exc:
-            if exc.status_code in TRANSIENT_STATUSES or exc.status_code >= 500:
-                return _transient()
+        except ImageBackendRefused:
             return _refused()
-        except anthropic.APIError:
-            return _refused()
-
-    @staticmethod
-    def _parse_reply(stop_reason: str | None, content: Sequence[object]) -> DrawnImagesReply | None:
-        if stop_reason == "max_tokens":
-            return None
-        for block in content:
-            if isinstance(block, ToolUseBlock) and block.name == TOOL_NAME_DRAW:
-                try:
-                    return DrawnImagesReply.model_validate(block.input)
-                except ValidationError:
-                    return None
-        return None
-
-    async def _keep_images(
-        self,
-        reply: DrawnImagesReply,
-        headline: str,
-        story_hash: str,
-        rejects: Counter[str],
-    ) -> list[DrawnArtifact]:
-        wanted = set(requested_roles(self._count))
-        seen: set[str] = set()
-        kept: list[DrawnArtifact] = []
-        for spec in reply.images:
-            if len(kept) >= self._count:
-                break
-            if spec.role not in wanted or spec.role.value in seen:
-                continue
-            seen.add(spec.role.value)
-            try:
-                drawing: RenderedDrawing = await asyncio.to_thread(render_drawn_svg, spec.svg)
-            except DrawingRejected as exc:
-                rejects[exc.reason.value] += 1
-                continue
-            stored = await asyncio.to_thread(
-                write_artifact, self._media_root, drawing.png, MediaType.PNG
-            )
-            artifact = MediaArtifact(
-                artifact_id=drawn_artifact_id_for(
-                    story_hash,
-                    spec.role,
-                    stored.content_hash,
-                    drawn_prompt_hash(),
-                    self._model,
-                ),
-                kind=MediaKind.STATIC,
-                media_type=MediaType.PNG,
-                width=drawing.width,
-                height=drawing.height,
-                byte_size=stored.byte_size,
-                alt_text=drawn_alt_text(headline, spec.role),
-                content_hash=stored.content_hash,
-                relative_path=stored.relative_path,
-            )
-            kept.append(DrawnArtifact(role=spec.role, artifact=artifact))
-        return kept

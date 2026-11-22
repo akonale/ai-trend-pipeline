@@ -1,5 +1,6 @@
 """Pointer and usage store tests."""
 
+import json
 from datetime import date
 from pathlib import Path
 
@@ -101,3 +102,16 @@ def test_paths_reject_bad_hashes(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         with story_lock(tmp_path, "../x"):
             pass
+
+
+def test_pointer_without_provider_reads_as_anthropic_svg(tmp_path: Path) -> None:
+    from ai_trend_pipeline.media.images.backends import ImageBackendName
+
+    write_pointer(tmp_path, _pointer())
+    path = pointer_path(tmp_path, STORY)
+    data = json.loads(path.read_text())
+    del data["provider"]
+    path.write_text(json.dumps(data))
+    pointer = read_pointer(tmp_path, STORY)
+    assert pointer is not None
+    assert pointer.provider == "anthropic-svg" == ImageBackendName.ANTHROPIC_SVG.value

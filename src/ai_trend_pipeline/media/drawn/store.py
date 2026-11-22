@@ -33,6 +33,10 @@ class DrawnPointer(BaseModel):
     schema_version: Literal[1] = POINTER_SCHEMA_VERSION
     story_content_hash: str = Field(pattern=SHA256_PATTERN)
     model: str = Field(min_length=1, max_length=128)
+    # Literal default so pointers written before backends existed read as anthropic-svg.
+    provider: str = Field(
+        default="anthropic-svg", min_length=1, max_length=64, pattern=r"^[a-z0-9][a-z0-9-]*$"
+    )
     prompt_hash: str = Field(pattern=SHA256_PATTERN)
     status: Literal["drawn", "failed"]
     images: tuple[DrawnArtifact, ...] = ()

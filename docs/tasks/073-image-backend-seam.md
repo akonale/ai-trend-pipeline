@@ -1,6 +1,6 @@
 # 073: Image backend seam
 
-Status: pr-open
+Status: merged
 
 ## Goal
 

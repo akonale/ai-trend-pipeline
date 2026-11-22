@@ -187,4 +187,5 @@ task), then builder.
 **verifier**: Ran `just lint` (ruff check, ruff format, pyright strict: all pass) and `env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY uv run pytest`: 1972 passed, 0 failed. Only 2 pydantic serializer warnings, pre-existing. All checks pass. Next: reviewer.
 
 **reviewer**: Approved. Diff matches spec; existing tests/fixtures untouched, workflow and log line unchanged, errors raised outside except blocks. Notes: scribe still owes README and tech.md updates; activity keeps unused-looking `self._model` only for artifact ids (fine).
-- orchestrator: PR opened https://github.com/akonale/ai-trend-pipeline/pull/91 (scribe hit expired gh auth).
+
+**scribe/orchestrator**: Docs updated (README, tech.md). PR opened https://github.com/akonale/ai-trend-pipeline/pull/91 (scribe hit expired gh auth).

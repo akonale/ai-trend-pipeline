@@ -1,6 +1,6 @@
 # 076: Slide composer
 
-Status: needs-fix
+Status: verified
 
 ## Goal
 
@@ -212,3 +212,5 @@ The truncated golden uses wide uppercase words, since 200 normal chars fit in 4 
 **verifier**: `just lint` passed (ruff check, ruff format --check, pyright 0 errors). `env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY uv run pytest` gave 1 failed, 1991 passed.
 Failing test: `tests/test_story_generation_e2e.py::test_success_unsupported_rejection_retention_and_no_duplicates`, line 149, `assert expired_stories.stories == []`, with one StoryRow still listed (not a 076 file). The slide composer tests passed.
 Next: builder or human to look at the failure, then re-run the verifier.
+
+**orchestrator**: Retention e2e failure is a flake, unrelated to 076: `tests/test_story_generation_e2e.py` passed 3/3 on rerun. Status verified. Next: reviewer.

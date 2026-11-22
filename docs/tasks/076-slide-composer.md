@@ -1,6 +1,6 @@
 # 076: Slide composer
 
-Status: reviewed
+Status: pr-open
 
 ## Goal
 
@@ -219,3 +219,7 @@ Next: builder or human to look at the failure, then re-run the verifier.
 The single `pyright: ignore[reportUnknownMemberType]` on Pillow's `resize` is narrow, rule-coded and commented, so acceptable.
 Note: the `slide_alt_text` whitespace-collapse fallback (ValueError from `clean_media_text`) has no test; add one (e.g. text ending in "www") when 078 touches this.
 Note: scribe still owes the tech.md media paragraph. Retention e2e failure is a known unrelated flake.
+
+**scribe**: Added the slide composer paragraph to `docs/architecture/tech.md` (media section). README unchanged, since this is a pure library with no user-facing change. Branch pushed.
+PR: https://github.com/akonale/ai-trend-pipeline/pull/92 (ready for the human to merge once CI is green).
+Next: human reviews and merges PR #92. 078 wires `compose_slides` and should add the untested `slide_alt_text` whitespace-fallback case.

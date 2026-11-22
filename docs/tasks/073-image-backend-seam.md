@@ -1,6 +1,6 @@
 # 073: Image backend seam
 
-Status: built
+Status: verified
 
 ## Goal
 
@@ -183,3 +183,5 @@ backward-compatible, so existing tests run unedited. No UI. Next: orchestrator a
 task), then builder.
 
 **builder**: Added `media/images/` (models, backends registry, anthropic_svg, fake); activity now calls `backend.generate` and writes pointer `provider`; config/worker/.env.example/compose wired. New tests in test_image_backends.py, test_drawn_activities_backend.py, plus appends to store/config tests. Targeted tests, ruff and pyright pass. Next: verifier (full suite).
+
+**verifier**: Ran `just lint` (ruff check, ruff format, pyright strict: all pass) and `env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY uv run pytest`: 1972 passed, 0 failed. Only 2 pydantic serializer warnings, pre-existing. All checks pass. Next: reviewer.

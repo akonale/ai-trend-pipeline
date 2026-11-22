@@ -157,7 +157,9 @@ story gets up to `DRAWN_IMAGES_COUNT` drawings made by an AI model (one API call
 UTC day by `DRAWN_IMAGES_DAILY_CAP`). `/stories/{id}` shows them in review as a view-only gallery with
 visible alt text and a "Drawn by an AI model" note. Drawings are for review only: they are never
 picked, never part of the approved package and never posted. Set `DRAWN_IMAGES_ENABLED=false` to
-stop. See `docs/runbooks/publishing.md` for cost and operations.
+stop. `DRAWN_IMAGES_PROVIDER` picks the image backend: `anthropic-svg` (default, the Claude SVG
+pipeline) or `fake` (tests only, no API calls); unknown values fail at startup.
+See `docs/runbooks/publishing.md` for cost and operations.
 
 Story research adds five more: `RESEARCH_FETCH_TIMEOUT_S` (over 0 and at most 60, default 10.0),
 `RESEARCH_MAX_RESPONSE_BYTES` (1024-4194304, default 524288), `RESEARCH_MAX_REDIRECTS` (0-5,

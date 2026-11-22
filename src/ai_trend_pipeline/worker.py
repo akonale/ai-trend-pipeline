@@ -30,6 +30,7 @@ from ai_trend_pipeline.media.activities import StoryMediaActivities
 from ai_trend_pipeline.media.drawn.activities import DrawnImageActivities
 from ai_trend_pipeline.media.illustration import IllustrationProvider, illustration_provider_for
 from ai_trend_pipeline.media.illustration_activities import IllustrationActivities
+from ai_trend_pipeline.media.images.backends import ImageBackendDeps, image_backend_for
 from ai_trend_pipeline.media.providers import renderer_for
 from ai_trend_pipeline.news_filter import NewsFilterActivities
 from ai_trend_pipeline.owid import OwidActivities, make_owid_client
@@ -179,6 +180,10 @@ def media_activities(
         model=settings.drawn_images_model,
         count=settings.drawn_images_count,
         daily_cap=settings.drawn_images_daily_cap,
+        backend=image_backend_for(
+            settings.drawn_images_provider,
+            ImageBackendDeps(anthropic_client, settings.drawn_images_model),
+        ),
     )
     return [
         media.render_static_media,

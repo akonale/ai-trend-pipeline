@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, TypeAdapter, field_validator
 
 from ai_trend_pipeline.media.illustration import ILLUSTRATION_PROVIDERS, IllustrationProviderName
+from ai_trend_pipeline.media.images.backends import ImageBackendName
 from ai_trend_pipeline.media.models import DEFAULT_DRAWN_IMAGES, MAX_DRAWN_IMAGES
 from ai_trend_pipeline.media.providers import MEDIA_RENDERERS, MediaProviderName
 from ai_trend_pipeline.research import HostName
@@ -74,6 +75,7 @@ class Settings(BaseModel):
     )
     research_extra_context_hosts: frozenset[HostName] = frozenset()
     drawn_images_enabled: bool = False
+    drawn_images_provider: ImageBackendName = ImageBackendName.ANTHROPIC_SVG
     drawn_images_model: str = Field(
         default=DEFAULT_DRAWN_IMAGES_MODEL,
         min_length=1,
@@ -137,6 +139,19 @@ def _parse_media_provider(raw: str | None) -> MediaProviderName:
         names = ", ".join(name.value for name in MEDIA_RENDERERS)
         raise ValueError(
             f"Unknown media provider {token!r}. Registered providers: {names}"
+        ) from None
+
+
+def _parse_drawn_images_provider(raw: str | None) -> ImageBackendName:
+    token = (raw or "").strip().lower()
+    if not token:
+        return ImageBackendName.ANTHROPIC_SVG
+    try:
+        return ImageBackendName(token)
+    except ValueError:
+        names = ", ".join(name.value for name in ImageBackendName)
+        raise ValueError(
+            f"Unknown drawn images provider {token!r}. Registered providers: {names}"
         ) from None
 
 
@@ -221,6 +236,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
             env.get("RESEARCH_EXTRA_CONTEXT_HOSTS")
         ),
         drawn_images_enabled=_parse_bool(env.get("DRAWN_IMAGES_ENABLED"), "DRAWN_IMAGES_ENABLED"),
+        drawn_images_provider=_parse_drawn_images_provider(env.get("DRAWN_IMAGES_PROVIDER")),
         drawn_images_model=(env.get("DRAWN_IMAGES_MODEL") or "").strip()
         or DEFAULT_DRAWN_IMAGES_MODEL,
         drawn_images_count=int(env.get("DRAWN_IMAGES_COUNT") or DEFAULT_DRAWN_IMAGES),

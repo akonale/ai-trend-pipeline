@@ -1,6 +1,6 @@
 # 076: Slide composer
 
-Status: pr-open
+Status: merged
 
 ## Goal
 

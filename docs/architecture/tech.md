@@ -129,10 +129,12 @@ researching ─▶ analyzing ─▶ writing ─▶ checking ─┬─ passed ─
   non-retryable). Its result fills `drawn_artifacts`/`drawn_status` in the manifest and never changes the outcome
   or other artifacts; a failure or cap records `failed`/`capped`. The budget (150 s + 2 x 60 s) stays under the 6 minute
   child timeout, pinned by a test. Drawings are excluded from `candidates()` and never publish.
-  The activity (`media/drawn/activities.py`) asks Claude for SVG, sanitises it, then rasterises it to PNG
-  (sanitise-then-rasterise); only the PNG and its metadata are stored, so no SVG ever enters workflow history or
-  the manifest. A pointer file `MEDIA_DIR/drawn/<story hash>.json` makes a rerun return the stored result without
-  another API call, and a per-day counter under `drawn/` enforces `DRAWN_IMAGES_DAILY_CAP`. Review (task 070):
+  The activity (`media/drawn/activities.py`) builds an `ImageBrief` and calls an `ImageBackend` from `media/images/`
+  (registry `IMAGE_BACKENDS`, picked by `DRAWN_IMAGES_PROVIDER`; `anthropic-svg` asks Claude for SVG, sanitises it, then
+  rasterises it to PNG, and `fake` is deterministic). Backends raise `ImageBackendTransient`/`ImageBackendRefused`, which the
+  activity maps to `DrawingTransient`/`DrawingFailed`. Only the PNG and its metadata are stored, so no SVG ever enters workflow history or
+  the manifest. A pointer file `MEDIA_DIR/drawn/<story hash>.json` (with `provider`; pointers without it read as
+  `anthropic-svg`) makes a rerun return the stored result without another API call, and a per-day counter under `drawn/` enforces `DRAWN_IMAGES_DAILY_CAP`. Review (task 070):
   `build_drawn_gallery_view` turns `manifest.review_gallery()` into a view-only tray on `/stories/{id}` in review
   only (Ready shows none), served by the manifest-checked media route; `failed`/`capped` show a one-line note.
   `story_package_hash` (text and media) is the content hash. The review query returns the package and
@@ -800,6 +802,7 @@ environment variables.
 | `DRAWN_IMAGES_MODEL` | `drawn_images_model` | model name for drawn images, 1-100 characters, letters, digits, `.`, `_`, `-` | `claude-sonnet-5-5` |
 | `DRAWN_IMAGES_COUNT` | `drawn_images_count` | drawings per story, 1-4 | `3` |
 | `DRAWN_IMAGES_DAILY_CAP` | `drawn_images_daily_cap` | drawn-image API calls per UTC day, 1-1000 | `20` |
+| `DRAWN_IMAGES_PROVIDER` | `drawn_images_provider` | image backend: `anthropic-svg` or `fake` (tests only); unknown values fail with the valid names | `anthropic-svg` |
 | `ANTHROPIC_API_KEY` | `anthropic_api_key` | LLM calls (worker) | unset |
 | `TYPESAFE_API_KEY` | `typesafe_api_key` | TypeSafe Jev story classification (worker) | unset |
 | `TYPESAFE_MODEL` | `typesafe_model` | pinned Jev version, `jev-<major>.<minor>.<patch>`; the moving `jev-latest` alias is rejected | `jev-1.14.0` |

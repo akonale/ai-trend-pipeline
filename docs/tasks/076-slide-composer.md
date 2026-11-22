@@ -1,6 +1,6 @@
 # 076: Slide composer
 
-Status: verified
+Status: reviewed
 
 ## Goal
 
@@ -214,3 +214,8 @@ Failing test: `tests/test_story_generation_e2e.py::test_success_unsupported_reje
 Next: builder or human to look at the failure, then re-run the verifier.
 
 **orchestrator**: Retention e2e failure is a flake, unrelated to 076: `tests/test_story_generation_e2e.py` passed 3/3 on rerun. Status verified. Next: reviewer.
+
+**reviewer**: Approved. All criteria and listed tests present; scope matches Files to touch (card.py and fonts.py untouched); no workflow/activity code, no secrets.
+The single `pyright: ignore[reportUnknownMemberType]` on Pillow's `resize` is narrow, rule-coded and commented, so acceptable.
+Note: the `slide_alt_text` whitespace-collapse fallback (ValueError from `clean_media_text`) has no test; add one (e.g. text ending in "www") when 078 touches this.
+Note: scribe still owes the tech.md media paragraph. Retention e2e failure is a known unrelated flake.
